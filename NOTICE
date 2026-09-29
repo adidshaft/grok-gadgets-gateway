@@ -1,0 +1,5 @@
+Grok Gadgets gateway
+Copyright 2026 Grok Gadgets contributors
+Original code Apache-2.0. Third-party dependencies remain under their own licenses:
+MCP Python SDK (MIT), jsonschema (MIT), pySerial (BSD-3-Clause).
+Dependency license files are retained in installed distributions; no vendor assets are bundled.

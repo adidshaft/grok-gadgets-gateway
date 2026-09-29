@@ -1,0 +1,11 @@
+name: Bug report
+description: Report a reproducible gateway problem
+title: "[bug] "
+body:
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps, expected result, actual result
+      description: Include component versions; remove all credentials.
+    validations:
+      required: true
