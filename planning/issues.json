@@ -1,1 +1,89 @@
-{"issues":[{"id":"GW-001","owner":"grok-gadgets-gateway","problem":"Contribution-ready local foundation","acceptance":["Locked dependencies install","initial checks pass"],"dependencies":[],"labels":["maintenance","gateway","P0"],"milestone":"M0","stage":"done","commits":[],"evidence":"uv sync --locked and initial pytest smoke check"},{"id":"GW-002","owner":"grok-gadgets-gateway","problem":"Canonical versioned device protocol and lifecycle","acceptance":["schemas and fixtures validate","bounded history and command semantics tested"],"dependencies":["GW-001"],"labels":["feature","protocol","P0"],"milestone":"M1","stage":"ready","commits":[]},{"id":"GW-003","owner":"grok-gadgets-gateway","problem":"Usable simulator MCP and authenticated transports","acceptance":["real MCP stdio client tests","revocation and device isolation tests","USB bridge transcript acceptance"],"dependencies":["GW-002"],"labels":["feature","gateway","P0"],"milestone":"M2","stage":"ready","commits":[]},{"id":"GW-004","owner":"grok-gadgets-gateway","problem":"Real Grok Bot and physical C124 acceptance","acceptance":["real Bot tool call","physical LED and button observations"],"dependencies":["GW-003"],"labels":["research","gateway","P1","needs hardware"],"milestone":"M5/M8","stage":"blocked","commits":[],"blocker":"Grok account route and physical C124 unavailable"}]}
+{
+  "issues": [
+    {
+      "id": "GW-001",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Contribution-ready local foundation",
+      "acceptance": [
+        "Locked dependencies install",
+        "initial checks pass"
+      ],
+      "dependencies": [],
+      "labels": [
+        "maintenance",
+        "gateway",
+        "P0"
+      ],
+      "milestone": "M0",
+      "stage": "done",
+      "commits": [
+        "9bab82b"
+      ],
+      "evidence": "uv sync --locked and initial pytest smoke check"
+    },
+    {
+      "id": "GW-002",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Canonical versioned device protocol and lifecycle",
+      "acceptance": [
+        "schemas and fixtures validate",
+        "bounded history and command semantics tested"
+      ],
+      "dependencies": [
+        "GW-001"
+      ],
+      "labels": [
+        "feature",
+        "protocol",
+        "P0"
+      ],
+      "milestone": "M1",
+      "stage": "done",
+      "commits": [],
+      "evidence": "7 pytest tests pass: schemas/fixtures, RGB bounds, custom capability discovery, ACK isolation, offline/timeouts/reconnect, bounded cursor history and restart"
+    },
+    {
+      "id": "GW-003",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Usable simulator MCP and authenticated transports",
+      "acceptance": [
+        "real MCP stdio client tests",
+        "revocation and device isolation tests",
+        "USB bridge transcript acceptance"
+      ],
+      "dependencies": [
+        "GW-002"
+      ],
+      "labels": [
+        "feature",
+        "gateway",
+        "P0"
+      ],
+      "milestone": "M2",
+      "stage": "in progress",
+      "commits": []
+    },
+    {
+      "id": "GW-004",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Real Grok Bot and physical C124 acceptance",
+      "acceptance": [
+        "real Bot tool call",
+        "physical LED and button observations"
+      ],
+      "dependencies": [
+        "GW-003"
+      ],
+      "labels": [
+        "research",
+        "gateway",
+        "P1",
+        "needs hardware"
+      ],
+      "milestone": "M5/M8",
+      "stage": "blocked",
+      "commits": [],
+      "blocker": "Grok account route and physical C124 unavailable"
+    }
+  ]
+}

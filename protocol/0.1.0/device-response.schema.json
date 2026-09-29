@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:grok-gadgets:response:0.1.0",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": [
+        "ok"
+      ],
+      "properties": {
+        "ok": {
+          "const": true
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "protocol_version": {
+          "const": "0.1.0"
+        },
+        "commands": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "command_id",
+              "capability",
+              "arguments"
+            ],
+            "properties": {
+              "command_id": {
+                "type": "string"
+              },
+              "capability": {
+                "type": "string"
+              },
+              "arguments": {
+                "type": "object"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "duplicate": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "ok",
+        "error"
+      ],
+      "properties": {
+        "ok": {
+          "const": false
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "message": {
+              "type": "string",
+              "maxLength": 256
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  ]
+}

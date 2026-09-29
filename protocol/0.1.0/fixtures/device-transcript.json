@@ -1,0 +1,70 @@
+[
+  {
+    "type": "hello",
+    "protocol_version": "0.1.0",
+    "device": {
+      "device_id": "atoms3-lite-1",
+      "model": "M5Stack AtomS3 Lite C124",
+      "firmware_version": "0.1.0",
+      "boot_id": "boot-1",
+      "simulated": false,
+      "capabilities": [
+        "rgb.set",
+        "button",
+        "state"
+      ],
+      "state": {
+        "rgb": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "on": false
+        },
+        "button": {
+          "pressed": false
+        }
+      }
+    }
+  },
+  {
+    "type": "poll"
+  },
+  {
+    "type": "ack",
+    "command_id": "cmd-1",
+    "status": "executed",
+    "state": {
+      "rgb": {
+        "r": 0,
+        "g": 255,
+        "b": 0,
+        "on": true
+      },
+      "button": {
+        "pressed": false
+      }
+    }
+  },
+  {
+    "type": "event",
+    "event_id": "boot-1-1",
+    "name": "button",
+    "data": {
+      "pressed": true
+    }
+  },
+  {
+    "type": "state",
+    "state": {
+      "rgb": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "on": false
+      }
+    }
+  },
+  {
+    "type": "ping"
+  }
+]

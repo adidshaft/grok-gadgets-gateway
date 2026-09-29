@@ -1,0 +1,260 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:grok-gadgets:protocol:0.1.0",
+  "title": "Grok Gadgets device request 0.1.0",
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+    },
+    "rgb": {
+      "type": "object",
+      "properties": {
+        "r": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "g": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "b": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "on": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "r",
+        "g",
+        "b",
+        "on"
+      ],
+      "additionalProperties": false
+    },
+    "state": {
+      "type": "object",
+      "maxProperties": 32,
+      "properties": {
+        "rgb": {
+          "$ref": "#/$defs/rgb"
+        },
+        "button": {
+          "type": "object",
+          "properties": {
+            "pressed": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "pressed"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": true
+    },
+    "error": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "additionalProperties": false
+    },
+    "device": {
+      "type": "object",
+      "properties": {
+        "device_id": {
+          "$ref": "#/$defs/id"
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "firmware_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "boot_id": {
+          "$ref": "#/$defs/id"
+        },
+        "simulated": {
+          "type": "boolean"
+        },
+        "capabilities": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/id"
+          }
+        },
+        "state": {
+          "$ref": "#/$defs/state"
+        },
+        "capability_schemas": {
+          "type": "object",
+          "maxProperties": 16,
+          "additionalProperties": {
+            "type": "object"
+          }
+        }
+      },
+      "required": [
+        "device_id",
+        "model",
+        "firmware_version",
+        "boot_id",
+        "simulated",
+        "capabilities",
+        "state"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "hello"
+        },
+        "protocol_version": {
+          "const": "0.1.0"
+        },
+        "token": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 256
+        },
+        "device": {
+          "$ref": "#/$defs/device"
+        }
+      },
+      "required": [
+        "type",
+        "protocol_version",
+        "device"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "poll"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "ping"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "state"
+        },
+        "state": {
+          "$ref": "#/$defs/state"
+        }
+      },
+      "required": [
+        "type",
+        "state"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "event"
+        },
+        "event_id": {
+          "$ref": "#/$defs/id"
+        },
+        "name": {
+          "$ref": "#/$defs/id"
+        },
+        "data": {
+          "type": "object",
+          "maxProperties": 32
+        },
+        "observed_at": {
+          "type": "string",
+          "maxLength": 40
+        }
+      },
+      "required": [
+        "type",
+        "event_id",
+        "name",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "ack"
+        },
+        "command_id": {
+          "$ref": "#/$defs/id"
+        },
+        "status": {
+          "enum": [
+            "executed",
+            "failed"
+          ]
+        },
+        "state": {
+          "$ref": "#/$defs/state"
+        },
+        "error": {
+          "$ref": "#/$defs/error"
+        }
+      },
+      "required": [
+        "type",
+        "command_id",
+        "status",
+        "state"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}
