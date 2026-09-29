@@ -39,7 +39,9 @@
       ],
       "milestone": "M1",
       "stage": "done",
-      "commits": [],
+      "commits": [
+        "17d3168"
+      ],
       "evidence": "7 pytest tests pass: schemas/fixtures, RGB bounds, custom capability discovery, ACK isolation, offline/timeouts/reconnect, bounded cursor history and restart"
     },
     {
@@ -60,8 +62,9 @@
         "P0"
       ],
       "milestone": "M2",
-      "stage": "in progress",
-      "commits": []
+      "stage": "review",
+      "commits": [],
+      "evidence": "13 passing pytest tests, official MCP stdio acceptance, TCP credential revocation/isolation/reconnect, USB pseudo-terminal command and event transcript; physical/Grok pending"
     },
     {
       "id": "GW-004",
