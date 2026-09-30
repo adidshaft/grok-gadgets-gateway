@@ -165,6 +165,16 @@ async def test_usb_bridge_pty_canonical_transcript(tmp_path):
         )["ok"]
         assert g.command_status("usb-cmd")["status"] == "executed"
         assert g.read_events()["events"][0]["data"]["pressed"]
+        old_session = g.state("dev-1")["session_id"]
+        assert (await usb(hello()))["ok"]
+        assert g.state("dev-1")["session_id"] != old_session
+        old_port = server.port
+        await server.close()
+        assert (await usb({"type": "ping"}))["error"]["code"] == "gateway_unavailable"
+        assert (await usb({"type": "poll"}))["error"]["code"] == "stale_session"
+        server = await DeviceServer(g, Credentials(path), port=old_port).start()
+        assert (await usb(hello()))["ok"]
+        assert (await usb({"type": "ping"}))["ok"]
     finally:
         stop.set()
         await asyncio.wait_for(task, 2)

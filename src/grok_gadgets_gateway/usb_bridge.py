@@ -16,8 +16,30 @@ async def bridge(serial_port, token, *, host="127.0.0.1", port=8765, baudrate=11
     if len(token) < 16:
         raise ValueError("Device token must contain at least 16 characters")
     device = serial.Serial(serial_port, baudrate, timeout=0.1, write_timeout=1)
-    reader, writer = await asyncio.open_connection(host, port, limit=MAX_FRAME)
+    reader = writer = None
     frame = bytearray()
+
+    async def reset():
+        nonlocal reader, writer
+        if writer:
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except (ConnectionError, OSError):
+                pass
+        reader = writer = None
+
+    def reply_error(code, message):
+        device.write(
+            (
+                json.dumps(
+                    {"ok": False, "error": {"code": code, "message": message}},
+                    separators=(",", ":"),
+                )
+                + "\n"
+            ).encode()
+        )
+
     try:
         while stop is None or not stop.is_set():
             chunk = await asyncio.to_thread(device.read, 1)
@@ -33,27 +55,43 @@ async def bridge(serial_port, token, *, host="127.0.0.1", port=8765, baudrate=11
                 if not isinstance(message, dict):
                     raise ValueError("Expected object")
             except (ValueError, UnicodeError):
-                device.write(
-                    b'{"ok":false,"error":{"code":"invalid_request",'
-                    b'"message":"Malformed USB JSON"}}\n'
-                )
+                reply_error("invalid_request", "Malformed USB JSON")
                 frame.clear()
                 continue
             frame.clear()
-            if message.get("type") == "hello":
-                message["token"] = token
-            wire = (json.dumps(message, separators=(",", ":")) + "\n").encode()
-            if len(wire) > MAX_FRAME:
-                raise ValueError("Authenticated USB frame exceeds limit")
-            writer.write(wire)
-            await writer.drain()
-            reply = await asyncio.wait_for(reader.readline(), timeout=10)
-            if not reply or len(reply) > MAX_FRAME:
-                raise ConnectionError("Gateway connection ended")
-            device.write(reply)
+            try:
+                if message.get("type") == "hello":
+                    # A fresh firmware hello always begins a fresh authenticated TCP session.
+                    await reset()
+                    message["token"] = token
+                    reader, writer = await asyncio.wait_for(
+                        asyncio.open_connection(host, port, limit=MAX_FRAME), timeout=2
+                    )
+                if writer is None:
+                    reply_error("stale_session", "Send hello to establish device session")
+                    continue
+                wire = (json.dumps(message, separators=(",", ":")) + "\n").encode()
+                if len(wire) > MAX_FRAME:
+                    reply_error("invalid_request", "Authenticated frame exceeds limit")
+                    continue
+                writer.write(wire)
+                await writer.drain()
+                reply = await asyncio.wait_for(reader.readline(), timeout=10)
+                if not reply or len(reply) > MAX_FRAME:
+                    raise ConnectionError("Gateway connection ended")
+                device.write(reply)
+                response = json.loads(reply)
+                if not response.get("ok") and response.get("error", {}).get("code") in (
+                    "unauthorized",
+                    "revoked",
+                    "stale_session",
+                ):
+                    await reset()
+            except (OSError, ConnectionError, asyncio.TimeoutError, ValueError):
+                await reset()
+                reply_error("gateway_unavailable", "Reconnect with a fresh hello")
     finally:
-        writer.close()
-        await writer.wait_closed()
+        await reset()
         device.close()
 
 
