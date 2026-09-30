@@ -62,9 +62,12 @@
         "P0"
       ],
       "milestone": "M2",
-      "stage": "review",
-      "commits": [],
-      "evidence": "13 passing pytest tests, official MCP stdio acceptance, TCP credential revocation/isolation/reconnect, USB pseudo-terminal command and event transcript; physical/Grok pending"
+      "stage": "done",
+      "commits": [
+        "e9a887e",
+        "b2ad132"
+      ],
+      "evidence": "13 passing tests; real official MCP stdio client; TCP revocation/isolation/timeouts; USB PTY command/events/repeated hello/gateway restart; clean wheel install demo passes. Hardware and real Bot separate GW-004."
     },
     {
       "id": "GW-004",

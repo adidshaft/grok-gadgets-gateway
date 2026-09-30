@@ -1,0 +1,16 @@
+{
+  "tools": [
+    "gadgets_command",
+    "gadgets_command_status",
+    "gadgets_diagnostics",
+    "gadgets_get_state",
+    "gadgets_list_devices",
+    "gadgets_read_events",
+    "test_simulator_control"
+  ],
+  "led_status": "executed",
+  "simulated": true,
+  "physical_verified": false,
+  "grok_verified": false,
+  "evidence": "Official MCP ClientSession over stdio; asserted simulated lifecycle"
+}
