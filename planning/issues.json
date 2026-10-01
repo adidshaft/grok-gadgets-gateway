@@ -113,7 +113,9 @@
       ],
       "milestone": "MH",
       "stage": "done",
-      "commits": [],
+      "commits": [
+        "4bb6d87"
+      ],
       "evidence": [
         "Starting 4cf42ff: button and state both executed and replaced RGB with 1,2,3,true.",
         "17 pytest tests pass, Ruff passes, hub scripts/check.py passes; official MCP ClientSession rejects button/state/unknown and four malformed RGB forms without state mutation. See docs/verification/hardening.md."
@@ -141,9 +143,12 @@
         "help wanted"
       ],
       "milestone": "MH",
-      "stage": "in progress",
+      "stage": "done",
       "commits": [],
-      "evidence": [],
+      "evidence": [
+        "Starting 4cf42ff: A retry accepted as new after B256 (sequence258).",
+        "21 pytest tests, Ruff and hub check pass; current-boot windows bounded64x256; direct lifecycle and actual MCP plus two authenticated devices verify no sequence/history increment on A retry. See docs/verification/hardening.md."
+      ],
       "blocker": null
     }
   ]

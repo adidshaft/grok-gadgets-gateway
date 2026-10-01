@@ -213,3 +213,78 @@ def test_simulator_rejects_unsupported_or_malformed_delivered_commands(capabilit
     sim.execute()
     assert g.command_status("delivered")["status"] == "failed"
     assert g.state(sim.device_id)["state"] == initial
+
+
+def event(eid="original", pressed=True):
+    return {"type": "event", "name": "button", "event_id": eid, "data": {"pressed": pressed}}
+
+
+def test_event_windows_isolate_devices_and_retention_boundary():
+    g = Gateway(event_limit=512)
+    a, b = g.register(hello("a")), g.register(hello("b"))
+    assert g.handle("a", a, event()) == {"ok": True}
+    assert g.handle("b", b, event()) == {"ok": True}
+    for index in range(1, 257):
+        g.handle("b", b, event(f"b-{index}"))
+    sequence = g.sequence
+    history = f"{g.epoch}:{g.sequence}"
+    assert g.handle("a", a, event()) == {"ok": True, "duplicate": True}
+    assert g.sequence == sequence
+    assert g.read_events(history)["events"] == []
+    fails("duplicate_conflict", lambda: g.handle("a", a, event(pressed=False)))
+    fails("duplicate_conflict", lambda: g.handle("a", a, {**event(), "observed_at": "changed"}))
+    # At 256 entries b-1 is retained; identical retries do not extend retention.
+    assert g.handle("b", b, event("b-1"))["duplicate"]
+    assert len(g.seen_events["b"]) == 256
+    g.handle("b", b, event("b-257"))
+    assert g.handle("b", b, event("b-1")) == {"ok": True}
+    assert len(g.seen_events["b"]) == 256
+    assert g.handle("a", a, event())["duplicate"]
+
+
+def test_event_windows_reconnect_boot_change_restart_and_stale_sessions():
+    g = Gateway()
+    registration = hello()
+    old = g.register(registration)
+    g.handle("dev-1", old, event())
+    cursor = g.read_events()["next_cursor"]
+    g.disconnect("dev-1", old)
+    fails("stale_session", lambda: g.handle("dev-1", old, event("offline")))
+    same_boot = g.register(registration)
+    assert g.handle("dev-1", same_boot, event())["duplicate"]
+    assert g.sequence == 1
+    fails("stale_session", lambda: g.handle("dev-1", old, event("stale")))
+    registration["device"]["boot_id"] = "new-boot"
+    new_boot = g.register(registration)
+    assert g.handle("dev-1", new_boot, event()) == {"ok": True}
+    assert g.sequence == 2
+    fails("stale_session", lambda: g.handle("dev-1", same_boot, event("retired")))
+    assert len(g.seen_events) == 1 and len(g.seen_events["dev-1"]) == 1
+    restarted = Gateway()
+    new_session = restarted.register(registration)
+    assert restarted.handle("dev-1", new_session, event()) == {"ok": True}
+    fails("cursor_reset", lambda: restarted.read_events(cursor))
+    fails("stale_session", lambda: restarted.handle("dev-1", new_boot, event("old-process")))
+
+
+def test_event_lifecycle_bookkeeping_is_bounded():
+    g = Gateway(event_limit=3)
+    for index in range(64):
+        registration = hello(f"dev-{index}")
+        sid = g.register(registration)
+        for count in range(257):
+            g.handle(f"dev-{index}", sid, event(f"event-{count}"))
+    assert len(g.devices) == len(g.seen_events) == 64
+    assert sum(map(len, g.seen_events.values())) == 64 * 256
+    assert len(g.events) == 3
+    fails("busy", lambda: g.register(hello("overflow")))
+    assert len(g.devices) == len(g.seen_events) == 64
+    for boot in range(300):
+        registration = hello("dev-0")
+        registration["device"]["boot_id"] = f"boot-{boot}"
+        sid = g.register(registration)
+        g.handle("dev-0", sid, event())
+    assert len(g.devices) == len(g.seen_events) == 64
+    assert len(g.seen_events["dev-0"]) == 1
+    assert sum(map(len, g.seen_events.values())) == 63 * 256 + 1
+    assert len(g.events) == 3

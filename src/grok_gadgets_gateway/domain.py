@@ -21,7 +21,8 @@ class Gateway:
         self.devices = {}
         self.commands = OrderedDict()
         self.events = deque(maxlen=event_limit)
-        self.seen_events = OrderedDict()
+        # One bounded window for each registered device's current boot (at most 64).
+        self.seen_events = {}
         self.event_limit = event_limit
         self.command_limit = command_limit
         self.clock = clock
@@ -56,6 +57,8 @@ class Gateway:
         previous = self.devices.get(did)
         if previous:
             self.disconnect(did, previous["session_id"])
+        if previous is None or previous["boot_id"] != descriptor["boot_id"]:
+            self.seen_events[did] = OrderedDict()
         session = uuid.uuid4().hex
         self.devices[did] = {
             **descriptor,
@@ -262,8 +265,9 @@ class Gateway:
             data = message["data"]
             if set(data) != {"pressed"} or type(data["pressed"]) is not bool:
                 raise GatewayError("invalid_event", "Button event requires pressed boolean")
-        key = (dev["device_id"], dev["boot_id"], message["event_id"])
-        existing = self.seen_events.get(key)
+        window = self.seen_events[dev["device_id"]]
+        key = message["event_id"]
+        existing = window.get(key)
         content = (message["name"], message["data"], message.get("observed_at"))
         if existing:
             if existing != content:
@@ -271,9 +275,9 @@ class Gateway:
                     "duplicate_conflict", "Event identifier reused with changed data"
                 )
             return {"ok": True, "duplicate": True}
-        self.seen_events[key] = copy.deepcopy(content)
-        while len(self.seen_events) > 256:
-            self.seen_events.popitem(last=False)
+        window[key] = copy.deepcopy(content)
+        if len(window) > 256:
+            window.popitem(last=False)
         self.sequence += 1
         self.events.append(
             {
