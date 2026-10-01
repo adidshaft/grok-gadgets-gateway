@@ -152,3 +152,64 @@ def test_custom_capability_discovery_and_validation():
     fails("invalid_arguments", lambda: g.command("dev-1", "relay.set", {"on": 1}, "bad"))
     registration["device"]["capability_schemas"]["relay.set"] = {"$ref": "https://invalid.test"}
     fails("invalid_request", lambda: g.register(registration))
+
+
+def test_only_command_capabilities_are_callable_and_discovered():
+    g = Gateway()
+    sim = Simulator(g)
+    initial = g.state(sim.device_id)["state"]
+    discovery = g.state(sim.device_id)
+    assert discovery["command_capabilities"] == ["rgb.set"]
+    assert discovery["event_capabilities"] == ["button"]
+    assert set(discovery["capability_contracts"]) == {"rgb.set"}
+    args = {"r": 1, "g": 2, "b": 3, "on": True}
+    for name in ("button", "state", "unknown"):
+        fails("unsupported_capability", lambda: g.command(sim.device_id, name, args, name))
+    for malformed in ({}, {**args, "r": True}, {**args, "extra": 1}):
+        fails(
+            "invalid_arguments",
+            lambda: g.command(sim.device_id, "rgb.set", malformed, "malformed"),
+        )
+    sim.execute()
+    assert not g.commands
+    assert g.state(sim.device_id)["state"] == initial
+    sim.control("button", True)
+    assert g.read_events()["events"][0]["data"] == {"pressed": True}
+    assert g.state(sim.device_id)["state"]["button"] == {"pressed": True}
+
+
+def test_custom_string_only_commands_remain_callable():
+    g = Gateway()
+    registration = hello()
+    registration["device"]["capabilities"].append("counter.bump")
+    sid = g.register(registration)
+    assert g.state("dev-1")["capability_contracts"]["counter.bump"] == {"type": "object"}
+    assert "counter.bump" in g.state("dev-1")["command_capabilities"]
+    g.command("dev-1", "counter.bump", {"count": 2}, "custom")
+    command = g.handle("dev-1", sid, {"type": "poll"})["commands"][0]
+    assert command["capability"] == "counter.bump"
+    g.handle(
+        "dev-1",
+        sid,
+        {"type": "ack", "command_id": "custom", "status": "executed", "state": {"count": 2}},
+    )
+    assert g.command_status("custom")["status"] == "executed"
+
+
+@pytest.mark.parametrize(
+    "capability,arguments",
+    [
+        ("counter.bump", {"r": 1, "g": 2, "b": 3, "on": True}),
+        ("rgb.set", {"r": -1, "g": 2, "b": 3, "on": True}),
+    ],
+)
+def test_simulator_rejects_unsupported_or_malformed_delivered_commands(capability, arguments):
+    g = Gateway()
+    sim = Simulator(g)
+    initial = g.state(sim.device_id)["state"]
+    g.command(sim.device_id, "rgb.set", initial["rgb"], "delivered")
+    # Simulate a corrupted adapter delivery after domain validation to exercise dispatch defense.
+    g.commands["delivered"].update(capability=capability, arguments=arguments)
+    sim.execute()
+    assert g.command_status("delivered")["status"] == "failed"
+    assert g.state(sim.device_id)["state"] == initial

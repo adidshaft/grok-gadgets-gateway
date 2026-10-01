@@ -2,7 +2,7 @@
 
 import uuid
 
-from .protocol import GatewayError, VERSION
+from .protocol import GatewayError, RGB_VALIDATOR, VERSION
 
 
 class Simulator:
@@ -39,16 +39,24 @@ class Simulator:
         response = self.gateway.handle(self.device_id, self.sid, {"type": "poll"})
         for cmd in response["commands"]:
             state = self.gateway.state(self.device_id)["state"]
-            state["rgb"] = cmd["arguments"]
+            ack = {"type": "ack", "command_id": cmd["command_id"], "state": state}
+            if cmd["capability"] != "rgb.set":
+                ack.update(
+                    status="failed",
+                    error={"code": "unsupported_capability", "message": "Unsupported command"},
+                )
+            elif not RGB_VALIDATOR.is_valid(cmd["arguments"]):
+                ack.update(
+                    status="failed",
+                    error={"code": "invalid_arguments", "message": "Invalid RGB arguments"},
+                )
+            else:
+                state["rgb"] = cmd["arguments"]
+                ack["status"] = "executed"
             self.gateway.handle(
                 self.device_id,
                 self.sid,
-                {
-                    "type": "ack",
-                    "command_id": cmd["command_id"],
-                    "status": "executed",
-                    "state": state,
-                },
+                ack,
             )
 
     def control(self, action, pressed=None):

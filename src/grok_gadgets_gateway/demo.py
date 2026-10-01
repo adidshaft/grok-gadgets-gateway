@@ -38,6 +38,9 @@ async def acceptance(test_controls=True):
             dev = listing["devices"][0]
             assert dev["simulated"] and dev["available"]
             assert dev["capability_contracts"]["rgb.set"]["required"] == ["r", "g", "b", "on"]
+            assert dev["command_capabilities"] == ["rgb.set"]
+            assert dev["event_capabilities"] == ["button"]
+            assert set(dev["capability_contracts"]) == {"rgb.set"}
             request = {
                 "device_id": "sim-c124",
                 "capability": "rgb.set",
@@ -62,6 +65,39 @@ async def acceptance(test_controls=True):
                     },
                 )
             )["error"]["code"] == "invalid_arguments"
+            rejected = []
+            state_before = (await call("gadgets_get_state", {"device_id": "sim-c124"}))["device"][
+                "state"
+            ]
+            for capability in ("button", "state", "unknown"):
+                denial = await call(
+                    "gadgets_command",
+                    {
+                        **request,
+                        "capability": capability,
+                        "command_id": "deny-" + capability,
+                        "arguments": {"r": 1, "g": 2, "b": 3, "on": True},
+                    },
+                )
+                assert denial["error"]["code"] == "unsupported_capability"
+                status = await call("gadgets_command_status", {"command_id": "deny-" + capability})
+                assert status["error"]["code"] == "unknown_command"
+                rejected.append(capability)
+            for index, arguments in enumerate(
+                ({}, {"r": True, "g": 0, "b": 0, "on": True}, {**request["arguments"], "extra": 1})
+            ):
+                denial = await call(
+                    "gadgets_command",
+                    {
+                        **request,
+                        "arguments": arguments,
+                        "command_id": f"malformed-{index}",
+                    },
+                )
+                assert denial["error"]["code"] == "invalid_arguments"
+            assert (await call("gadgets_get_state", {"device_id": "sim-c124"}))["device"][
+                "state"
+            ] == state_before
             if test_controls:
                 await call("test_simulator_control", {"action": "button", "pressed": True})
                 await call("test_simulator_control", {"action": "button", "pressed": False})
@@ -79,6 +115,8 @@ async def acceptance(test_controls=True):
             assert (await call("gadgets_diagnostics"))["report"]["credentials"] == "redacted"
             return {
                 "tools": sorted(names),
+                "rejected_command_capabilities": rejected,
+                "malformed_rgb_rejections": 4,
                 "led_status": result["command"]["status"],
                 "simulated": True,
                 "physical_verified": False,

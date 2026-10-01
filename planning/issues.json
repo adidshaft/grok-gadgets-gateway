@@ -90,6 +90,61 @@
       "stage": "blocked",
       "commits": [],
       "blocker": "Grok account route and physical C124 unavailable"
+    },
+    {
+      "id": "HARD-GW-001",
+      "repository": "grok-gadgets-gateway",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Route simulator commands by command capability",
+      "intended_behaviour": "Route simulator commands by command capability",
+      "acceptance": [
+        "Invalid capability and RGB requests cannot mutate LED",
+        "Negative actual MCP coverage",
+        "Custom SDK capabilities remain valid"
+      ],
+      "dependencies": [
+        "HARD-001"
+      ],
+      "labels": [
+        "bug",
+        "gateway",
+        "P1",
+        "help wanted"
+      ],
+      "milestone": "MH",
+      "stage": "done",
+      "commits": [],
+      "evidence": [
+        "Starting 4cf42ff: button and state both executed and replaced RGB with 1,2,3,true.",
+        "17 pytest tests pass, Ruff passes, hub scripts/check.py passes; official MCP ClientSession rejects button/state/unknown and four malformed RGB forms without state mutation. See docs/verification/hardening.md."
+      ],
+      "blocker": null
+    },
+    {
+      "id": "HARD-GW-002",
+      "repository": "grok-gadgets-gateway",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Isolate bounded event duplicate windows per device and boot",
+      "intended_behaviour": "Isolate bounded event duplicate windows per device and boot",
+      "acceptance": [
+        "Busy device cannot evict another window",
+        "256-boundary,content conflicts,lifecycle and stale sessions covered",
+        "Device/boot/history bookkeeping bounded"
+      ],
+      "dependencies": [
+        "HARD-001"
+      ],
+      "labels": [
+        "bug",
+        "protocol",
+        "P2",
+        "help wanted"
+      ],
+      "milestone": "MH",
+      "stage": "in progress",
+      "commits": [],
+      "evidence": [],
+      "blocker": null
     }
   ]
 }

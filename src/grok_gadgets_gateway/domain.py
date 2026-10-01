@@ -100,11 +100,15 @@ class Gateway:
             for k, v in dev.items()
             if k not in ("last_seen", "state_time", "connected")
         }
+        result["command_capabilities"] = [
+            name for name in dev["capabilities"] if name not in ("button", "state")
+        ]
+        result["event_capabilities"] = [name for name in dev["capabilities"] if name == "button"]
         result["capability_contracts"] = {
             name: SCHEMA["$defs"]["rgb"]
             if name == "rgb.set"
             else copy.deepcopy(dev.get("capability_schemas", {}).get(name, {"type": "object"}))
-            for name in dev["capabilities"]
+            for name in result["command_capabilities"]
         }
         result.update(
             available=dev["connected"],
@@ -142,8 +146,8 @@ class Gateway:
         schema = dev.get("capability_schemas", {}).get(capability)
         if schema and not Draft202012Validator(schema).is_valid(arguments):
             raise GatewayError("invalid_arguments", "Arguments violate declared capability schema")
-        if capability not in dev["capabilities"]:
-            raise GatewayError("unsupported_capability", "Device does not declare this capability")
+        if capability not in dev["capabilities"] or capability in ("button", "state"):
+            raise GatewayError("unsupported_capability", "Device does not declare this command")
         # Ensure even arbitrary capability requests fit a poll frame.
         import json
 
