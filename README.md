@@ -25,6 +25,8 @@ uv run grok-gadgets-gateway --simulator
 
 Use this command's absolute working directory and uv executable in the client's configuration. The client's host must stay running. Normal tools are gadgets_list_devices, gadgets_get_state, gadgets_command, gadgets_command_status, gadgets_read_events and gadgets_diagnostics. Simulation controls are absent by default; `--simulator --test-controls` explicitly exposes the test_simulator_control tool for local acceptance only.
 
+To customize the software device, generate settings with `uv run python -m grok_gadgets_gateway.simulator_config > simulator-config.json`, edit the bounded fields, and launch with `--simulator --simulator-config /absolute/path/simulator-config.json`. See [configurable simulator installation and settings](docs/simulator.md). Config files cannot enable test controls.
+
 For a Linux SDK agent or USB bridge, prepare per-device credentials and start the same process with `--credentials /private/path/devices.json`. See [local operation](docs/local-operation.md). Device TCP is strictly loopback, default port 8765; it is separate from MCP stdio. Never expose it through a public tunnel. Hosted or remote Grok connection is an open prerequisite.
 
 ## Contracts and development

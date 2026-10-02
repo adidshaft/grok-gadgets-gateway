@@ -6,12 +6,14 @@ import asyncio
 from .domain import Gateway
 from .mcp_server import make_server
 from .simulator import Simulator
+from .simulator_config import SimulatorConfigError, load_config
 from .transport import Credentials, DeviceServer
 
 
 def main():
     parser = argparse.ArgumentParser(description="Grok Gadgets local MCP gateway")
     parser.add_argument("--simulator", action="store_true", help="Enable explicit software C124")
+    parser.add_argument("--simulator-config", help="Local bounded simulator JSON settings")
     parser.add_argument(
         "--test-controls", action="store_true", help="Expose test-only MCP controls"
     )
@@ -22,8 +24,14 @@ def main():
     args = parser.parse_args()
     if args.test_controls and not args.simulator:
         parser.error("--test-controls requires --simulator")
+    if args.simulator_config and not args.simulator:
+        parser.error("--simulator-config requires --simulator")
+    try:
+        config = load_config(args.simulator_config) if args.simulator_config else None
+    except SimulatorConfigError as exc:
+        parser.error(str(exc))
     gateway = Gateway()
-    simulator = Simulator(gateway) if args.simulator else None
+    simulator = Simulator(gateway, config=config) if args.simulator else None
     device_server = (
         DeviceServer(gateway, Credentials(args.credentials), port=args.device_port)
         if args.credentials

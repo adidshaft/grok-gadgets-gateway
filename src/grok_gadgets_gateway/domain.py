@@ -29,7 +29,7 @@ class Gateway:
         self.epoch = uuid.uuid4().hex
         self.sequence = 0
 
-    def register(self, message):
+    def register(self, message, *, display_name=None):
         validate_request(message)
         descriptor = copy.deepcopy(message["device"])
         did = descriptor["device_id"]
@@ -68,6 +68,9 @@ class Gateway:
             "state_time": self.clock(),
             "received_at": now_iso(),
         }
+        if display_name is not None:
+            # Trusted local simulator metadata; this does not extend the device wire protocol.
+            self.devices[did]["display_name"] = display_name
         return session
 
     def _device(self, did):

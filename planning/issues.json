@@ -152,6 +152,34 @@
         "21 pytest tests, Ruff and hub check pass; current-boot windows bounded64x256; direct lifecycle and actual MCP plus two authenticated devices verify no sequence/history increment on A retry. See docs/verification/hardening.md."
       ],
       "blocker": null
+    },
+    {
+      "id": "SIM-GW-001",
+      "repository": "grok-gadgets-gateway",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Configurable installable Grok Gadgets software simulator",
+      "acceptance": [
+        "Strict packaged v1 config and schema; bounded settings with no executable/network/credential fields",
+        "Explicit simulator-config CLI flag, separate test controls",
+        "Actual official MCP client verifies identity, state, delay, offline startup and reconnect",
+        "Installed wheel loads configuration resources and passes simulator acceptance"
+      ],
+      "dependencies": [
+        "GW-003"
+      ],
+      "labels": [
+        "feature",
+        "simulator",
+        "gateway",
+        "P1"
+      ],
+      "milestone": "M2",
+      "stage": "in_progress",
+      "commits": [],
+      "evidence": [
+        "72 pytest tests pass and Ruff passes; actual MCP configured simulation with 150 ms delay and offline/reconnect succeeds. Wheel installation verification pending."
+      ],
+      "blocker": null
     }
   ]
 }

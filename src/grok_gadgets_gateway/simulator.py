@@ -1,17 +1,25 @@
 """Explicit simulator adapter and separate controls; never a physical device."""
 
+import copy
+import time
 import uuid
 
 from .protocol import GatewayError, RGB_VALIDATOR, VERSION
+from .simulator_config import validate_config
 
 
 class Simulator:
-    def __init__(self, gateway, device_id="sim-c124"):
+    def __init__(self, gateway, device_id=None, *, config=None):
         self.gateway = gateway
-        self.device_id = device_id
+        self.config = validate_config(config if config is not None else {"schema_version": 1})
+        if device_id is not None:
+            self.config = validate_config({**self.config, "device_id": device_id})
+        self.device_id = self.config["device_id"]
         self.pressed = False
         self.counter = 0
         self.connect()
+        if self.config["start_disconnected"]:
+            self.gateway.disconnect(self.device_id, self.sid)
 
     def connect(self):
         self.boot_id = uuid.uuid4().hex
@@ -27,17 +35,25 @@ class Simulator:
                     "simulated": True,
                     "capabilities": ["rgb.set", "button", "state"],
                     "state": {
-                        "rgb": {"r": 0, "g": 0, "b": 0, "on": False},
+                        "rgb": copy.deepcopy(self.config["initial_rgb"]),
                         "button": {"pressed": False},
                     },
                 },
-            }
+            },
+            display_name=self.config["display_name"],
         )
         self.pressed = False
 
     def execute(self):
-        response = self.gateway.handle(self.device_id, self.sid, {"type": "poll"})
+        sid = self.sid
+        response = self.gateway.handle(self.device_id, sid, {"type": "poll"})
         for cmd in response["commands"]:
+            if self.config["response_delay_ms"]:
+                time.sleep(self.config["response_delay_ms"] / 1000)
+            # A disconnect/reconnect during the delay must not acknowledge the retired session.
+            current = self.gateway.state(self.device_id)
+            if not current["available"] or current["session_id"] != sid:
+                continue
             state = self.gateway.state(self.device_id)["state"]
             ack = {"type": "ack", "command_id": cmd["command_id"], "state": state}
             if cmd["capability"] != "rgb.set":
@@ -55,7 +71,7 @@ class Simulator:
                 ack["status"] = "executed"
             self.gateway.handle(
                 self.device_id,
-                self.sid,
+                sid,
                 ack,
             )
 

@@ -8,6 +8,9 @@ The client launches and supervises the stdio process. Keep the client and host a
 
 ## Per-device credential enrollment
 
+For an installable configurable software device instead, see [simulator settings](simulator.md).
+`--simulator-config` only works with `--simulator` and never enables test controls implicitly.
+
 Create a private file outside the repository. This command creates a token without printing it:
 
 ```sh
