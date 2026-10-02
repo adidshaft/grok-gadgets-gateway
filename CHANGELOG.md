@@ -8,4 +8,10 @@
 - Loopback device credentials/revocation and USB NDJSON bridge.
 - Official MCP client acceptance, TCP authentication/lifecycle tests and USB pseudo-terminal transcript acceptance.
 
+### Audit corrections
+
+- Reject simulator event/read names as commands, expose callable discovery accurately, and preserve custom SDK command capabilities.
+- Isolate 256 retained event IDs per device/current boot; preserve same-boot reconnect deduplication and bound retired boot/session bookkeeping.
+- Add real MCP negative command coverage, two authenticated device event isolation, and direct lifecycle/retention boundary regressions.
+
 Pending: real Grok Bot/mobile, physical C124, public/remote authenticated MCP transport, durable delivery and independent installation.

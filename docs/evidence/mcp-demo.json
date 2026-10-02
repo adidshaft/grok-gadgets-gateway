@@ -8,6 +8,12 @@
     "gadgets_read_events",
     "test_simulator_control"
   ],
+  "rejected_command_capabilities": [
+    "button",
+    "state",
+    "unknown"
+  ],
+  "malformed_rgb_rejections": 4,
   "led_status": "executed",
   "simulated": true,
   "physical_verified": false,

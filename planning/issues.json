@@ -144,7 +144,9 @@
       ],
       "milestone": "MH",
       "stage": "done",
-      "commits": [],
+      "commits": [
+        "85548ea"
+      ],
       "evidence": [
         "Starting 4cf42ff: A retry accepted as new after B256 (sequence258).",
         "21 pytest tests, Ruff and hub check pass; current-boot windows bounded64x256; direct lifecycle and actual MCP plus two authenticated devices verify no sequence/history increment on A retry. See docs/verification/hardening.md."
