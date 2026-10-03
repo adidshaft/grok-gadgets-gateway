@@ -1,36 +1,121 @@
 # Grok Gadgets gateway
 
-A usable local alpha connection point exclusively for Grok Gadgets. It provides Grok-facing MCP tools, canonical versioned device schemas, a software C124 simulator, authenticated loopback device TCP, and a USB NDJSON bridge. Original code is Apache-2.0; this independent project claims no xAI affiliation.
+An MCP gateway and configurable software simulator for gadgets targeting Grok.
+It discovers device capabilities, routes commands, and reports state and events.
 
-**Evidence:** simulated, software transport tested. Real Grok Bot, mobile clients, physical C124 and independent installation remain pending. Official MCP client acceptance demonstrates the protocol implementation; it does not establish compatibility with an existing Grok Bot.
+**Experimental alpha.** Local MCP simulation and software transports are tested.
+Native Grok invocation receipts, mobile clients, physical C124 operation, and a
+reviewed authenticated route from a cloud Bot to local devices remain open.
 
-## Quick start
-
-Python 3.11+ and [uv](https://docs.astral.sh/uv/) are required. From this repository:
-
-```sh
-uv sync --locked
-uv run python -m grok_gadgets_gateway.demo
-uv run pytest
-uv run ruff check .
+```mermaid
+flowchart LR
+    C["Local MCP client"] --> G["Gateway"]
+    G --> S["Software C124 simulator"]
+    G --> D["Linux / ESP32 device application"]
+    B["Grok Bot: invocation evidence pending"] -.-> G
 ```
 
-The demo launches a real official MCP stdio client and subprocess gateway, then asserts discovery, green RGB command, retry safety, invalid RGB rejection, simulated button press/release, disconnect error and recovery. The output labels simulation and pending physical/Grok verification. No cloud account, API key or paid call is needed.
+Solid paths describe local software interfaces. An execution report is a device
+acknowledgement; physical effects require a separate observation. The simulator
+has no physical effects and makes no Grok API calls.
 
-An MCP-capable local client can launch:
+## Choose a first step
+
+- **Try without hardware:** run the installed MCP demonstration below.
+- **Customize:** use the [simulator guide](docs/simulator.md) and a separate `my-light.json`.
+- **Connect your application:** read [local operation](docs/local-operation.md) and the
+  [versioned protocol](protocol/0.1.0/README.md).
+- **Contribute:** use [CONTRIBUTING](CONTRIBUTING.md), [support](SUPPORT.md), and
+  the [local issue ledger](planning/issues.json).
+
+## Run the installed demonstration
+
+Requirements: uv, Python 3.11, and the gateway wheel. Native Apple Silicon
+Python 3.11.15 is the tested baseline. Installation may need network access;
+the simulator needs no account, API key, hardware, or open device listener.
+
+Repositories and release downloads are **planned destinations pending activation**.
+For the local candidate, build the wheel from this source checkout with
+`uv sync --locked` and `uv build`. Place
+`grok_gadgets_gateway-0.1.0a1-py3-none-any.whl` in an otherwise empty working folder,
+open a terminal there, and run:
 
 ```sh
-uv run grok-gadgets-gateway --simulator
+uv venv --python 3.11 --seed .venv
+.venv/bin/python -m pip install ./grok_gadgets_gateway-0.1.0a1-py3-none-any.whl
+.venv/bin/python -m grok_gadgets_gateway.demo
 ```
 
-Use this command's absolute working directory and uv executable in the client's configuration. The client's host must stay running. Normal tools are gadgets_list_devices, gadgets_get_state, gadgets_command, gadgets_command_status, gadgets_read_events and gadgets_diagnostics. Simulation controls are absent by default; `--simulator --test-controls` explicitly exposes the test_simulator_control tool for local acceptance only.
+The official local MCP client launches a subprocess gateway and asserts discovery,
+green RGB, state readback, safe retry, invalid-command rejection, simulated button
+edges, offline failure, and reconnect. The final JSON includes:
 
-To customize the software device, generate settings with `uv run python -m grok_gadgets_gateway.simulator_config > simulator-config.json`, edit the bounded fields, and launch with `--simulator --simulator-config /absolute/path/simulator-config.json`. See [configurable simulator installation and settings](docs/simulator.md). Config files cannot enable test controls.
+```json
+{"led_status": "executed", "simulated": true, "physical_verified": false, "grok_verified": false}
+```
 
-For a Linux SDK agent or USB bridge, prepare per-device credentials and start the same process with `--credentials /private/path/devices.json`. See [local operation](docs/local-operation.md). Device TCP is strictly loopback, default port 8765; it is separate from MCP stdio. Never expose it through a public tunnel. Hosted or remote Grok connection is an open prerequisite.
+That is a subset of the report, not a native Grok receipt. The demo deliberately
+enables test controls in its child simulator only.
 
-## Contracts and development
+An ordinary local MCP client launches:
 
-[Protocol 0.1.0](protocol/0.1.0/README.md) owns schemas, fixtures, capabilities, acknowledgements, cursors and retry semantics. [Architecture](docs/architecture.md) explains the reusable domain and transports. [Evidence](docs/evidence/local-alpha.md) records actual validation. [Release preparation](docs/release.md) describes publication gates.
+```sh
+.venv/bin/grok-gadgets-gateway --simulator
+```
 
-Read [contribution instructions](CONTRIBUTING.md), [security limits](SECURITY.md) and [local issues](planning/issues.json). Shared policies live in the unpublished sibling [project hub](../grok-gadgets/README.md); the gateway is usable independently and does not require the hub to run. GitHub owner, public URLs and remote protections remain pending publication approval.
+Use the absolute executable path in the client's configuration. The client supervises
+the process, which speaks MCP on stdio and waits for requests; it is not an interactive
+terminal. Ordinary tools are `gadgets_list_devices`, `gadgets_get_state`,
+`gadgets_command`, `gadgets_command_status`, `gadgets_read_events`, and
+`gadgets_diagnostics`. `--test-controls` is a separate explicit opt-in.
+
+## Compatibility and evidence
+
+Package `0.1.0a1` and protocol `0.1.0` are separate version identifiers.
+Declared Python `>=3.11` support is not evidence for every interpreter or platform.
+
+| Path | Evidence | Remaining limit |
+| --- | --- | --- |
+| macOS arm64, CPython 3.11.15 | Source checks and fresh installed-wheel MCP demo | Independent human reproduction |
+| Linux aarch64, CPython 3.11.17 container | Gateway domain/TCP used in recorded Linux SDK acceptance | Standalone gateway MCP/platform matrix |
+| Simulator | Configured identity, RGB, delay, offline/reconnect | No physical device |
+| Device TCP / USB framing | Authenticated loopback and software pseudo-terminal checks | Physical cable, board, and OS permissions |
+| Windows / Intel Mac | Not verified | Clean installation and runtime tests |
+| Grok / mobile / C124 | Native invocation/mobile/physical evidence pending | Supported client route and observed hardware acceptance |
+
+[Launch verification](docs/verification/launch-docs.md) records the documented quick
+start. [Simulator evidence](docs/verification/simulator-config.md) and
+[historical alpha checks](docs/evidence/local-alpha.md) retain their actual scopes.
+
+## Architecture and boundaries
+
+This repository owns the gateway, simulator, and canonical schemas. Device libraries
+belong in the [Linux SDK](https://github.com/adidshaft/grok-gadgets-linux-sdk) and
+[ESP32 SDK](https://github.com/adidshaft/grok-gadgets-esp32-sdk). Shared architecture,
+roadmap, and policies live in the [hub](https://github.com/adidshaft/grok-gadgets).
+Those cross-repository URLs become usable after approved activation; the demo needs
+no sibling checkout.
+
+Device TCP binds to loopback only and requires per-device credentials outside Git.
+It is separate from MCP stdio. A cloud Bot cannot execute a path on your computer.
+Remote HTTPS/OAuth connectivity is not implemented by these transports. Read
+[architecture](docs/architecture.md), [security](SECURITY.md), and
+[release preparation](docs/release.md).
+
+## Troubleshooting and support
+
+| Symptom | Next step |
+| --- | --- |
+| Server waits silently | Launch through an MCP client, or run the demonstration instead. |
+| No simulated device | Include `--simulator`; a config alone does not enable it. |
+| Config rejected | Use strict v1 JSON and the [documented bounds](docs/simulator.md). |
+| Dependency installation fails | Use the selected Python 3.11 environment above; another system interpreter/architecture is not the verified baseline. |
+| Device unavailable | Inspect state; reconnect explicitly in a test session or diagnose the agent. |
+| Unconfirmed / timed out | Inspect state and recover safely; never invent a new retry ID for an uncertain physical action. |
+
+Use [SUPPORT](SUPPORT.md), [SECURITY](SECURITY.md), and
+[CODE_OF_CONDUCT](CODE_OF_CONDUCT.md). Do not post credentials, household state,
+private event bodies, or raw account captures in issues.
+
+Original code is [Apache-2.0](LICENSE); retain [NOTICE](NOTICE) and installed dependency
+licenses. This independent project is exclusively for Grok and is not affiliated with xAI.

@@ -86,10 +86,14 @@
         "P1",
         "needs hardware"
       ],
-      "milestone": "M5/M8",
+      "milestone": "M5",
       "stage": "blocked",
       "commits": [],
-      "blocker": "Grok account route and physical C124 unavailable"
+      "blocker": "Inspectable native Grok invocation evidence and physical C124 observations remain unavailable for this component.",
+      "related_milestones": [
+        "M8"
+      ],
+      "evidence": "Primary M5: native Grok invocation evidence; physical C124 observations remain a separate linked M8 gate. Local simulator acceptance does not close either gate."
     },
     {
       "id": "HARD-GW-001",
@@ -182,6 +186,31 @@
         "73 gateway pytest tests and Ruff pass; hub scripts/check.py passes.",
         "52 simulator config tests pass against a freshly installed wheel from /tmp, including real official MCP subprocess identity/name/state/150ms delay/offline/reconnect checks; packaged default/schema resources present; installed default MCP demo passes.",
         "See docs/verification/simulator-config.md. Physical C124 and actual Grok Bot verification remain blocked under GW-004."
+      ],
+      "blocker": null
+    },
+    {
+      "id": "LAUNCH-DOCS-GW-001",
+      "repository": "grok-gadgets-gateway",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Prepare a newcomer gateway journey and public-alpha component policies",
+      "acceptance": [
+        "Standalone wheel demo from a fresh directory with no source imports",
+        "Accurate Mermaid architecture and runtime/evidence table",
+        "Canonical public hub policy links, actual owner/contact, research Max rule",
+        "LICENSE/NOTICE and runtime/protocol preserved; history/privacy disposition recorded"
+      ],
+      "dependencies": [],
+      "labels": [
+        "docs",
+        "gateway",
+        "P1"
+      ],
+      "milestone": "PUBLIC-ALPHA",
+      "stage": "in progress",
+      "commits": [],
+      "evidence": [
+        "L2/L3/L6 preparation in progress; no external activation."
       ],
       "blocker": null
     }

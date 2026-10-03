@@ -2,6 +2,13 @@
 
 ## 0.1.0a1 — local alpha candidate, 2026-10-04
 
+### Launch preparation, 2026-10-05 — unpublished
+
+- Add standalone wheel guidance, an evidence table, an architecture diagram, and
+  component contribution/support/conduct/security routes.
+- Prepare `adidshaft` ownership and canonical hub links; activation remains pending.
+- Preserve runtime, canonical protocol, Apache-2.0 license, and dependency notices.
+
 - Canonical 0.1.0 schemas/fixtures and custom capability discovery.
 - Reusable device lifecycle, bounded event cursor history, command idempotency and honest acknowledgement statuses.
 - Explicit C124 software simulator and Grok-facing tools via official MCP Python SDK stdio.
