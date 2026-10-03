@@ -1,5 +1,8 @@
 # Local alpha validation — 2026-10-04
 
+Historical engineering checkpoint. For the current installation journey and launch
+preparation checks, use [README](../../README.md) and [launch verification](../verification/launch-docs.md).
+
 Environment: macOS arm64, CPython 3.11.15, uv 0.12.3, official MCP Python SDK 1.26.0. Python 3.11 is the tested runtime; Python >=3.11 support declaration is not evidence that every later version passed.
 
 At e9a887e plus b2ad132 USB recovery fix and demo/docs working tree:

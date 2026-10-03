@@ -2,7 +2,7 @@
 
 Protocol 0.1.0 lives in protocol/0.1.0 and is shipped unchanged inside the gateway wheel. Consumer SDKs pin and hash those source files. Network/USB use 2048-byte LF JSON frames and one request/reply exchange; polling avoids unsolicited message scheduling and fits small firmware buffers. This intentionally favors an understandable local alpha over a public broker.
 
-Python 3.11+ with official MCP Python SDK 1.26.0 is pinned to the stable v1 implementation; current SDK main advertises a changed v2 API. Implementation reference: https://github.com/modelcontextprotocol/python-sdk/blob/v1.26.0/README.md (reviewed 2026-10-04). Dependency resolution lives in uv.lock. Device schemas use JSON Schema Draft 2020-12.
+Python 3.11+ with official MCP Python SDK 1.26.0 is pinned to the v1 implementation. Historical implementation reference: https://github.com/modelcontextprotocol/python-sdk/blob/v1.26.0/README.md (reviewed 2026-10-04; no claim about current upstream main). Dependency resolution lives in uv.lock. Device schemas use JSON Schema Draft 2020-12.
 
 Domain Gateway knows devices, commands and retained events, not sockets or assistants. Simulator consumes exactly the same register/poll/ack/state/event interface; its explicit control adapter injects button/disconnect/reconnect. MCP adapter exposes typed official SDK tools over stdio. DeviceServer wraps the domain in loopback authenticated TCP. usb_bridge relays USB requests and responses, injecting the private host token into hello. Linux SDK and ESP32 firmware remain separate libraries, not gateway modules.
 

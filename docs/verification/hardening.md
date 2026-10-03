@@ -1,6 +1,9 @@
-# Gateway hardening evidence
+# Historical gateway hardening evidence
 
-Local software evidence only: actual Grok Bot, physical C124 and mobile testing remain pending under GW-004. Gateway owner is the bounded `hard_gateway` subagent; model setting inherited from the coordinator (no model override requested by this agent).
+This file records the 2026-10-04 correction checkpoints and their original test counts.
+Use the [README](../../README.md) and [launch verification](launch-docs.md) for current setup.
+
+Local software evidence only: actual Grok Bot, physical C124 and mobile testing remain pending under GW-004.
 
 ## 2026-10-04 — H1 / HARD-GW-001
 
