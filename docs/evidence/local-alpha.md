@@ -17,3 +17,5 @@ At e9a887e plus b2ad132 USB recovery fix and demo/docs working tree:
 The pinned SDK with current transitive pydantic-settings emits an `IncompleteFieldDefinitionWarning` on stderr concerning its lifespan settings annotation; all initialization, tool and shutdown assertions pass. It does not contaminate MCP stdout. This upstream non-failing warning is recorded rather than hidden.
 
 No paid model call, cloud Bot invocation, physical C124 operation, mobile-client test, Linux service operation, public endpoint, remote publication or independent installer test occurred. SDK integration evidence is recorded by the component owners and hub. The local alpha can be tested now; those gates remain open.
+
+Configurable simulator update: [52 installed-wheel configuration checks and 73 gateway tests](../verification/simulator-config.md) pass, including actual MCP custom identity/state, delay and offline/reconnect acceptance. These are software checks; the external gates above remain open.

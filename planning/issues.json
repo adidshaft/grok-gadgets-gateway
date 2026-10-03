@@ -174,10 +174,14 @@
         "P1"
       ],
       "milestone": "M2",
-      "stage": "in_progress",
-      "commits": [],
+      "stage": "done",
+      "commits": [
+        "d330131"
+      ],
       "evidence": [
-        "72 pytest tests pass and Ruff passes; actual MCP configured simulation with 150 ms delay and offline/reconnect succeeds. Wheel installation verification pending."
+        "73 gateway pytest tests and Ruff pass; hub scripts/check.py passes.",
+        "52 simulator config tests pass against a freshly installed wheel from /tmp, including real official MCP subprocess identity/name/state/150ms delay/offline/reconnect checks; packaged default/schema resources present; installed default MCP demo passes.",
+        "See docs/verification/simulator-config.md. Physical C124 and actual Grok Bot verification remain blocked under GW-004."
       ],
       "blocker": null
     }

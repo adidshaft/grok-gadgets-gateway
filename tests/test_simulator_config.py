@@ -258,7 +258,8 @@ async def test_actual_mcp_configured_simulator(tmp_path, offline, controls):
             assert "My desk light" not in json.dumps(report)
 
 
-def test_default_constructor_unchanged_and_offline_control_rejection():
+@pytest.mark.parametrize("pressed", [True, False])
+def test_default_constructor_unchanged_and_offline_control_rejection(pressed):
     gateway = Gateway()
     simulator = Simulator(gateway)
     device = gateway.state("sim-c124")
@@ -266,4 +267,4 @@ def test_default_constructor_unchanged_and_offline_control_rejection():
     assert simulator.config["response_delay_ms"] == 0
     simulator.control("disconnect")
     with pytest.raises(GatewayError, match="Device session is no longer current"):
-        simulator.control("button", True)
+        simulator.control("button", pressed)

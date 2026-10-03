@@ -83,6 +83,7 @@ class Simulator:
         elif action == "button":
             if type(pressed) is not bool:
                 raise GatewayError("invalid_event", "pressed must be boolean")
+            self.gateway.session(self.device_id, self.sid)
             if pressed != self.pressed:
                 self.counter += 1
                 self.gateway.handle(
