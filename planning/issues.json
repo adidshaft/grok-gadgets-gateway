@@ -207,10 +207,13 @@
         "P1"
       ],
       "milestone": "PUBLIC-ALPHA",
-      "stage": "in progress",
-      "commits": [],
+      "stage": "done",
+      "commits": [
+        "dd4f50aa8abcee97b72596ae65c067231533772d"
+      ],
       "evidence": [
-        "L2/L3/L6 preparation in progress; no external activation."
+        "docs/verification/launch-docs.md: exact fresh installed README journey passed on macOS27 arm64 CPython3.11.15; canonical public-alpha policy/contact/CODEOWNERS and original Mermaid prepared.",
+        "Required source/lint/build checks and hub check passed; runtime/protocol/LICENSE/NOTICE unchanged. Bounded reachable-history identity/path findings remain an explicit publication-review gate; no external activation."
       ],
       "blocker": null
     }
