@@ -9,7 +9,7 @@ preparation; runtime, tests, scripts, protocol, metadata and lock files are unch
 - `uv sync --locked --python 3.11`, `uv run pytest`: 73 passed.
 - `uv run ruff check .`, `uv run python -m grok_gadgets_gateway.demo`, `uv build`: passed.
 - Hub `python3 scripts/check.py`: passed; 35 labeled records and Python syntax verified.
-- 36 relative links in changed Markdown resolved locally; the small Mermaid diagram
+- 37 relative links in changed Markdown resolved locally; the small Mermaid diagram
   was inspected against implemented local interfaces. External URLs are prepared
   destinations, not evidence that public repositories or reporting features exist.
 
