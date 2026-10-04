@@ -216,6 +216,29 @@
         "Required source/lint/build checks and hub check passed; runtime/protocol/LICENSE/NOTICE unchanged. Bounded reachable-history identity/path findings remain an explicit publication-review gate; no external activation."
       ],
       "blocker": null
+    },
+    {
+      "id": "LAUNCH-CI-GW-001",
+      "repository": "grok-gadgets-gateway",
+      "problem": "Pin and bound standalone read-only checks",
+      "acceptance": [
+        "Verified official action commit pins, read-only permissions, no persisted credentials and timeouts",
+        "Real hosted contexts remain unverified until approved activation"
+      ],
+      "dependencies": [],
+      "labels": [
+        "maintenance",
+        "gateway",
+        "P1"
+      ],
+      "milestone": "PUBLIC-ALPHA",
+      "stage": "done",
+      "commits": [],
+      "evidence": [
+        ".github/workflows/checks.yml",
+        "Local YAML/pin/permission validation; runtime unchanged from fresh standalone docs acceptance"
+      ],
+      "blocker": null
     }
   ]
 }
