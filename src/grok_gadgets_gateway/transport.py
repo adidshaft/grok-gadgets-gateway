@@ -60,14 +60,28 @@ class DeviceServer:
         self.port = self.server.sockets[0].getsockname()[1]
         return self
 
-    async def close(self):
+    async def close(self, timeout=2):
+        # Python >=3.12 Server.wait_closed() waits for every client connection, so clients
+        # must be closed first and the wait must stay bounded.
         if self.server:
             self.server.close()
-            await self.server.wait_closed()
         for writer in list(self.writers):
             writer.close()
-        if self.connections:
-            await asyncio.gather(*list(self.connections), return_exceptions=True)
+        tasks = [task for task in self.connections if task is not asyncio.current_task()]
+        if tasks:
+            _, pending = await asyncio.wait(tasks, timeout=timeout / 2)
+            for writer in list(self.writers):
+                writer.transport.abort()
+            for task in pending:
+                task.cancel()
+            if pending:
+                await asyncio.wait(pending, timeout=timeout / 2)
+        if self.server:
+            try:
+                async with asyncio.timeout(timeout):
+                    await self.server.wait_closed()
+            except TimeoutError:
+                pass
 
     async def client(self, reader, writer):
         task = asyncio.current_task()
