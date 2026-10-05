@@ -10,9 +10,8 @@ Set the arguments to `run`, `--directory`, `/absolute/path/grok-gadgets-gateway`
 These instructions configure a local MCP client. They are not a verified Grok Bot configuration.
 
 The client starts and manages the stdio process. Keep the client and host awake.
-The gateway is not a background systemd service. A stdio process cannot serve assistant requests without its client.
-A reachable MCP transport with authentication is separate future work.
-If the client exits, restart the gateway and device agent. State and history are stored in memory. Event cursors reset on restart.
+A stdio process stops when that client exits. `grok-gadgets-gateway serve` is the long-running process: it keeps the device listener and Streamable HTTP MCP up without an MCP client. See [remote access](remote-access.md) for the URL, the bearer token, and the rule against publishing the device port.
+State and history are stored in memory. Event cursors reset when the process restarts.
 
 ## Where to run it
 
@@ -21,41 +20,33 @@ The device listener accepts only `127.0.0.1` or `::1`; another computer cannot u
 The public website provides documentation and downloads. It does not keep your gateway running.
 Local simulation needs no public endpoint, domain, or hosted service.
 
-A tunnel provides reachability. It does not turn this stdio gateway into an authenticated remote MCP service.
-Do not expose the raw device port. Remote HTTPS/OAuth and service access controls remain future work in
-[HARD-GROK-REMOTE-001](https://github.com/adidshaft/grok-gadgets/issues/4).
-Use the [hosting FAQ](https://github.com/adidshaft/grok-gadgets/blob/main/docs/getting-started/hosting.md)
-to distinguish website hosting, local processes, and the proposed remote route.
+`serve` authenticates MCP on loopback. A tunnel can carry that HTTP port to a public HTTPS name. It does not add OAuth, and it is not Grok Bot verification. Do not expose the raw device port. Details are in [remote access](remote-access.md). Broader hosting boundaries remain in
+[HARD-GROK-REMOTE-001](https://github.com/adidshaft/grok-gadgets/issues/4) and the
+[hosting FAQ](https://github.com/adidshaft/grok-gadgets/blob/main/docs/getting-started/hosting.md).
 
 ## Per-device credential enrollment
 
 For an installable configurable software device instead, see [simulator settings](simulator.md).
 `--simulator-config` only works with `--simulator` and never enables test controls implicitly.
 
-Create a private file outside the repository. This command creates a token without printing it:
+Config lives in `$XDG_CONFIG_HOME/grok-gadgets` or `~/.config/grok-gadgets` when `XDG_CONFIG_HOME` is unset.
 
 ```sh
-mkdir -p "$HOME/.config/grok-gadgets"
-python3 - <<'PY'
-import json, os, secrets
-from pathlib import Path
-path = Path.home() / '.config/grok-gadgets/devices.json'
-if path.exists():
-    raise SystemExit('Existing credentials preserved; edit to enroll another device')
-fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-with os.fdopen(fd, 'w') as handle:
-    json.dump({'devices': {'atoms3-lite-1': {'token': secrets.token_urlsafe(32), 'revoked': False}}}, handle)
-PY
+uv run grok-gadgets-gateway init
+uv run grok-gadgets-gateway enroll atoms3-lite-1
+uv run grok-gadgets-gateway devices
+uv run grok-gadgets-gateway serve
 ```
 
-Launch the gateway from your MCP client with `--credentials /absolute/private/path/devices.json --device-port 8765`.
-The TCP listener starts during MCP initialization. It stops when the process stops.
-Credential IDs must match the SDK hello. Set `revoked` to `true` to terminate access on the device's next request.
-A denied request closes the session. Revocation prevents subsequent access. It does not erase previously reported state or history.
+`init` creates the directory mode 0700, `credentials.json`, and `mcp-token`. It does not print tokens. `enroll` writes the device with an atomic replace (temp file, mode 0600, `os.replace`) and prints one stdout line, `GROK_GADGETS_DEVICE_TOKEN=...`. Copy that value to the device once. It is not printed again. `devices` prints ids only. `revoke <device-id>` sets `revoked` to true. `rotate-mcp-token` replaces the MCP bearer token and prints `GROK_GADGETS_MCP_TOKEN=...` once.
 
-Use this JSON structure: `{ "devices": { "device-id": { "token": "private value >=16 chars", "revoked": false } } }`.
+The registry shape is `{ "devices": { "device-id": { "token": "private value >=16 chars", "revoked": false } } }`.
 Never commit the file or include it in a support report. The gateway rejects permissions that allow group or public access.
-To rotate a token, update the private credential file and the agent or bridge secret. Then reconnect.
+
+Stdio still accepts `--credentials /absolute/path`. If you omit it and `credentials.json` already exists in the config directory, stdio uses that file. `serve` uses the same default. The device listener starts with `serve`, or during stdio MCP initialization when a registry is configured. It stops when the process stops.
+Credential IDs must match the SDK hello. Revocation is checked on the device's next request.
+A denied request closes the session. Revocation prevents subsequent access. It does not erase previously reported state or history.
+To replace a device token, enroll a new id or edit the private file, update the agent or bridge secret, and reconnect. Do not commit the edit.
 
 ## USB bridge
 
@@ -64,12 +55,12 @@ Find the serial device in your operating system. Common paths are `/dev/cu.usbmo
 Load the private token into the current shell environment without printing it:
 
 ```sh
-export GROK_GADGETS_DEVICE_TOKEN="$(python3 -c 'import json,pathlib;print(json.loads((pathlib.Path.home()/".config/grok-gadgets/devices.json").read_text())["devices"]["atoms3-lite-1"]["token"])')"
+export GROK_GADGETS_DEVICE_TOKEN='value-printed-once-by-enroll'
 uv run python -m grok_gadgets_gateway.usb_bridge /dev/cu.YOUR_DEVICE
 unset GROK_GADGETS_DEVICE_TOKEN
 ```
 
-The gateway must be running and initialized before you start the bridge.
+`serve` or an initialized stdio gateway must already be listening before you start the bridge.
 The bridge does not log the token or compile it into firmware.
 It forwards one reply for each firmware request and enforces frame limits.
 The baud rate is 115200. Native USB CDC can ignore the baud rate.

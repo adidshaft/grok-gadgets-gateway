@@ -1,21 +1,27 @@
 # Grok Gadgets gateway
 
-This guide uses ASD-STE100-inspired writing. It does not claim formal compliance. See the [project writing guide](https://github.com/adidshaft/grok-gadgets/blob/main/docs/contributing/writing-guide.md).
+This gateway is a local MCP server for Grok Gadgets. It lists gadget capabilities, sends commands, and reports state and events. It includes a software C124 simulator. The project is exclusively for Grok and is experimental alpha software.
 
-Use this gateway to connect local gadget applications through MCP. The project is exclusively for Grok.
-The gateway lists device capabilities, sends commands, and reports state and events.
-It includes a configurable software simulator.
+## What works with Grok Bot today
 
-**Experimental alpha.** Local MCP simulation and software transports are tested.
-We have not verified native Grok calls, mobile clients, or physical C124 operation.
-An authenticated connection from a cloud Bot to local devices is also pending.
+The simulator works on this computer when you run `serve --simulator` or the stdio MCP process. That path is covered by local tests. It does not call Grok. A gadget works only if you run `serve` on the gadget's computer and you expose the authenticated MCP URL yourself over HTTPS. That loopback service is implemented and tested here. It has not been verified with Grok Bot, a mobile client, or physical hardware. A device acknowledgement is a report, not proof of a physical effect.
+
+## Quick start
+
+1. Run `uv sync --locked`.
+2. Run `uv run grok-gadgets-gateway init`.
+3. Run `uv run grok-gadgets-gateway serve --simulator`.
+
+The MCP URL is `http://127.0.0.1:8766/mcp`. The bearer token is the single line in `~/.config/grok-gadgets/mcp-token` (mode 0600). Send `Authorization: Bearer <token>`. The device listener is `127.0.0.1:8765`. Both sockets are loopback only.
+
+For a real device id, run `uv run grok-gadgets-gateway enroll <device-id>` and give the printed `GROK_GADGETS_DEVICE_TOKEN` to that device once. Read [remote access](docs/remote-access.md) before you put anything on the network.
 
 ```mermaid
 flowchart LR
     C["Local MCP client"] --> G["Gateway"]
     G --> S["Software C124 simulator"]
     G --> D["Linux / ESP32 device application"]
-    B["Grok Bot: invocation evidence pending"] -.-> G
+    B["Grok Bot: not verified"] -.-> G
 ```
 
 Solid lines show local software interfaces. A device acknowledgement reports execution.
@@ -33,9 +39,11 @@ The simulator has no physical effects and makes no Grok API calls.
 
 ## Run the installed demonstration
 
+`serve` keeps running without an MCP client. A local MCP client can still launch the stdio process with `grok-gadgets-gateway --simulator`. `--test-controls` exists only on that stdio process. HTTP mode does not expose test controls.
+
 You need uv, Python 3.11, and the gateway wheel. Tests used native Apple Silicon
 Python 3.11.15. Installation can require network access.
-The simulator needs no account, API key, hardware, or open device listener.
+The simulator needs no account, API key, or hardware.
 
 Package releases are not published. Build a wheel from this source checkout:
 
@@ -86,8 +94,9 @@ The package declares Python `>=3.11` support. We have not tested every interpret
 | Linux aarch64, CPython 3.11.17 container | Gateway domain/TCP used in recorded Linux SDK acceptance | Standalone gateway MCP/platform matrix |
 | Simulator | Configured identity, RGB, delay, offline/reconnect | No physical device |
 | Device TCP / USB framing | Authenticated loopback and software pseudo-terminal checks | Physical cable, board, and OS permissions |
+| `serve` on 127.0.0.1:8766/mcp | Local bearer-token Streamable HTTP tests, including a simulator command | Not a Grok Bot session; you supply HTTPS |
 | Windows / Intel Mac | Not verified | Clean installation and runtime tests |
-| Grok / mobile / C124 | Native invocation/mobile/physical evidence pending | Supported client route and observed hardware acceptance |
+| Grok / mobile / C124 | Not verified | A supported client route and observed hardware |
 
 [Launch verification](docs/verification/launch-docs.md) records the documented quick
 start. [Simulator evidence](docs/verification/simulator-config.md) and
@@ -102,23 +111,24 @@ roadmap, and policies live in the [hub](https://github.com/adidshaft/grok-gadget
 The demo needs no sibling checkout.
 
 Device TCP binds to loopback only and requires per-device credentials outside Git.
-This device connection is separate from MCP stdio. A cloud Bot cannot execute a path on your computer.
-Run the local MCP client, gateway, and device agent or USB bridge on the same host.
+`serve` also binds Streamable HTTP MCP to `127.0.0.1:8766/mcp` and checks a bearer token.
+A cloud Bot cannot open that loopback port by itself. Run `serve` on the gadget host.
+If you publish an HTTPS URL, follow [remote access](docs/remote-access.md). Do not expose port 8765.
 The public project website serves documentation and downloads; it does not run your gateway.
 
-These transports do not implement remote HTTPS/OAuth connections. A tunnel can provide
-network reachability, but it does not add MCP authentication or device access controls.
-Do not expose the raw device port. The future remote service and access controls are tracked
-in [HARD-GROK-REMOTE-001](https://github.com/adidshaft/grok-gadgets/issues/4).
-Read the [hosting FAQ](https://github.com/adidshaft/grok-gadgets/blob/main/docs/getting-started/hosting.md)
-for where each part runs, plus [architecture](docs/architecture.md),
-[security](SECURITY.md), and [release preparation](docs/release.md).
+There is no OAuth server in this package. The HTTP check is the static bearer token from
+`mcp-token`. A tunnel can provide reachability. It does not replace that token, and it is
+not Grok Bot verification. See
+[HARD-GROK-REMOTE-001](https://github.com/adidshaft/grok-gadgets/issues/4) and the
+[hosting FAQ](https://github.com/adidshaft/grok-gadgets/blob/main/docs/getting-started/hosting.md),
+plus [architecture](docs/architecture.md), [security](SECURITY.md), and
+[release preparation](docs/release.md).
 
 ## Troubleshooting and support
 
 | Symptom | Next step |
 | --- | --- |
-| Server waits silently | Launch through an MCP client, or run the demonstration instead. |
+| Server waits silently | For stdio, launch through an MCP client. For a long-running process, use `serve`. |
 | No simulated device | Include `--simulator`; a config alone does not enable it. |
 | Config rejected | Use strict v1 JSON and the [documented bounds](docs/simulator.md). |
 | Dependency installation fails | Use the selected Python 3.11 environment above; another system interpreter/architecture is not the verified baseline. |

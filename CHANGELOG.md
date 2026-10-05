@@ -15,10 +15,16 @@
 - Loopback device credentials/revocation and USB NDJSON bridge.
 - Official MCP client acceptance, TCP authentication/lifecycle tests and USB pseudo-terminal transcript acceptance.
 
+### Review corrections, 2026-10-05 — unpublished
+
+- Classify `button`, reserved `history_lost`, and inline `"x-grok-gadgets-kind": "event"` schemas as events. Reject an event whose name is a command. Wire format stays 0.1.0.
+- USB bridge: discard an oversize frame to the next LF and reply once, catch `RecursionError`, ignore non-JSON log lines, and reopen the serial port with backoff.
+- Add `init`, `enroll`, `revoke`, `devices`, `rotate-mcp-token`, and `serve`. `serve` is a loopback device listener plus bearer-token Streamable HTTP MCP on `127.0.0.1:8766/mcp`. Local tests use the official MCP client. This is not Grok Bot or hardware verification.
+
 ### Audit corrections
 
 - Reject simulator event/read names as commands, expose callable discovery accurately, and preserve custom SDK command capabilities.
 - Isolate 256 retained event IDs per device/current boot; preserve same-boot reconnect deduplication and bound retired boot/session bookkeeping.
 - Add real MCP negative command coverage, two authenticated device event isolation, and direct lifecycle/retention boundary regressions.
 
-Pending: real Grok Bot/mobile, physical C124, public/remote authenticated MCP transport, durable delivery and independent installation.
+Pending: Grok Bot/mobile verification, physical C124, operator HTTPS in front of the loopback MCP port, OAuth, durable delivery, and independent installation.

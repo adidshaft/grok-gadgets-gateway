@@ -475,6 +475,34 @@
         "Checked on CPython 3.11.15 (macOS arm64): uv sync --locked, ruff check, ruff format --check, and pytest -q (116 passed). No extra interpreters were run. Not Grok Bot or hardware verification. The HTTP listener is loopback bearer-token auth, not an OAuth server."
       ],
       "blocker": null
+    },
+    {
+      "id": "REVIEW-GW-008",
+      "repository": "grok-gadgets-gateway",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Operator docs still describe stdio-only hosting and a manual credential file",
+      "acceptance": [
+        "README opens with one paragraph, an honest What works with Grok Bot today section, and a 3-step quickstart",
+        "docs/remote-access.md explains loopback serve, the bearer token, --allowed-host, and that public HTTPS is the operator's job",
+        "local-operation.md, SECURITY.md, and CHANGELOG.md match init, enroll, and serve",
+        "No claim of Grok Bot or physical hardware verification"
+      ],
+      "dependencies": [
+        "REVIEW-GW-007"
+      ],
+      "labels": [
+        "docs",
+        "gateway",
+        "P1"
+      ],
+      "milestone": "REVIEW-2026-10-05",
+      "stage": "done",
+      "commits": [],
+      "evidence": [
+        "README.md, docs/remote-access.md, docs/local-operation.md, docs/architecture.md, SECURITY.md, and CHANGELOG.md. Local checks only; no push or deployment.",
+        "Checked on CPython 3.11.15 (macOS arm64): uv sync --locked, ruff check, ruff format --check, and pytest -q (116 passed). Not Grok Bot or hardware verification."
+      ],
+      "blocker": null
     }
   ]
 }
