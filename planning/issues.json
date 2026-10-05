@@ -236,10 +236,13 @@
       ],
       "milestone": "PUBLIC-ALPHA",
       "stage": "done",
-      "commits": [],
+      "commits": [
+        "cf3d7b2"
+      ],
       "evidence": [
         ".github/workflows/checks.yml",
-        "Local YAML/pin/permission validation; runtime unchanged from fresh standalone docs acceptance"
+        "Local YAML/pin/permission validation; runtime unchanged from fresh standalone docs acceptance",
+        "Hosted PR #11 on cf3d7b2eaeddd5ccde52d02f72cd9b8b9d88da91: required aggregate check and all four Python matrix checks passed. Matrix failures propagate to the aggregate."
       ],
       "blocker": null
     },
