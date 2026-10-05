@@ -1,0 +1,24 @@
+name: Feature proposal
+description: A bounded use case and compatibility impact
+labels:
+- feature
+body:
+- type: textarea
+  id: usecase
+  attributes:
+    label: Use case and affected component
+  validations:
+    required: true
+- type: textarea
+  id: behavior
+  attributes:
+    label: Proposed behavior and scope
+  validations:
+    required: true
+- type: textarea
+  id: compatibility
+  attributes:
+    label: Compatibility and evidence needed
+    description: Discuss protocol/API changes before implementation.
+  validations:
+    required: true

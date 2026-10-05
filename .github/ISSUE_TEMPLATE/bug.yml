@@ -1,11 +1,43 @@
 name: Bug report
-description: Report a reproducible gateway problem
-title: "[bug] "
+description: A reproducible failure, with redacted evidence
+labels:
+- bug
 body:
-  - type: textarea
-    id: reproduce
-    attributes:
-      label: Steps, expected result, actual result
-      description: Include component versions; remove all credentials.
-    validations:
-      required: true
+- type: input
+  id: version
+  attributes:
+    label: Version or full source commit
+  validations:
+    required: true
+- type: input
+  id: host
+  attributes:
+    label: Component, OS and runtime
+  validations:
+    required: true
+- type: dropdown
+  id: evidence
+  attributes:
+    label: Test environment
+    options:
+    - Browser simulation
+    - Local MCP / software device
+    - Compiled firmware only
+    - Physical hardware
+    - Actual Grok client
+    - Home Assistant installation
+  validations:
+    required: true
+- type: textarea
+  id: reproduce
+  attributes:
+    label: Steps, expected behavior and observed result
+  validations:
+    required: true
+- type: textarea
+  id: logs
+  attributes:
+    label: Redacted logs or evidence
+    description: Never include tokens, account details, household names or private endpoints.
+  validations:
+    required: false
