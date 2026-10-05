@@ -19,16 +19,23 @@ and disclosure privately; do not assume a response SLA.
 
 ## Component limits
 
-- Device TCP is unencrypted, authenticated loopback only. Do not tunnel its port or MCP
-  stdio. This is single-user local software, not a hosted tenant service.
-- Keep per-device credentials outside Git with mode `0600`. Revocation is checked on
-  subsequent requests; old reported state remains in memory.
+- Device TCP is unencrypted and accepts `127.0.0.1` only. Do not publish port 8765.
+  `serve` adds Streamable HTTP MCP on `127.0.0.1:8766/mcp` with a bearer token. That is
+  not an OAuth server. The token file is `mcp-token`, mode `0600`. Host and Origin are
+  allow-listed; add a tunnel hostname with `--allowed-host`. The bind address stays
+  loopback. This is single-user local software, not a hosted tenant service.
+- Keep per-device credentials outside Git with mode `0600`. `enroll` writes them with a
+  temp file and `os.replace`. Revocation is checked on subsequent requests; old reported
+  state remains in memory. `devices` prints ids only.
 - Simulator settings are bounded data, not code, endpoints, or credentials. Test controls
-  require a separate explicit opt-in.
+  require a separate explicit opt-in on stdio. HTTP mode cannot enable them.
+- HTTP tool logs on stderr are redacted: argument hash, tool name, and outcome. They omit
+  tokens, arguments, state, and event bodies.
 - State, command arguments, and events are visible to the requesting operator. Keep
   application payloads free of secrets; support diagnostics alone use an allowlist.
 - Lost acknowledgements remain unconfirmed. Never blindly retry a physical action under
   a new command ID.
 
-Read [local operation](docs/local-operation.md) before enrollment. Public exposure,
-remote authentication, and physical operation need separate review and acceptance.
+Read [local operation](docs/local-operation.md) and [remote access](docs/remote-access.md)
+before enrollment. Publishing your own HTTPS URL, Grok Bot acceptance, and physical
+operation are not verified by the local tests.
