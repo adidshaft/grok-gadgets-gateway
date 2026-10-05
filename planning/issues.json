@@ -555,6 +555,33 @@
         "uv run pytest: 124 passed; uv run ruff check . and uv run ruff format --check . pass on CPython 3.11.15. Local software evidence only."
       ],
       "blocker": null
+    },
+    {
+      "id": "REVIEW-GW-011",
+      "repository": "grok-gadgets-gateway",
+      "owner": "grok-gadgets-gateway",
+      "problem": "The bounded command-ID history silently discarded recent IDs at capacity, allowing retries within the advertised window to dispatch again.",
+      "acceptance": [
+        "Within the 10-minute window, full ID history rejects new commands as busy rather than evicting replay protection.",
+        "Retries of an evicted receipt fail without dispatch; retained receipts still replay with duplicate=true.",
+        "After the window, old ID slots can be reused for new intents. The MCP contract states that restart or expiry removes the guarantee and uncertain actions need inspection."
+      ],
+      "dependencies": [
+        "REVIEW-GW-004"
+      ],
+      "labels": [
+        "bug",
+        "gateway",
+        "P1"
+      ],
+      "milestone": "REVIEW-2026-10-05",
+      "stage": "done",
+      "commits": [],
+      "evidence": [
+        "test_full_id_history_keeps_retry_protection_until_window_expires covers capacity, the exact window boundary, rejected/replayed retries and recovery after expiry.",
+        "uv run pytest: 125 passed; uv run ruff check . and uv run ruff format --check . pass on CPython 3.11.15. No durable or physical exactly-once claim."
+      ],
+      "blocker": null
     }
   ]
 }

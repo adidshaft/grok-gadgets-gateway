@@ -22,11 +22,12 @@ ACTUATE = ToolAnnotations(
 COMMAND_DESCRIPTION = """Ask a gadget to run one command capability with JSON arguments.
 
 command_id is optional. For a new action, omit it: the gateway creates a unique ID and
-returns it as command.command_id. To retry the same action safely (for example after a lost
-reply), call again with that command_id and identical arguments within 10 minutes. You get
-the original receipt with duplicate=true and the action does not run again. Never reuse a
-command_id for a new or later action: changed arguments return duplicate_conflict and IDs
-older than 10 minutes return stale_command_id.
+returns it as command.command_id. Within 10 minutes and the same gateway process, repeating
+that ID with identical arguments returns the original receipt with duplicate=true, or
+stale_command_id if the receipt was evicted. It does not run again. Changed arguments return
+duplicate_conflict. Never reuse an ID for a new action. Retry protection is not durable:
+after a restart or outside that window, inspect state before acting. Do the same if a lost
+reply left you without a command ID. Never create a new ID to retry an uncertain action.
 
 command.status: accepted = queued; dispatched = delivered, waiting for the device;
 executed / failed = the device reported a result (a report, not physical proof);

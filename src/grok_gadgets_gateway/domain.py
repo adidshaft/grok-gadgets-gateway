@@ -245,7 +245,7 @@ class Gateway:
             if self.clock() - existing["requested_clock"] > self.dedup_window:
                 raise GatewayError(
                     "stale_command_id",
-                    "Command ID was used more than 10 minutes ago; choose a new command_id",
+                    "Retry window expired; inspect state before any further action",
                 )
             if existing["fingerprint"] != fingerprint:
                 raise GatewayError(
@@ -254,7 +254,7 @@ class Gateway:
             return {**self.command_status(command_id), "duplicate": True}
         if command_id in self.used_command_ids:
             raise GatewayError(
-                "stale_command_id", "Command ID is no longer retained; choose a new command_id"
+                "stale_command_id", "Receipt is no longer retained; inspect state before acting"
             )
         if not dev["connected"]:
             raise GatewayError("unavailable", "Device is disconnected")
@@ -262,6 +262,10 @@ class Gateway:
         wire = {"command_id": command_id, "capability": capability, "arguments": arguments}
         if len(json.dumps({"ok": True, "commands": [wire]}).encode()) + 1 > 2048:
             raise GatewayError("invalid_arguments", "Command exceeds transport frame limit")
+        if len(self.used_command_ids) >= 8 * self.command_limit:
+            oldest_clock = next(iter(self.used_command_ids.values()))
+            if self.clock() - oldest_clock <= self.dedup_window:
+                raise GatewayError("busy", "Retry protection is full; try a new action later")
         self.expire_commands()
         if len(self.commands) >= self.command_limit:
             terminal = next((k for k, v in self.commands.items() if v["status"] not in _OPEN), None)

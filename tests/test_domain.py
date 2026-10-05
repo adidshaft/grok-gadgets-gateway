@@ -446,6 +446,31 @@ def test_evicted_command_id_is_not_reused_silently():
     fails("stale_command_id", lambda: g.command("dev-1", "rgb.set", args, "first"))
 
 
+def test_full_id_history_keeps_retry_protection_until_window_expires():
+    clock = [0]
+    gateway = Gateway(command_limit=1, clock=lambda: clock[0])
+    sid = gateway.register(hello())
+    arguments = {"r": 1, "g": 2, "b": 3, "on": True}
+    for index in range(8):
+        command_id = f"cmd-{index}"
+        gateway.command("dev-1", "rgb.set", arguments, command_id)
+        gateway.handle("dev-1", sid, {"type": "poll"})
+        gateway.handle(
+            "dev-1",
+            sid,
+            {"type": "ack", "command_id": command_id, "status": "executed", "state": {}},
+        )
+    clock[0] = 600
+    fails("busy", lambda: gateway.command("dev-1", "rgb.set", arguments, "new"))
+    fails("stale_command_id", lambda: gateway.command("dev-1", "rgb.set", arguments, "cmd-0"))
+    assert gateway.command("dev-1", "rgb.set", arguments, "cmd-7")["duplicate"]
+    assert gateway.handle("dev-1", sid, {"type": "poll"})["commands"] == []
+    assert len(gateway.used_command_ids) == 8
+    clock[0] = 601
+    assert gateway.command("dev-1", "rgb.set", arguments, "new")["status"] == "accepted"
+    assert len(gateway.used_command_ids) == 8
+
+
 def test_ack_semantics_and_not_delivered_queue_timeout():
     clock = [0]
     g = Gateway(clock=lambda: clock[0])
