@@ -9,3 +9,7 @@ including platform or evidence research, must use a current GPT-6.1/GPT-6 model 
 reasoning. If unavailable, report it before substituting. Ordinary implementation/review
 may use established settings. Do not research on a lower-effort assignment; ask the
 coordinator to arrange an authorized research task.
+
+## Ignore rules and publication privacy
+
+Keep `.gitignore` current whenever a new tool produces caches, build output, local device configurations, execution logs or credentials. Preserve reviewed sample configuration files and the hub's verified public simulator download. Check new patterns with `git check-ignore`, then review the staged file list before committing. Ignore rules do not remove tracked files or past history; never merge the private pre-publication history back into a public branch. Use the sanitized public checkout and a public or GitHub noreply commit email.

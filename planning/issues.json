@@ -17,7 +17,7 @@
       "milestone": "M0",
       "stage": "done",
       "commits": [
-        "9bab82b"
+        "932e992"
       ],
       "evidence": "uv sync --locked and initial pytest smoke check"
     },
@@ -40,7 +40,7 @@
       "milestone": "M1",
       "stage": "done",
       "commits": [
-        "17d3168"
+        "9cf5a25"
       ],
       "evidence": "7 pytest tests pass: schemas/fixtures, RGB bounds, custom capability discovery, ACK isolation, offline/timeouts/reconnect, bounded cursor history and restart"
     },
@@ -64,8 +64,8 @@
       "milestone": "M2",
       "stage": "done",
       "commits": [
-        "e9a887e",
-        "b2ad132"
+        "cf3e29d",
+        "d9ab081"
       ],
       "evidence": "13 passing tests; real official MCP stdio client; TCP revocation/isolation/timeouts; USB PTY command/events/repeated hello/gateway restart; clean wheel install demo passes. Hardware and real Bot separate GW-004."
     },
@@ -118,10 +118,10 @@
       "milestone": "MH",
       "stage": "done",
       "commits": [
-        "4bb6d87"
+        "e0b7256"
       ],
       "evidence": [
-        "Starting 4cf42ff: button and state both executed and replaced RGB with 1,2,3,true.",
+        "Starting 4606023: button and state both executed and replaced RGB with 1,2,3,true.",
         "17 pytest tests pass, Ruff passes, hub scripts/check.py passes; official MCP ClientSession rejects button/state/unknown and four malformed RGB forms without state mutation. See docs/verification/hardening.md."
       ],
       "blocker": null
@@ -149,10 +149,10 @@
       "milestone": "MH",
       "stage": "done",
       "commits": [
-        "85548ea"
+        "7a4ba40"
       ],
       "evidence": [
-        "Starting 4cf42ff: A retry accepted as new after B256 (sequence258).",
+        "Starting 4606023: A retry accepted as new after B256 (sequence258).",
         "21 pytest tests, Ruff and hub check pass; current-boot windows bounded64x256; direct lifecycle and actual MCP plus two authenticated devices verify no sequence/history increment on A retry. See docs/verification/hardening.md."
       ],
       "blocker": null
@@ -180,7 +180,7 @@
       "milestone": "M2",
       "stage": "done",
       "commits": [
-        "d330131"
+        "5123eff"
       ],
       "evidence": [
         "73 gateway pytest tests and Ruff pass; hub scripts/check.py passes.",
@@ -209,11 +209,13 @@
       "milestone": "PUBLIC-ALPHA",
       "stage": "done",
       "commits": [
-        "dd4f50aa8abcee97b72596ae65c067231533772d"
+        "668abd5bae48e316f9808e02cd08d39a854ddfea"
       ],
       "evidence": [
         "docs/verification/launch-docs.md: exact fresh installed README journey passed on macOS27 arm64 CPython3.11.15; canonical public-alpha policy/contact/CODEOWNERS and original Mermaid prepared.",
-        "Required source/lint/build checks and hub check passed; runtime/protocol/LICENSE/NOTICE unchanged. Bounded reachable-history identity/path findings remain an explicit publication-review gate; no external activation."
+        "Required source/lint/build checks and hub check passed; runtime/protocol/LICENSE/NOTICE unchanged. Bounded reachable-history identity/path findings remain an explicit publication-review gate; no external activation.",
+        "Publication sanitization on 5 October 2026 preserves every incremental commit, date and message; private author email and machine paths removed, commit references remapped. .gitignore and contributor maintenance instructions cover local configuration, secrets, caches, logs and build outputs while retaining reviewed examples.",
+        "Sanitized publication checkout: 73 pytest cases and Ruff pass on Python 3.11 arm64; git check-ignore confirms sensitive/output paths are excluded and reviewed example paths remain addable."
       ],
       "blocker": null
     },
