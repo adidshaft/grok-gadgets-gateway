@@ -325,6 +325,113 @@ async def test_usb_bridge_pty_canonical_transcript(tmp_path):
         await server.close()
 
 
+async def _pty_bridge(tmp_path):
+    path = tmp_path / "auth.json"
+    write_credentials(path)
+    gateway = Gateway()
+    server = await DeviceServer(gateway, Credentials(path), port=0).start()
+    master, slave = os.openpty()
+    stop = asyncio.Event()
+    task = asyncio.create_task(bridge(os.ttyname(slave), TOKEN, port=server.port, stop=stop))
+    await asyncio.sleep(0.05)
+
+    async def read_frame():
+        value = bytearray()
+        while not value.endswith(b"\n"):
+            ready = await asyncio.to_thread(select.select, [master], [], [], 2)
+            assert ready[0], "bridge response missing"
+            value.extend(os.read(master, 4096))
+        line, _, rest = bytes(value).partition(b"\n")
+        assert rest == b""
+        return json.loads(line)
+
+    async def finish():
+        stop.set()
+        await asyncio.wait_for(task, 2)
+        os.close(master)
+        os.close(slave)
+        await server.close()
+
+    return gateway, server, master, read_frame, finish
+
+
+async def test_usb_bridge_discards_oversize_frame_then_accepts_hello(tmp_path):
+    _gateway, server, master, read_frame, finish = await _pty_bridge(tmp_path)
+    try:
+        await asyncio.to_thread(os.write, master, b"{" + (b"x" * 3000) + b"\n")
+        assert (await read_frame())["error"]["code"] == "invalid_request"
+        os.write(master, (json.dumps(hello()) + "\n").encode())
+        assert (await read_frame())["ok"]
+        assert server.port
+    finally:
+        await finish()
+
+
+async def test_usb_bridge_stays_silent_on_log_lines_and_rejects_non_objects(tmp_path):
+    _gateway, _server, master, read_frame, finish = await _pty_bridge(tmp_path)
+    try:
+        os.write(master, b"firmware boot log\n\n")
+        os.write(master, (json.dumps(hello()) + "\n").encode())
+        assert (await read_frame())["ok"]
+        os.write(master, b"[]\n")
+        assert (await read_frame())["error"]["code"] == "invalid_request"
+        os.write(master, (json.dumps({"type": "ping"}) + "\n").encode())
+        assert (await read_frame())["ok"]
+    finally:
+        await finish()
+
+
+async def test_usb_bridge_replies_once_when_json_recursion_fails(tmp_path):
+    _gateway, _server, master, read_frame, finish = await _pty_bridge(tmp_path)
+    nested = b"[" * 1000 + b"1" + b"]" * 1000 + b"\n"
+    assert len(nested) <= 2048
+    try:
+        await asyncio.to_thread(os.write, master, nested)
+        assert (await read_frame())["error"] == {
+            "code": "invalid_request",
+            "message": "Malformed USB JSON",
+        }
+        os.write(master, (json.dumps(hello()) + "\n").encode())
+        assert (await read_frame())["ok"]
+    finally:
+        await finish()
+
+
+async def test_usb_bridge_reopens_serial_after_serial_exception(tmp_path, monkeypatch):
+    import serial
+
+    from grok_gadgets_gateway import usb_bridge
+
+    real = serial.Serial
+
+    class Flaky(real):
+        opens = 0
+
+        def __init__(self, *args, **kwargs):
+            Flaky.opens += 1
+            super().__init__(*args, **kwargs)
+            self.fail_read = Flaky.opens == 1
+
+        def read(self, size=1):
+            if self.fail_read:
+                self.fail_read = False
+                raise serial.SerialException("unplugged")
+            return super().read(size)
+
+    monkeypatch.setattr(usb_bridge.serial, "Serial", Flaky)
+    _gateway, _server, master, read_frame, finish = await _pty_bridge(tmp_path)
+    try:
+        for _ in range(50):
+            if Flaky.opens >= 2:
+                break
+            await asyncio.sleep(0.02)
+        assert Flaky.opens >= 2
+        os.write(master, (json.dumps(hello()) + "\n").encode())
+        assert (await read_frame())["ok"]
+    finally:
+        await finish()
+
+
 def write_registry(path, text):
     path.write_text(text)
     path.chmod(0o600)

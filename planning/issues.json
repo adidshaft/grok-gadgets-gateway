@@ -414,6 +414,35 @@
         "Checked on CPython 3.11.15 (macOS arm64): uv sync --locked, ruff check, ruff format --check, and pytest -q (107 passed). No extra interpreters were run. Not Grok or hardware verification."
       ],
       "blocker": null
+    },
+    {
+      "id": "REVIEW-GW-006",
+      "repository": "grok-gadgets-gateway",
+      "owner": "grok-gadgets-gateway",
+      "problem": "GW-03: an oversize USB frame raises outside the per-frame handler, and a serial error stops the bridge",
+      "acceptance": [
+        "An oversize frame is discarded through the next LF and answered once with invalid_request",
+        "RecursionError gets one invalid_request and the bridge continues",
+        "SerialException and OSError reopen the port with backoff",
+        "Non-JSON log lines produce no reply",
+        "PTY tests cover the canonical transcript plus these failures"
+      ],
+      "dependencies": [
+        "REVIEW-GW-005"
+      ],
+      "labels": [
+        "bug",
+        "gateway",
+        "P1"
+      ],
+      "milestone": "REVIEW-2026-10-05",
+      "stage": "done",
+      "commits": [],
+      "evidence": [
+        "tests/test_transports.py: test_usb_bridge_discards_oversize_frame_then_accepts_hello, test_usb_bridge_stays_silent_on_log_lines_and_rejects_non_objects, test_usb_bridge_replies_once_when_json_recursion_fails, test_usb_bridge_reopens_serial_after_serial_exception, and the existing canonical PTY transcript.",
+        "Checked on CPython 3.11.15 (macOS arm64): uv sync --locked, ruff check, ruff format --check, and pytest -q (111 passed). No extra interpreters were run. Physical USB is not verified."
+      ],
+      "blocker": null
     }
   ]
 }
