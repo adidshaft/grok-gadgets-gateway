@@ -242,6 +242,34 @@
         "Local YAML/pin/permission validation; runtime unchanged from fresh standalone docs acceptance"
       ],
       "blocker": null
+    },
+    {
+      "id": "DOC-HOSTING-GW-001",
+      "repository": "grok-gadgets-gateway",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Explain gateway hosting boundaries and link the canonical hosting FAQ",
+      "acceptance": [
+        "README and setup guides distinguish MCP stdio, loopback device TCP, static website hosting, and future remote HTTPS/OAuth",
+        "Canonical hosting FAQ and HARD-GROK-REMOTE-001 links are present",
+        "Tunnel reachability is separate from MCP authentication and raw device-port exposure is excluded",
+        "Required local gateway checks pass without runtime or protocol changes"
+      ],
+      "dependencies": [],
+      "labels": [
+        "docs",
+        "gateway",
+        "P2"
+      ],
+      "milestone": "PUBLIC-ALPHA",
+      "stage": "done",
+      "commits": [],
+      "evidence": [
+        "Local documentation update only; canonical FAQ is being prepared in the hub. No push, deployment, service, tunnel, or account change.",
+        "README.md, docs/architecture.md, docs/local-operation.md and docs/simulator.md describe the implemented stdio/loopback boundary and link the hub hosting FAQ; README, architecture and local-operation guides link HARD-GROK-REMOTE-001.",
+        "Local checks on 2026-10-05: uv run pytest passed all 77 tests; uv run ruff check . passed; uv run ruff format --check . passed (15 files); hub python3 scripts/check.py and git diff --check passed. No runtime, protocol, dependency, workflow or hosted state changed.",
+        "The canonical hub FAQ link is prepared for the coordinated documentation update; this local-only change does not make the new FAQ publicly available. The implementing commit references DOC-HOSTING-GW-001."
+      ],
+      "blocker": null
     }
   ]
 }

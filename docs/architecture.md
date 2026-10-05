@@ -10,4 +10,12 @@ Each new connection creates a session; boot identity comes from firmware. Comman
 
 The local threat model is one trusted operator on one host, with separate device tokens scoped by ID. Credentials reload on every request for revocation, and Unix file permissions must be mode 0600. This is not tenant authorization, TLS or an internet service. MCP stdio inherits the local client's process trust. A cloud Grok Bot cannot launch a local Mac filesystem path; authorized remote reachability/authentication and actual Bot/client acceptance remain separate gates.
 
+## Hosting boundary
+
+The current gateway serves MCP over stdio to its supervising client. Its authenticated device TCP listener accepts loopback connections only. The local device agent or USB bridge must run on that same host. Hosting the static project website does not start either process.
+
+Remote HTTPS MCP and OAuth are not implemented. A tunnel can carry traffic to a host, but reachability alone does not provide MCP authentication, scoped device access, or credential revocation. Do not expose the raw device port. A future service needs a reviewed MCP transport and access controls before activation; [HARD-GROK-REMOTE-001](https://github.com/adidshaft/grok-gadgets/issues/4) tracks that work. See the canonical [hosting FAQ](https://github.com/adidshaft/grok-gadgets/blob/main/docs/getting-started/hosting.md).
+
+## Diagnostics
+
 Diagnostics use a strict allowlist: identities/status/counts and gateway epoch; no credentials, state, event data, arguments or raw errors. Device errors shown to the assistant are sanitized. Application state/event payloads remain visible to the requesting operator through normal tools and should not contain secrets.

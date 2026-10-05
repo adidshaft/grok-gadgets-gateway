@@ -103,9 +103,16 @@ The demo needs no sibling checkout.
 
 Device TCP binds to loopback only and requires per-device credentials outside Git.
 This device connection is separate from MCP stdio. A cloud Bot cannot execute a path on your computer.
-These transports do not implement remote HTTPS/OAuth connections. Read
-[architecture](docs/architecture.md), [security](SECURITY.md), and
-[release preparation](docs/release.md).
+Run the local MCP client, gateway, and device agent or USB bridge on the same host.
+The public project website serves documentation and downloads; it does not run your gateway.
+
+These transports do not implement remote HTTPS/OAuth connections. A tunnel can provide
+network reachability, but it does not add MCP authentication or device access controls.
+Do not expose the raw device port. The future remote service and access controls are tracked
+in [HARD-GROK-REMOTE-001](https://github.com/adidshaft/grok-gadgets/issues/4).
+Read the [hosting FAQ](https://github.com/adidshaft/grok-gadgets/blob/main/docs/getting-started/hosting.md)
+for where each part runs, plus [architecture](docs/architecture.md),
+[security](SECURITY.md), and [release preparation](docs/release.md).
 
 ## Troubleshooting and support
 
