@@ -26,7 +26,7 @@ has no physical effects and makes no Grok API calls.
 - **Connect your application:** read [local operation](docs/local-operation.md) and the
   [versioned protocol](protocol/0.1.0/README.md).
 - **Contribute:** use [CONTRIBUTING](CONTRIBUTING.md), [support](SUPPORT.md), and
-  the [local issue ledger](planning/issues.json).
+  [GitHub Issues](https://github.com/adidshaft/grok-gadgets-gateway/issues).
 
 ## Run the installed demonstration
 
@@ -34,8 +34,7 @@ Requirements: uv, Python 3.11, and the gateway wheel. Native Apple Silicon
 Python 3.11.15 is the tested baseline. Installation may need network access;
 the simulator needs no account, API key, hardware, or open device listener.
 
-Repositories and release downloads are **planned destinations pending activation**.
-For the local candidate, build the wheel from this source checkout with
+Build the wheel from this source checkout; package releases are not yet published. Use
 `uv sync --locked` and `uv build`. Place
 `grok_gadgets_gateway-0.1.0a1-py3-none-any.whl` in an otherwise empty working folder,
 open a terminal there, and run:
@@ -93,8 +92,7 @@ This repository owns the gateway, simulator, and canonical schemas. Device libra
 belong in the [Linux SDK](https://github.com/adidshaft/grok-gadgets-linux-sdk) and
 [ESP32 SDK](https://github.com/adidshaft/grok-gadgets-esp32-sdk). Shared architecture,
 roadmap, and policies live in the [hub](https://github.com/adidshaft/grok-gadgets).
-Those cross-repository URLs become usable after approved activation; the demo needs
-no sibling checkout.
+The demo needs no sibling checkout.
 
 Device TCP binds to loopback only and requires per-device credentials outside Git.
 It is separate from MCP stdio. A cloud Bot cannot execute a path on your computer.

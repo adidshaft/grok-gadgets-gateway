@@ -17,9 +17,10 @@
       "milestone": "M0",
       "stage": "done",
       "commits": [
-        "c5faad4"
+        "c5faad4",
+        "5d25ac987e4114f7f0bff64f4ba8ccbedc805612"
       ],
-      "evidence": "uv sync --locked and initial pytest smoke check"
+      "evidence": "uv sync --locked and initial pytest smoke check; pre-publication loopback peer-reset regression: all77 gateway tests pass; disconnect cleanup preserves cancellation and command errors"
     },
     {
       "id": "GW-002",
