@@ -323,6 +323,36 @@
         "Changed protocol file: protocol/0.1.0/device-request.schema.json ($defs/id pattern) and protocol/0.1.0/README.md. SDK copies must be refreshed by the coordinator."
       ],
       "blocker": null
+    },
+    {
+      "id": "REVIEW-GW-003",
+      "repository": "grok-gadgets-gateway",
+      "owner": "grok-gadgets-gateway",
+      "problem": "GW-02/GW-11/GW-12/GW-04/GW-16: command IDs replay old receipts, compare loosely, error after acceptance; late ACK drops the session; never-dispatched commands look unconfirmed",
+      "acceptance": [
+        "command_id is optional; omitted IDs are generated (gw-<uuid>) and returned",
+        "Same ID + identical canonical JSON arguments within 10 minutes returns the original receipt with duplicate=true; changed arguments return duplicate_conflict; older or evicted IDs return stale_command_id",
+        "Arguments are validated before the duplicate lookup",
+        "gadgets_command always returns command status after acceptance; simulator errors go to simulator_error; the simulator device ID is reserved against TCP registration",
+        "Late ACK returns non-fatal late_ack, keeps the session and records late_ack; executed+error is invalid_request; never-dispatched commands end as not_delivered; the ACK deadline starts at dispatch",
+        "gadgets_command is async and the simulator delay uses asyncio.sleep"
+      ],
+      "dependencies": [
+        "REVIEW-GW-002"
+      ],
+      "labels": [
+        "bug",
+        "gateway",
+        "P0"
+      ],
+      "milestone": "REVIEW-2026-10-05",
+      "stage": "done",
+      "commits": [],
+      "evidence": [
+        "tests: test_command_ids_generated_window_conflict_and_type_strict_retries, test_arguments_validated_before_duplicate_lookup, test_evicted_command_id_is_not_reused_silently, test_ack_semantics_and_not_delivered_queue_timeout, test_command_disconnect_timeout_stale_session_and_queue (late_ack), test_simulator_device_id_is_reserved, test_delay_does_not_block_gateway_and_retired_session_stays_unconfirmed; demo asserts duplicate=true, generated IDs, duplicate_conflict and 255.0 rejection over the official MCP stdio client.",
+        "87 tests pass on CPython 3.11.15, 3.12.13, 3.13.15, 3.14.7. Simulated only; no Grok or physical verification."
+      ],
+      "blocker": null
     }
   ]
 }

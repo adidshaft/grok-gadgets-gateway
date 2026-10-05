@@ -11,6 +11,7 @@ import pytest
 from jsonschema import Draft202012Validator
 
 from grok_gadgets_gateway.domain import Gateway
+from grok_gadgets_gateway.simulator import Simulator
 from grok_gadgets_gateway.transport import Credentials, DeviceServer
 from grok_gadgets_gateway.usb_bridge import bridge
 from test_domain import hello
@@ -132,6 +133,24 @@ async def test_close_returns_while_device_polls(tmp_path):
         w.close()
 
 
+async def test_simulator_device_id_is_reserved(tmp_path):
+    path = tmp_path / "auth.json"
+    path.write_text(json.dumps({"devices": {"sim-c124": {"token": TOKEN}}}))
+    path.chmod(0o600)
+    g = Gateway()
+    simulator = Simulator(g)
+    server = await DeviceServer(
+        g, Credentials(path), port=0, reserved_ids=[simulator.device_id]
+    ).start()
+    try:
+        _, w, reply = await connect(server, device_id="sim-c124")
+        assert reply["error"]["code"] == "unauthorized"
+        assert g.state("sim-c124")["simulated"] and g.state("sim-c124")["available"]
+        w.close()
+    finally:
+        await server.close()
+
+
 async def test_network_frame_bound_and_loopback_guard(tmp_path):
     path = tmp_path / "auth.json"
     write_credentials(path)
@@ -178,7 +197,7 @@ async def test_peer_reset_does_not_escape_server_callback(tmp_path):
         assert not server.connections
         assert not server.writers
         assert not gateway.state("dev-1")["available"]
-        assert gateway.command_status("pending")["status"] == "unconfirmed"
+        assert gateway.command_status("pending")["status"] == "not_delivered"
     finally:
         if writer is not None:
             writer.close()
