@@ -1,8 +1,42 @@
+# Local configuration and credentials. Commit only reviewed, non-secret examples.
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+credentials*.json
+!credentials.example.json
+secrets*.json
+secrets*.yaml
+secrets*.yml
+secrets.h
+.secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+my-light.json
+fresh-run.jsonl
+
+# Environments, caches and generated output.
 .venv/
+venv/
 __pycache__/
+*.py[cod]
 .pytest_cache/
 .ruff_cache/
-dist/
+.mypy_cache/
+.coverage*
+htmlcov/
 *.egg-info/
-.env
-credentials*.json
+node_modules/
+dist/
+build/
+.pio/
+/artifacts/
+/reports/
+*.log
+
+# Operating-system files.
+.DS_Store
+Thumbs.db
