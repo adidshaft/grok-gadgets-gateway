@@ -1,11 +1,14 @@
 # Grok Gadgets gateway
 
-An MCP gateway and configurable software simulator for gadgets targeting Grok.
-It discovers device capabilities, routes commands, and reports state and events.
+This guide uses ASD-STE100-inspired writing. It does not claim formal compliance. See the [project writing guide](https://github.com/adidshaft/grok-gadgets/blob/main/docs/contributing/writing-guide.md).
+
+Use this gateway to connect local gadget applications through MCP. The project is exclusively for Grok.
+The gateway lists device capabilities, sends commands, and reports state and events.
+It includes a configurable software simulator.
 
 **Experimental alpha.** Local MCP simulation and software transports are tested.
-Native Grok invocation receipts, mobile clients, physical C124 operation, and a
-reviewed authenticated route from a cloud Bot to local devices remain open.
+We have not verified native Grok calls, mobile clients, or physical C124 operation.
+An authenticated connection from a cloud Bot to local devices is also pending.
 
 ```mermaid
 flowchart LR
@@ -15,9 +18,9 @@ flowchart LR
     B["Grok Bot: invocation evidence pending"] -.-> G
 ```
 
-Solid paths describe local software interfaces. An execution report is a device
-acknowledgement; physical effects require a separate observation. The simulator
-has no physical effects and makes no Grok API calls.
+Solid lines show local software interfaces. A device acknowledgement reports execution.
+It does not prove a physical effect. Observe the device separately.
+The simulator has no physical effects and makes no Grok API calls.
 
 ## Choose a first step
 
@@ -30,14 +33,17 @@ has no physical effects and makes no Grok API calls.
 
 ## Run the installed demonstration
 
-Requirements: uv, Python 3.11, and the gateway wheel. Native Apple Silicon
-Python 3.11.15 is the tested baseline. Installation may need network access;
-the simulator needs no account, API key, hardware, or open device listener.
+You need uv, Python 3.11, and the gateway wheel. Tests used native Apple Silicon
+Python 3.11.15. Installation can require network access.
+The simulator needs no account, API key, hardware, or open device listener.
 
-Build the wheel from this source checkout; package releases are not yet published. Use
-`uv sync --locked` and `uv build`. Place
-`grok_gadgets_gateway-0.1.0a1-py3-none-any.whl` in an otherwise empty working folder,
-open a terminal there, and run:
+Package releases are not published. Build a wheel from this source checkout:
+
+1. Run `uv sync --locked`.
+2. Run `uv build`.
+3. Copy `grok_gadgets_gateway-0.1.0a1-py3-none-any.whl` to an empty working folder.
+4. Open a terminal in that folder.
+5. Run these commands:
 
 ```sh
 uv venv --python 3.11 --seed .venv
@@ -45,16 +51,17 @@ uv venv --python 3.11 --seed .venv
 .venv/bin/python -m grok_gadgets_gateway.demo
 ```
 
-The official local MCP client launches a subprocess gateway and asserts discovery,
-green RGB, state readback, safe retry, invalid-command rejection, simulated button
-edges, offline failure, and reconnect. The final JSON includes:
+The official local MCP client starts the gateway as a child process.
+The demo checks discovery, green RGB, state readback, retries, and invalid-command rejection.
+It also checks simulated button transitions, offline failure, and reconnection.
+The final JSON includes:
 
 ```json
 {"led_status": "executed", "simulated": true, "physical_verified": false, "grok_verified": false}
 ```
 
-That is a subset of the report, not a native Grok receipt. The demo deliberately
-enables test controls in its child simulator only.
+This example shows part of the report. It is not a native Grok receipt.
+The demo enables test controls only in its child simulator.
 
 An ordinary local MCP client launches:
 
@@ -62,16 +69,16 @@ An ordinary local MCP client launches:
 .venv/bin/grok-gadgets-gateway --simulator
 ```
 
-Use the absolute executable path in the client's configuration. The client supervises
-the process, which speaks MCP on stdio and waits for requests; it is not an interactive
-terminal. Ordinary tools are `gadgets_list_devices`, `gadgets_get_state`,
+Use the absolute executable path in the client configuration. The client manages
+the process. The process uses MCP on stdio and waits for requests.
+It does not provide an interactive terminal. The standard tools are `gadgets_list_devices`, `gadgets_get_state`,
 `gadgets_command`, `gadgets_command_status`, `gadgets_read_events`, and
 `gadgets_diagnostics`. `--test-controls` is a separate explicit opt-in.
 
 ## Compatibility and evidence
 
 Package `0.1.0a1` and protocol `0.1.0` are separate version identifiers.
-Declared Python `>=3.11` support is not evidence for every interpreter or platform.
+The package declares Python `>=3.11` support. We have not tested every interpreter or platform.
 
 | Path | Evidence | Remaining limit |
 | --- | --- | --- |
@@ -95,8 +102,8 @@ roadmap, and policies live in the [hub](https://github.com/adidshaft/grok-gadget
 The demo needs no sibling checkout.
 
 Device TCP binds to loopback only and requires per-device credentials outside Git.
-It is separate from MCP stdio. A cloud Bot cannot execute a path on your computer.
-Remote HTTPS/OAuth connectivity is not implemented by these transports. Read
+This device connection is separate from MCP stdio. A cloud Bot cannot execute a path on your computer.
+These transports do not implement remote HTTPS/OAuth connections. Read
 [architecture](docs/architecture.md), [security](SECURITY.md), and
 [release preparation](docs/release.md).
 

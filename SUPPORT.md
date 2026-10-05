@@ -3,17 +3,22 @@
 Start with the [README](README.md), [simulator guide](docs/simulator.md), and
 [local operation](docs/local-operation.md). The demonstration needs no hardware or account.
 
-After activation, use [gateway issues](https://github.com/adidshaft/grok-gadgets-gateway/issues)
-for reproducible defects and scoped requests. GitHub destinations are planned, not active
-support services in this local candidate. Use [local tracked work](planning/issues.json)
-during preparation. Include version/commit, host/runtime, exact commands, expected/observed
-behavior, and simulation versus hardware evidence. Redact credentials, private paths,
-device state, events, and account captures.
+Report defects and focused requests in [gateway issues](https://github.com/adidshaft/grok-gadgets-gateway/issues).
+Include these details:
 
-[r/GrokGadgets](https://www.reddit.com/r/GrokGadgets/) is for community discussion when
-you choose to participate, not private reports. Shared
-[support guidance](https://github.com/adidshaft/grok-gadgets/blob/main/SUPPORT.md) lives
-in the hub. No response SLA is promised.
+- Version or commit.
+- Host and runtime.
+- Exact commands, with private values removed.
+- Expected result and actual result.
+- Evidence source: simulation or hardware.
 
-Use [SECURITY](SECURITY.md) for vulnerabilities. Conduct concerns go privately to
-**adidshaft@kyokasuigetsu.xyz** under [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md).
+Remove credentials, private paths, device state, events, and account captures before you submit a report.
+
+Use [r/GrokGadgets](https://www.reddit.com/r/GrokGadgets/) for public discussion.
+Do not send private reports there. See the shared
+[support guide](https://github.com/adidshaft/grok-gadgets/blob/main/SUPPORT.md).
+We do not promise a response time.
+
+Use [SECURITY](SECURITY.md) to report vulnerabilities.
+Send private conduct reports to **adidshaft@kyokasuigetsu.xyz**.
+See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md).
