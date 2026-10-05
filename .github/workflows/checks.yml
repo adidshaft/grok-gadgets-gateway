@@ -6,7 +6,8 @@ concurrency:
   group: checks-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  gateway-checks:
+  gateway-checks-matrix:
+    name: gateway-checks (${{ matrix.python }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -26,3 +27,13 @@ jobs:
       - run: uv run --locked pytest -q
       - run: uv run --locked python -m grok_gadgets_gateway.demo
       - run: uv build
+  gateway-checks:
+    name: gateway-checks
+    if: always()
+    needs: gateway-checks-matrix
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every Python version
+        env:
+          MATRIX_RESULT: ${{ needs.gateway-checks-matrix.result }}
+        run: test "$MATRIX_RESULT" = success
