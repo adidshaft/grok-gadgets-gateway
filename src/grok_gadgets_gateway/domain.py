@@ -163,7 +163,19 @@ class Gateway:
 
     @staticmethod
     def event_capabilities(dev):
-        return [name for name in dev["capabilities"] if name == "button"]
+        """Names that are inputs, not commands.
+
+        Reserved names are button and history_lost. Any other capability is an event when its
+        inline schema sets ``x-grok-gadgets-kind`` to ``event`` (the Linux SDK custom-event shape).
+        """
+        schemas = dev.get("capability_schemas") or {}
+        events = []
+        for name in dev["capabilities"]:
+            schema = schemas.get(name)
+            kind = schema.get("x-grok-gadgets-kind") if isinstance(schema, dict) else None
+            if name in ("button", "history_lost") or kind == "event":
+                events.append(name)
+        return events
 
     def command_capabilities(self, dev):
         events = self.event_capabilities(dev)
@@ -328,7 +340,10 @@ class Gateway:
         dev.update(state=copy.deepcopy(state), state_time=self.clock(), received_at=now_iso())
 
     def _event(self, dev, message):
-        if message["name"] not in dev["capabilities"]:
+        name = message["name"]
+        if name in self.command_capabilities(dev):
+            raise GatewayError("unsupported_capability", "Event name is a command capability")
+        if name not in self.event_capabilities(dev):
             raise GatewayError("unsupported_capability", "Undeclared event capability")
         if message["name"] == "button":
             data = message["data"]
