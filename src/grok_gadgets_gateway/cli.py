@@ -33,7 +33,12 @@ def main():
     gateway = Gateway()
     simulator = Simulator(gateway, config=config) if args.simulator else None
     device_server = (
-        DeviceServer(gateway, Credentials(args.credentials), port=args.device_port)
+        DeviceServer(
+            gateway,
+            Credentials(args.credentials),
+            port=args.device_port,
+            reserved_ids=[simulator.device_id] if simulator else [],
+        )
         if args.credentials
         else None
     )

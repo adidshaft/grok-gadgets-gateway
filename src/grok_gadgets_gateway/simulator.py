@@ -1,10 +1,10 @@
 """Explicit simulator adapter and separate controls; never a physical device."""
 
+import asyncio
 import copy
-import time
 import uuid
 
-from .protocol import GatewayError, RGB_VALIDATOR, VERSION
+from .protocol import RGB_VALIDATOR, VERSION, GatewayError, is_valid
 from .simulator_config import validate_config
 
 
@@ -44,12 +44,12 @@ class Simulator:
         )
         self.pressed = False
 
-    def execute(self):
+    async def execute(self):
         sid = self.sid
         response = self.gateway.handle(self.device_id, sid, {"type": "poll"})
         for cmd in response["commands"]:
             if self.config["response_delay_ms"]:
-                time.sleep(self.config["response_delay_ms"] / 1000)
+                await asyncio.sleep(self.config["response_delay_ms"] / 1000)
             # A disconnect/reconnect during the delay must not acknowledge the retired session.
             current = self.gateway.state(self.device_id)
             if not current["available"] or current["session_id"] != sid:
@@ -61,7 +61,7 @@ class Simulator:
                     status="failed",
                     error={"code": "unsupported_capability", "message": "Unsupported command"},
                 )
-            elif not RGB_VALIDATOR.is_valid(cmd["arguments"]):
+            elif not is_valid(RGB_VALIDATOR, cmd["arguments"]):
                 ack.update(
                     status="failed",
                     error={"code": "invalid_arguments", "message": "Invalid RGB arguments"},

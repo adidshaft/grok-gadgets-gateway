@@ -71,14 +71,16 @@ def test_integers_are_type_strict():
     assert g.command("dev-3", "level.set", {"level": 1}, "lvl")["status"] == "accepted"
 
 
-def test_simulation_and_idempotency():
+async def test_simulation_and_idempotency():
     g = Gateway()
     sim = Simulator(g)
     args = {"r": 0, "g": 255, "b": 0, "on": True}
-    assert g.command(sim.device_id, "rgb.set", args, "cmd-1")["status"] == "accepted"
-    sim.execute()
+    first = g.command(sim.device_id, "rgb.set", args, "cmd-1")
+    assert first["status"] == "accepted" and first["duplicate"] is False
+    await sim.execute()
     result = g.command(sim.device_id, "rgb.set", args, "cmd-1")
-    assert result["status"] == "executed"
+    assert result["status"] == "executed" and result["duplicate"] is True
+    assert result["requested_at"] == first["requested_at"]
     assert result["simulated"] and not result["physical_verified"]
     assert g.state(sim.device_id)["state"]["rgb"] == args
     fails(
@@ -112,16 +114,17 @@ def test_command_disconnect_timeout_stale_session_and_queue():
     assert len(g.handle("dev-1", sid, {"type": "poll"})["commands"]) == 1
     clock[0] = 11
     assert g.command_status("a")["status"] == "timed_out"
-    fails(
-        "stale_session",
-        lambda: g.handle(
-            "dev-1", sid, {"type": "ack", "command_id": "a", "status": "executed", "state": {}}
-        ),
-    )
+    late = {"type": "ack", "command_id": "a", "status": "executed", "state": {"x": 1}}
+    fails("late_ack", lambda: g.handle("dev-1", sid, late))
+    assert g.command_status("a")["status"] == "timed_out"
+    assert g.command_status("a")["late_ack"]["status"] == "executed"
+    assert g.handle("dev-1", sid, {"type": "ping"}) == {"ok": True}
+    assert g.state("dev-1")["freshness"] == "fresh"
+    clock[0] = 22
     assert g.state("dev-1")["freshness"] == "stale"
     g.command("dev-1", "rgb.set", args, "b")
     g.disconnect("dev-1", sid)
-    assert g.command_status("b")["status"] == "unconfirmed"
+    assert g.command_status("b")["status"] == "not_delivered"
     assert g.state("dev-1")["freshness"] == "offline"
     new = g.register(hello())
     fails("stale_session", lambda: g.handle("dev-1", sid, {"type": "ping"}))
@@ -190,7 +193,7 @@ def test_custom_capability_discovery_and_validation():
     fails("invalid_request", lambda: g.register(registration))
 
 
-def test_only_command_capabilities_are_callable_and_discovered():
+async def test_only_command_capabilities_are_callable_and_discovered():
     g = Gateway()
     sim = Simulator(g)
     initial = g.state(sim.device_id)["state"]
@@ -206,7 +209,7 @@ def test_only_command_capabilities_are_callable_and_discovered():
             "invalid_arguments",
             lambda: g.command(sim.device_id, "rgb.set", malformed, "malformed"),
         )
-    sim.execute()
+    await sim.execute()
     assert not g.commands
     assert g.state(sim.device_id)["state"] == initial
     sim.control("button", True)
@@ -239,14 +242,14 @@ def test_custom_string_only_commands_remain_callable():
         ("rgb.set", {"r": -1, "g": 2, "b": 3, "on": True}),
     ],
 )
-def test_simulator_rejects_unsupported_or_malformed_delivered_commands(capability, arguments):
+async def test_simulator_rejects_unsupported_or_malformed_delivered_commands(capability, arguments):
     g = Gateway()
     sim = Simulator(g)
     initial = g.state(sim.device_id)["state"]
     g.command(sim.device_id, "rgb.set", initial["rgb"], "delivered")
     # Simulate a corrupted adapter delivery after domain validation to exercise dispatch defense.
     g.commands["delivered"].update(capability=capability, arguments=arguments)
-    sim.execute()
+    await sim.execute()
     assert g.command_status("delivered")["status"] == "failed"
     assert g.state(sim.device_id)["state"] == initial
 
@@ -324,3 +327,76 @@ def test_event_lifecycle_bookkeeping_is_bounded():
     assert len(g.seen_events["dev-0"]) == 1
     assert sum(map(len, g.seen_events.values())) == 63 * 256 + 1
     assert len(g.events) == 3
+
+
+def test_command_ids_generated_window_conflict_and_type_strict_retries():
+    clock = [0]
+    g = Gateway(clock=lambda: clock[0])
+    registration = hello()
+    registration["device"]["capabilities"].append("level.set")
+    g.register(registration)
+    generated = g.command("dev-1", "level.set", {"level": 1})
+    other = g.command("dev-1", "level.set", {"level": 1})
+    assert generated["command_id"] != other["command_id"]
+    assert generated["command_id"].startswith("gw-") and not generated["duplicate"]
+    g.command("dev-1", "level.set", {"level": 1}, "retry")
+    for changed in ({"level": 1.0}, {"level": True}, {"level": 2}):
+        fails("duplicate_conflict", lambda: g.command("dev-1", "level.set", changed, "retry"))
+    clock[0] = 599
+    assert g.command("dev-1", "level.set", {"level": 1}, "retry")["duplicate"]
+    clock[0] = 601
+    fails("stale_command_id", lambda: g.command("dev-1", "level.set", {"level": 1}, "retry"))
+    fails("invalid_command_id", lambda: g.command("dev-1", "level.set", {}, "bad\n"))
+    fails("invalid_arguments", lambda: g.command("dev-1", "level.set", {"x": float("nan")}))
+
+
+def test_arguments_validated_before_duplicate_lookup():
+    g = Gateway()
+    registration = hello()
+    registration["device"]["capabilities"].append("relay.set")
+    registration["device"]["capability_schemas"] = {
+        "relay.set": {"type": "object", "properties": {"on": {"type": "boolean"}}}
+    }
+    g.register(registration)
+    g.command("dev-1", "relay.set", {"on": True}, "relay")
+    fails("invalid_arguments", lambda: g.command("dev-1", "relay.set", {"on": 1}, "relay"))
+
+
+def test_evicted_command_id_is_not_reused_silently():
+    g = Gateway(command_limit=1)
+    sid = g.register(hello())
+    args = {"r": 1, "g": 2, "b": 3, "on": True}
+    g.command("dev-1", "rgb.set", args, "first")
+    g.handle("dev-1", sid, {"type": "poll"})
+    ack = {"type": "ack", "command_id": "first", "status": "executed", "state": {}}
+    g.handle("dev-1", sid, ack)
+    g.command("dev-1", "rgb.set", args, "second")
+    fails("unknown_command", lambda: g.command_status("first"))
+    fails("stale_command_id", lambda: g.command("dev-1", "rgb.set", args, "first"))
+
+
+def test_ack_semantics_and_not_delivered_queue_timeout():
+    clock = [0]
+    g = Gateway(clock=lambda: clock[0])
+    sid = g.register(hello())
+    args = {"r": 1, "g": 2, "b": 3, "on": True}
+    g.command("dev-1", "rgb.set", args, "queued")
+    clock[0] = 11
+    assert g.command_status("queued")["status"] == "not_delivered"
+    assert g.handle("dev-1", sid, {"type": "poll"})["commands"] == []
+    g.command("dev-1", "rgb.set", args, "sent")
+    clock[0] = 20
+    g.handle("dev-1", sid, {"type": "poll"})
+    clock[0] = 29  # The acknowledgement deadline starts at dispatch, not at acceptance.
+    bad = {
+        "type": "ack",
+        "command_id": "sent",
+        "status": "executed",
+        "state": {},
+        "error": {"code": "x", "message": "y"},
+    }
+    fails("invalid_request", lambda: g.handle("dev-1", sid, bad))
+    del bad["error"]
+    assert g.handle("dev-1", sid, bad) == {"ok": True}
+    assert g.command_status("sent")["status"] == "executed"
+    assert "error" not in g.command_status("sent")

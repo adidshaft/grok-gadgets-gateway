@@ -44,13 +44,24 @@ class Credentials:
 
 
 class DeviceServer:
-    def __init__(self, gateway, credentials, *, host="127.0.0.1", port=8765, idle_timeout=15):
+    def __init__(
+        self,
+        gateway,
+        credentials,
+        *,
+        host="127.0.0.1",
+        port=8765,
+        idle_timeout=15,
+        reserved_ids=(),
+    ):
         if host not in ("127.0.0.1", "::1"):
             raise ValueError("Local alpha binds loopback only")
         self.gateway = gateway
         self.credentials = credentials
         self.host, self.port = host, port
         self.idle_timeout = idle_timeout
+        # IDs owned by in-process devices (the simulator); TCP clients can never take them.
+        self.reserved_ids = frozenset(reserved_ids)
         self.server = None
         self.connections = set()
         self.writers = set()
@@ -109,6 +120,8 @@ class DeviceServer:
                             raise GatewayError("unauthorized", "Hello required first")
                         did = message["device"]["device_id"]
                         token = message.get("token")
+                        if did in self.reserved_ids:
+                            raise GatewayError("unauthorized", "Device credentials rejected")
                         self.credentials.check(did, token)
                         sid = self.gateway.register(message)
                         response = {"ok": True, "session_id": sid, "protocol_version": VERSION}

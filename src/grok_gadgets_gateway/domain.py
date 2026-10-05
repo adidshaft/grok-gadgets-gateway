@@ -1,6 +1,7 @@
 """Transport-independent single-user gateway state; no model backend or I/O."""
 
 import copy
+import json
 import re
 import time
 import uuid
@@ -20,14 +21,37 @@ from .protocol import (
 )
 
 
+COMMAND_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,63}")
+DEDUP_WINDOW_SECONDS = 600
+ACK_TIMEOUT_SECONDS = 10
+# Internal bookkeeping never returned to the assistant.
+_PRIVATE_COMMAND_FIELDS = ("deadline", "ack_error", "requested_clock", "fingerprint")
+_OPEN = ("accepted", "dispatched")
+
+
 def now_iso():
     return datetime.now(timezone.utc).isoformat()
 
 
+def canonical(value):
+    """Type-strict JSON identity: 1, 1.0 and true are different arguments."""
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+
+
 class Gateway:
-    def __init__(self, *, event_limit=128, command_limit=128, clock=time.monotonic):
+    def __init__(
+        self,
+        *,
+        event_limit=128,
+        command_limit=128,
+        clock=time.monotonic,
+        dedup_window=DEDUP_WINDOW_SECONDS,
+    ):
         self.devices = {}
         self.commands = OrderedDict()
+        # Recently used command IDs, retained longer than full command records.
+        self.used_command_ids = OrderedDict()
+        self.dedup_window = dedup_window
         self.events = deque(maxlen=event_limit)
         # One bounded window for each registered device's current boot (at most 64).
         self.seen_events = {}
@@ -99,7 +123,15 @@ class Gateway:
             return
         dev["connected"] = False
         for command in self.commands.values():
-            if command["device_id"] == did and command["status"] in ("accepted", "dispatched"):
+            if command["device_id"] != did:
+                continue
+            if command["status"] == "accepted":
+                command["status"] = "not_delivered"
+                command["error"] = {
+                    "code": "disconnected",
+                    "message": "Session ended before delivery; the device never received it",
+                }
+            elif command["status"] == "dispatched":
                 command["status"] = "unconfirmed"
                 command["error"] = {
                     "code": "disconnected",
@@ -114,10 +146,8 @@ class Gateway:
             for k, v in dev.items()
             if k not in ("last_seen", "state_time", "connected")
         }
-        result["command_capabilities"] = [
-            name for name in dev["capabilities"] if name not in ("button", "state")
-        ]
-        result["event_capabilities"] = [name for name in dev["capabilities"] if name == "button"]
+        result["command_capabilities"] = self.command_capabilities(dev)
+        result["event_capabilities"] = self.event_capabilities(dev)
         result["capability_contracts"] = {
             name: SCHEMA["$defs"]["rgb"]
             if name == "rgb.set"
@@ -131,53 +161,61 @@ class Gateway:
         )
         return result
 
+    @staticmethod
+    def event_capabilities(dev):
+        return [name for name in dev["capabilities"] if name == "button"]
+
+    def command_capabilities(self, dev):
+        events = self.event_capabilities(dev)
+        return [name for name in dev["capabilities"] if name not in events and name != "state"]
+
     def list_devices(self):
         return [self.state(did) for did in self.devices]
 
-    def command(self, did, capability, arguments, command_id):
-        if not isinstance(command_id, str) or not re.fullmatch(
-            r"[A-Za-z0-9][A-Za-z0-9._:-]{0,63}", command_id
-        ):
-            raise GatewayError("invalid_command_id", "Use a stable 1–64 character command ID")
+    def command(self, did, capability, arguments, command_id=None):
+        if command_id is None:
+            command_id = "gw-" + uuid.uuid4().hex
+        elif not isinstance(command_id, str) or not COMMAND_ID.fullmatch(command_id):
+            raise GatewayError("invalid_command_id", "Use a 1–64 character command ID or omit it")
         if not isinstance(arguments, dict):
             raise GatewayError("invalid_arguments", "Arguments must be an object")
+        try:
+            fingerprint = canonical([did, capability, arguments])
+        except (TypeError, ValueError, RecursionError):
+            raise GatewayError("invalid_arguments", "Arguments must be finite JSON") from None
         if capability == "rgb.set" and not is_valid(RGB_VALIDATOR, arguments):
             raise GatewayError("invalid_arguments", "RGB requires integer channels 0..255 and on")
-        existing = self.commands.get(command_id)
-        if existing:
-            if (existing["device_id"], existing["capability"], existing["arguments"]) != (
-                did,
-                capability,
-                arguments,
-            ):
-                raise GatewayError(
-                    "duplicate_conflict", "Command ID reused with changed parameters"
-                )
-            return self.command_status(command_id)
         dev = self._device(did)
-        if not dev["connected"]:
-            raise GatewayError("unavailable", "Device is disconnected")
+        if capability not in self.command_capabilities(dev):
+            raise GatewayError("unsupported_capability", "Device does not declare this command")
         schema = dev.get("capability_schemas", {}).get(capability)
         if schema and not is_valid(StrictValidator(schema), arguments):
             raise GatewayError("invalid_arguments", "Arguments violate declared capability schema")
-        if capability not in dev["capabilities"] or capability in ("button", "state"):
-            raise GatewayError("unsupported_capability", "Device does not declare this command")
+        existing = self.commands.get(command_id)
+        if existing:
+            if self.clock() - existing["requested_clock"] > self.dedup_window:
+                raise GatewayError(
+                    "stale_command_id",
+                    "Command ID was used more than 10 minutes ago; choose a new command_id",
+                )
+            if existing["fingerprint"] != fingerprint:
+                raise GatewayError(
+                    "duplicate_conflict", "Command ID reused with changed parameters"
+                )
+            return {**self.command_status(command_id), "duplicate": True}
+        if command_id in self.used_command_ids:
+            raise GatewayError(
+                "stale_command_id", "Command ID is no longer retained; choose a new command_id"
+            )
+        if not dev["connected"]:
+            raise GatewayError("unavailable", "Device is disconnected")
         # Ensure even arbitrary capability requests fit a poll frame.
-        import json
-
         wire = {"command_id": command_id, "capability": capability, "arguments": arguments}
         if len(json.dumps({"ok": True, "commands": [wire]}).encode()) + 1 > 2048:
             raise GatewayError("invalid_arguments", "Command exceeds transport frame limit")
         self.expire_commands()
         if len(self.commands) >= self.command_limit:
-            terminal = next(
-                (
-                    k
-                    for k, v in self.commands.items()
-                    if v["status"] not in ("accepted", "dispatched")
-                ),
-                None,
-            )
+            terminal = next((k for k, v in self.commands.items() if v["status"] not in _OPEN), None)
             if terminal is None:
                 raise GatewayError("busy", "Command queue is full")
             del self.commands[terminal]
@@ -189,15 +227,27 @@ class Gateway:
             "simulated": dev["simulated"],
             "physical_verified": False,
             "requested_at": now_iso(),
-            "deadline": self.clock() + 10,
+            "requested_clock": self.clock(),
+            "fingerprint": fingerprint,
+            "deadline": self.clock() + ACK_TIMEOUT_SECONDS,
         }
-        return self.command_status(command_id)
+        self.used_command_ids[command_id] = self.clock()
+        if len(self.used_command_ids) > 8 * self.command_limit:
+            self.used_command_ids.popitem(last=False)
+        return {**self.command_status(command_id), "duplicate": False}
 
     def expire_commands(self):
         for value in self.commands.values():
-            if value["status"] in ("accepted", "dispatched") and self.clock() > value["deadline"]:
-                value["status"] = "timed_out"
-                value["error"] = {"code": "timeout", "message": "Execution unconfirmed"}
+            if value["status"] in _OPEN and self.clock() > value["deadline"]:
+                if value["status"] == "accepted":
+                    value["status"] = "not_delivered"
+                    value["error"] = {
+                        "code": "timeout",
+                        "message": "Device did not poll in time; it never received the command",
+                    }
+                else:
+                    value["status"] = "timed_out"
+                    value["error"] = {"code": "timeout", "message": "Execution unconfirmed"}
 
     def command_status(self, command_id):
         self.expire_commands()
@@ -206,7 +256,7 @@ class Gateway:
         return {
             k: copy.deepcopy(v)
             for k, v in self.commands[command_id].items()
-            if k not in ("deadline", "ack_error")
+            if k not in _PRIVATE_COMMAND_FIELDS
         }
 
     def handle(self, did, sid, message):
@@ -220,6 +270,7 @@ class Gateway:
             for value in self.commands.values():
                 if value["device_id"] == did and value["status"] == "accepted":
                     value["status"] = "dispatched"
+                    value["deadline"] = self.clock() + ACK_TIMEOUT_SECONDS
                     return {
                         "ok": True,
                         "commands": [
@@ -237,6 +288,10 @@ class Gateway:
             value = self.commands.get(cid)
             if not value or value["device_id"] != did or value["session_id"] != sid:
                 raise GatewayError("unknown_command", "Command is not owned by this session")
+            if message["status"] == "failed" and "error" not in message:
+                raise GatewayError("invalid_request", "Failed acknowledgement requires error")
+            if message["status"] == "executed" and "error" in message:
+                raise GatewayError("invalid_request", "Executed acknowledgement cannot have error")
             self.expire_commands()
             if value["status"] in ("executed", "failed"):
                 same = (value["status"], value["reported_state"], value.get("ack_error")) == (
@@ -247,10 +302,13 @@ class Gateway:
                 if not same:
                     raise GatewayError("duplicate_conflict", "Acknowledgement changed")
                 return {"ok": True, "duplicate": True}
+            if value["status"] in ("timed_out", "unconfirmed"):
+                # Non-fatal: keep the session, keep the honest status, record what arrived.
+                self._report(dev, message["state"])
+                value["late_ack"] = {"status": message["status"], "received_at": now_iso()}
+                raise GatewayError("late_ack", "Acknowledgement arrived after the command closed")
             if value["status"] != "dispatched":
-                raise GatewayError("stale_session", "Command cannot be acknowledged in this state")
-            if message["status"] == "failed" and "error" not in message:
-                raise GatewayError("invalid_request", "Failed acknowledgement requires error")
+                raise GatewayError("unknown_command", "Command was not delivered to this session")
             self._report(dev, message["state"])
             value.update(
                 status=message["status"],

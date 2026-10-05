@@ -1,3 +1,4 @@
+import asyncio
 import copy
 import json
 import subprocess
@@ -11,6 +12,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 from grok_gadgets_gateway.domain import Gateway
+from grok_gadgets_gateway.mcp_server import make_server
 from grok_gadgets_gateway.protocol import GatewayError
 from grok_gadgets_gateway.simulator import Simulator
 from grok_gadgets_gateway.simulator_config import (
@@ -153,31 +155,37 @@ def test_cli_rejects_config_content_without_logging_it(tmp_path):
     assert "never-log-this-value" not in result.stderr
 
 
-def test_configured_off_channels_delay_boundary_and_retired_session(monkeypatch):
+async def call_tool(server, name, arguments=None):
+    result = await server.call_tool(name, arguments or {})
+    return result[1] if isinstance(result, tuple) else json.loads(result[0].text)
+
+
+async def test_delay_does_not_block_gateway_and_retired_session_stays_unconfirmed():
     config = {
         **DEFAULT_CONFIG,
-        "response_delay_ms": 2000,
+        "response_delay_ms": 600,
         "initial_rgb": {"r": 1, "g": 2, "b": 3, "on": False},
     }
     gateway = Gateway()
     simulator = Simulator(gateway, config=config)
+    server = make_server(gateway, simulator, test_controls=True)
     assert gateway.state(simulator.device_id)["state"]["rgb"] == config["initial_rgb"]
-    calls = []
-
-    def disconnect_during_delay(seconds):
-        calls.append(seconds)
-        simulator.control("disconnect")
-        simulator.control("reconnect")
-
-    monkeypatch.setattr("grok_gadgets_gateway.simulator.time.sleep", disconnect_during_delay)
-    gateway.command(
-        simulator.device_id, "rgb.set", {"r": 200, "g": 0, "b": 0, "on": True}, "interrupted"
-    )
-    simulator.execute()
-    assert calls == [2]
-    assert gateway.command_status("interrupted")["status"] == "unconfirmed"
+    request = {
+        "device_id": simulator.device_id,
+        "capability": "rgb.set",
+        "arguments": {"r": 200, "g": 0, "b": 0, "on": True},
+        "command_id": "interrupted",
+    }
+    pending = asyncio.create_task(call_tool(server, "gadgets_command", request))
+    started = time.monotonic()
+    await asyncio.sleep(0.1)
+    assert time.monotonic() - started < 0.4, "simulator delay blocked the event loop"
+    await call_tool(server, "test_simulator_control", {"action": "disconnect"})
+    await call_tool(server, "test_simulator_control", {"action": "reconnect"})
+    result = await pending
+    assert result["ok"] and result["command"]["status"] == "unconfirmed"
     assert gateway.state(simulator.device_id)["state"]["rgb"] == config["initial_rgb"]
-    assert not gateway.command_status("interrupted")["physical_verified"]
+    assert result["command"]["physical_verified"] is False
 
 
 @pytest.mark.parametrize("offline,controls", [(False, False), (True, True)])
@@ -235,7 +243,10 @@ async def test_actual_mcp_configured_simulator(tmp_path, offline, controls):
             assert command["status"] == "executed" and command["simulated"]
             assert command["physical_verified"] is False
             assert command["reported_state"]["rgb"] == request["arguments"]
-            assert (await call("gadgets_command", request))["command"] == command
+            assert (await call("gadgets_command", request))["command"] == {
+                **command,
+                "duplicate": True,
+            }
             state = (await call("gadgets_get_state", {"device_id": config["device_id"]}))["device"]
             assert state["state"]["rgb"] == request["arguments"]
             assert (await call("gadgets_get_state", {"device_id": "sim-c124"}))["error"][
