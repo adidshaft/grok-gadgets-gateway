@@ -68,7 +68,7 @@ The baud rate is 115200. Native USB CDC can ignore the baud rate.
 If TCP disconnects or the gateway restarts, the bridge returns `gateway_unavailable`.
 It then waits for a new firmware hello. Each hello opens a new authenticated TCP session.
 Firmware controls the retry delay. It must discard pending acknowledgements from the old session.
-If USB disconnects, wait for the device to return. Then restart the bridge.
+If USB disconnects, the bridge retries the same serial path automatically with a delay of up to 2 seconds. If the operating system assigns a different path, restart the bridge with that path.
 This procedure restores the session. It does not replay actions from durable storage.
 
 Physical USB operation remains unverified. Local software tests with a pseudo-terminal pass.

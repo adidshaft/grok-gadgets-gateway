@@ -188,7 +188,7 @@ def command_main(argv):
         token = rotate_mcp_token(args.mcp_token)
         print(f"GROK_GADGETS_MCP_TOKEN={token}")
         print(
-            "Restart serve if it is running. Send this bearer token once; it will not be shown again.",
+            "Update the client's bearer token and reconnect. No gateway restart is needed.",
             file=sys.stderr,
         )
         return 0

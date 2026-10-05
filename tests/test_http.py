@@ -1,7 +1,11 @@
 import asyncio
 import io
 import json
+import os
+import signal
 import socket
+import sys
+from pathlib import Path
 
 import httpx
 import pytest
@@ -152,3 +156,157 @@ async def test_streamable_http_requires_token_and_runs_simulator(tmp_path):
     text = logs.getvalue()
     assert "args_sha256" in text and TOKEN not in text and DEVICE not in text
     assert '"g":255' not in text and '"g": 255' not in text
+
+
+async def test_cli_serves_enrolled_device_and_revokes_live_access(tmp_path):
+    """Run the documented commands in a real process with private throwaway config."""
+    env = {**os.environ, "XDG_CONFIG_HOME": str(tmp_path)}
+
+    async def cli(*args):
+        process = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-m",
+            "grok_gadgets_gateway.cli",
+            *args,
+            env=env,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(process.communicate(), 10)
+        assert process.returncode == 0, stderr.decode()
+        return stdout.decode()
+
+    await cli("init")
+    enrolled = await cli("enroll", "local-test-device")
+    device_token = enrolled.strip().split("=", 1)[1]
+    token_file = tmp_path / "grok-gadgets" / "mcp-token"
+    mcp_token = token_file.read_text().strip()
+    assert await cli("devices") == "local-test-device\n"
+    port, device_port = free_port(), free_port()
+    while device_port == port:
+        device_port = free_port()
+    url = f"http://127.0.0.1:{port}/mcp"
+    writer = None
+    with (tmp_path / "serve.log").open("wb") as log:
+        process = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-m",
+            "grok_gadgets_gateway.cli",
+            "serve",
+            "--simulator",
+            "--port",
+            str(port),
+            "--device-port",
+            str(device_port),
+            env=env,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=log,
+        )
+        try:
+            async with asyncio.timeout(10):
+                async with httpx.AsyncClient(timeout=1, trust_env=False) as probe:
+                    while True:
+                        assert process.returncode is None, "serve exited before readiness"
+                        try:
+                            if (await probe.get(url)).status_code == 401:
+                                break
+                        except httpx.TransportError:
+                            pass
+                        await asyncio.sleep(0.05)
+            reader, writer = await asyncio.open_connection("127.0.0.1", device_port)
+
+            async def exchange(value):
+                writer.write((json.dumps(value) + "\n").encode())
+                await writer.drain()
+                return json.loads(await asyncio.wait_for(reader.readline(), 3))
+
+            fixture = Path(__file__).parents[1] / "protocol/0.1.0/fixtures/device-transcript.json"
+            hello = json.loads(fixture.read_text())[0]
+            hello["device"].update(device_id="local-test-device", simulated=True)
+            hello["token"] = device_token
+            assert (await exchange(hello))["ok"]
+            async with httpx.AsyncClient(
+                headers={"Authorization": f"Bearer {mcp_token}"},
+                trust_env=False,
+            ) as http:
+                async with streamable_http_client(url, http_client=http) as (read, write, _):
+                    async with ClientSession(read, write) as session:
+                        await session.initialize()
+
+                        async def call(name, arguments):
+                            result = await session.call_tool(name, arguments)
+                            assert not result.isError
+                            return result.structuredContent or json.loads(result.content[0].text)
+
+                        devices = (await call("gadgets_list_devices", {}))["devices"]
+                        assert {d["device_id"] for d in devices} == {
+                            "sim-c124",
+                            "local-test-device",
+                        }
+                        arguments = {"r": 7, "g": 11, "b": 13, "on": True}
+                        request = {
+                            "device_id": "local-test-device",
+                            "capability": "rgb.set",
+                            "arguments": arguments,
+                        }
+                        receipt = (await call("gadgets_command", request))["command"]
+                        assert receipt["status"] == "accepted"
+                        delivered = (await exchange({"type": "poll"}))["commands"]
+                        assert delivered == [
+                            {
+                                "command_id": receipt["command_id"],
+                                "capability": "rgb.set",
+                                "arguments": arguments,
+                            }
+                        ]
+                        assert (
+                            await exchange(
+                                {
+                                    "type": "ack",
+                                    "command_id": receipt["command_id"],
+                                    "status": "executed",
+                                    "state": {"rgb": arguments},
+                                }
+                            )
+                        )["ok"]
+                        retry = (
+                            await call(
+                                "gadgets_command", {**request, "command_id": receipt["command_id"]}
+                            )
+                        )["command"]
+                        assert retry["duplicate"] and retry["status"] == "executed"
+                        assert retry["simulated"] and not retry["physical_verified"]
+                        assert (await exchange({"type": "poll"}))["commands"] == []
+
+            # Device service survives the MCP client's departure.
+            assert (await exchange({"type": "ping"}))["ok"]
+            await cli("revoke", "local-test-device")
+            assert (await exchange({"type": "ping"}))["error"]["code"] == "revoked"
+            assert await asyncio.wait_for(reader.readline(), 3) == b""
+            writer.close()
+            await writer.wait_closed()
+            writer = None
+            await cli("rotate-mcp-token")
+            rotated = token_file.read_text().strip()
+            assert rotated != mcp_token
+            assert await first_status(url, {"Authorization": f"Bearer {mcp_token}"}) == [401]
+            assert (await first_status(url, {"Authorization": f"Bearer {rotated}"}))[0] == 200
+            assert process.returncode is None
+        finally:
+            if writer is not None:
+                writer.close()
+                await writer.wait_closed()
+            if process.returncode is None:
+                process.terminate()
+            try:
+                await asyncio.wait_for(process.wait(), 10)
+            except TimeoutError:
+                process.kill()
+                await process.wait()
+                raise
+    logs = (tmp_path / "serve.log").read_text()
+    assert device_token not in logs and mcp_token not in logs and rotated not in logs
+    assert '"event":"mcp_tool_call"' in logs and '"duplicate":true' in logs
+    # MCP 1.26 can log ClosedResourceError while its optional SSE stream closes.
+    # Check the actual process lifecycle, not upstream logging wording.
+    assert process.returncode in (0, -signal.SIGTERM)
