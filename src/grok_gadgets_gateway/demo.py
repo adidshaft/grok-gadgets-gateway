@@ -54,7 +54,14 @@ async def acceptance(test_controls=True):
                 "rgb"
             ]["g"] == 255
             duplicate = await call("gadgets_command", request)
-            assert duplicate["command"] == result["command"]
+            assert duplicate["command"] == {**result["command"], "duplicate": True}
+            generated = await call("gadgets_command", {**request, "command_id": None})
+            assert generated["command"]["command_id"] != request["command_id"]
+            assert generated["command"]["status"] == "executed"
+            conflict = await call(
+                "gadgets_command", {**request, "arguments": {**request["arguments"], "r": 1}}
+            )
+            assert conflict["error"]["code"] == "duplicate_conflict"
             assert (
                 await call(
                     "gadgets_command",
@@ -84,7 +91,12 @@ async def acceptance(test_controls=True):
                 assert status["error"]["code"] == "unknown_command"
                 rejected.append(capability)
             for index, arguments in enumerate(
-                ({}, {"r": True, "g": 0, "b": 0, "on": True}, {**request["arguments"], "extra": 1})
+                (
+                    {},
+                    {"r": True, "g": 0, "b": 0, "on": True},
+                    {"r": 255.0, "g": 0, "b": 0, "on": True},
+                    {**request["arguments"], "extra": 1},
+                )
             ):
                 denial = await call(
                     "gadgets_command",
@@ -116,7 +128,7 @@ async def acceptance(test_controls=True):
             return {
                 "tools": sorted(names),
                 "rejected_command_capabilities": rejected,
-                "malformed_rgb_rejections": 4,
+                "malformed_rgb_rejections": 5,
                 "led_status": result["command"]["status"],
                 "simulated": True,
                 "physical_verified": False,

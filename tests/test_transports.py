@@ -11,7 +11,8 @@ import pytest
 from jsonschema import Draft202012Validator
 
 from grok_gadgets_gateway.domain import Gateway
-from grok_gadgets_gateway.transport import Credentials, DeviceServer
+from grok_gadgets_gateway.simulator import Simulator
+from grok_gadgets_gateway.transport import CredentialError, Credentials, DeviceServer
 from grok_gadgets_gateway.usb_bridge import bridge
 from test_domain import hello
 
@@ -103,6 +104,53 @@ async def test_unauthorized_device_isolation_and_reconnect(tmp_path):
         await server.close()
 
 
+async def test_close_returns_while_device_polls(tmp_path):
+    path = tmp_path / "auth.json"
+    write_credentials(path)
+    g = Gateway()
+    server = await DeviceServer(g, Credentials(path), port=0).start()
+    r, w, reply = await connect(server)
+    assert reply["ok"]
+
+    async def poll_forever():
+        while True:
+            w.write(b'{"type":"poll"}\n')
+            await w.drain()
+            if not await r.readline():
+                return "eof"
+            await asyncio.sleep(0.05)
+
+    poller = asyncio.create_task(poll_forever())
+    await asyncio.sleep(0.2)
+    try:
+        async with asyncio.timeout(3):
+            await server.close()
+        assert await asyncio.wait_for(poller, 2) == "eof"
+        assert not server.connections and not server.writers
+        assert not g.state("dev-1")["available"]
+    finally:
+        poller.cancel()
+        w.close()
+
+
+async def test_simulator_device_id_is_reserved(tmp_path):
+    path = tmp_path / "auth.json"
+    path.write_text(json.dumps({"devices": {"sim-c124": {"token": TOKEN}}}))
+    path.chmod(0o600)
+    g = Gateway()
+    simulator = Simulator(g)
+    server = await DeviceServer(
+        g, Credentials(path), port=0, reserved_ids=[simulator.device_id]
+    ).start()
+    try:
+        _, w, reply = await connect(server, device_id="sim-c124")
+        assert reply["error"]["code"] == "unauthorized"
+        assert g.state("sim-c124")["simulated"] and g.state("sim-c124")["available"]
+        w.close()
+    finally:
+        await server.close()
+
+
 async def test_network_frame_bound_and_loopback_guard(tmp_path):
     path = tmp_path / "auth.json"
     write_credentials(path)
@@ -149,7 +197,7 @@ async def test_peer_reset_does_not_escape_server_callback(tmp_path):
         assert not server.connections
         assert not server.writers
         assert not gateway.state("dev-1")["available"]
-        assert gateway.command_status("pending")["status"] == "unconfirmed"
+        assert gateway.command_status("pending")["status"] == "not_delivered"
     finally:
         if writer is not None:
             writer.close()
@@ -161,9 +209,10 @@ class CleanupWriter:
     def __init__(self, error):
         self.error = error
         self.closed = False
+        self.data = bytearray()
 
-    def write(self, _data):
-        pass
+    def write(self, data):
+        self.data.extend(data)
 
     async def drain(self):
         pass
@@ -188,7 +237,9 @@ async def test_cancelled_cleanup_propagates_and_removes_connection(tmp_path):
 
 
 @pytest.mark.parametrize("cleanup_error", [ConnectionResetError, BrokenPipeError])
-async def test_cleanup_reset_preserves_gateway_command_error(tmp_path, monkeypatch, cleanup_error):
+async def test_unexpected_error_replies_once_and_cleanup_reset_is_quiet(
+    tmp_path, monkeypatch, cleanup_error
+):
     path = tmp_path / "auth.json"
     write_credentials(path)
     gateway = Gateway()
@@ -199,8 +250,10 @@ async def test_cleanup_reset_preserves_gateway_command_error(tmp_path, monkeypat
     reader.feed_data((json.dumps(greeting) + '\n{"type":"ping"}\n').encode())
     reader.feed_eof()
     writer = CleanupWriter(cleanup_error("peer closed"))
-    with pytest.raises(RuntimeError, match="command failure"):
-        await server.client(reader, writer)
+    await server.client(reader, writer)
+    replies = [json.loads(line) for line in writer.data.splitlines()]
+    assert replies[0]["ok"] and replies[-1]["error"]["code"] == "internal_error"
+    assert "command failure" not in writer.data.decode()
     assert writer.closed
     assert not server.connections
     assert not server.writers
@@ -270,3 +323,257 @@ async def test_usb_bridge_pty_canonical_transcript(tmp_path):
         os.close(master)
         os.close(slave)
         await server.close()
+
+
+async def _pty_bridge(tmp_path):
+    path = tmp_path / "auth.json"
+    write_credentials(path)
+    gateway = Gateway()
+    server = await DeviceServer(gateway, Credentials(path), port=0).start()
+    master, slave = os.openpty()
+    stop = asyncio.Event()
+    task = asyncio.create_task(bridge(os.ttyname(slave), TOKEN, port=server.port, stop=stop))
+    await asyncio.sleep(0.05)
+
+    async def read_frame():
+        value = bytearray()
+        while not value.endswith(b"\n"):
+            ready = await asyncio.to_thread(select.select, [master], [], [], 2)
+            assert ready[0], "bridge response missing"
+            value.extend(os.read(master, 4096))
+        line, _, rest = bytes(value).partition(b"\n")
+        assert rest == b""
+        return json.loads(line)
+
+    async def finish():
+        stop.set()
+        await asyncio.wait_for(task, 2)
+        os.close(master)
+        os.close(slave)
+        await server.close()
+
+    return gateway, server, master, read_frame, finish
+
+
+async def test_usb_bridge_discards_oversize_frame_then_accepts_hello(tmp_path):
+    _gateway, server, master, read_frame, finish = await _pty_bridge(tmp_path)
+    try:
+        await asyncio.to_thread(os.write, master, b"{" + (b"x" * 3000) + b"\n")
+        assert (await read_frame())["error"]["code"] == "invalid_request"
+        os.write(master, (json.dumps(hello()) + "\n").encode())
+        assert (await read_frame())["ok"]
+        assert server.port
+    finally:
+        await finish()
+
+
+async def test_usb_bridge_stays_silent_on_log_lines_and_rejects_non_objects(tmp_path):
+    _gateway, _server, master, read_frame, finish = await _pty_bridge(tmp_path)
+    try:
+        os.write(master, b"firmware boot log\n\n")
+        os.write(master, (json.dumps(hello()) + "\n").encode())
+        assert (await read_frame())["ok"]
+        os.write(master, b"[]\n")
+        assert (await read_frame())["error"]["code"] == "invalid_request"
+        os.write(master, (json.dumps({"type": "ping"}) + "\n").encode())
+        assert (await read_frame())["ok"]
+    finally:
+        await finish()
+
+
+async def test_usb_bridge_replies_once_when_json_recursion_fails(tmp_path):
+    _gateway, _server, master, read_frame, finish = await _pty_bridge(tmp_path)
+    nested = b"[" * 1000 + b"1" + b"]" * 1000 + b"\n"
+    assert len(nested) <= 2048
+    try:
+        await asyncio.to_thread(os.write, master, nested)
+        assert (await read_frame())["error"] == {
+            "code": "invalid_request",
+            "message": "Malformed USB JSON",
+        }
+        os.write(master, (json.dumps(hello()) + "\n").encode())
+        assert (await read_frame())["ok"]
+    finally:
+        await finish()
+
+
+async def test_usb_bridge_reopens_serial_after_serial_exception(tmp_path, monkeypatch):
+    import serial
+
+    from grok_gadgets_gateway import usb_bridge
+
+    real = serial.Serial
+
+    class Flaky(real):
+        opens = 0
+
+        def __init__(self, *args, **kwargs):
+            Flaky.opens += 1
+            super().__init__(*args, **kwargs)
+            self.fail_read = Flaky.opens == 1
+
+        def read(self, size=1):
+            if self.fail_read:
+                self.fail_read = False
+                raise serial.SerialException("unplugged")
+            return super().read(size)
+
+    monkeypatch.setattr(usb_bridge.serial, "Serial", Flaky)
+    _gateway, _server, master, read_frame, finish = await _pty_bridge(tmp_path)
+    try:
+        for _ in range(50):
+            if Flaky.opens >= 2:
+                break
+            await asyncio.sleep(0.02)
+        assert Flaky.opens >= 2
+        os.write(master, (json.dumps(hello()) + "\n").encode())
+        assert (await read_frame())["ok"]
+    finally:
+        await finish()
+
+
+def write_registry(path, text):
+    path.write_text(text)
+    path.chmod(0o600)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        '{"devices": []}',
+        '{"devices": null}',
+        "[]",
+        '{"devices": {"dev-1": "token"}}',
+        '{"devices": {"dev-1": {"token": 5}}}',
+        '{"devices": {"dev-1": {"token": "short"}}}',
+        f'{{"devices": {{"dev-1": {{"token": "{TOKEN}", "revoked": "false"}}}}}}',
+        f'{{"devices": {{"dev-1": {{"token": "{TOKEN}", "revoked": true}}, '
+        f'"dev-1": {{"token": "{TOKEN}"}}}}}}',
+        '{"devices": {"bad\\n": {"token": "' + TOKEN + '"}}}',
+        "[" * 5000 + "]" * 5000,
+    ],
+    ids=lambda text: text[:40],
+)
+async def test_malformed_registry_is_rejected_with_reply(tmp_path, text):
+    path = tmp_path / "auth.json"
+    write_registry(path, text)
+    with pytest.raises(CredentialError):
+        Credentials(path).validate()
+    server = await DeviceServer(Gateway(), Credentials(path), port=0).start()
+    try:
+        _, w, reply = await connect(server)
+        assert reply["error"] == {
+            "code": "unavailable",
+            "message": "Credential configuration unavailable",
+        }
+        assert TOKEN not in json.dumps(reply)
+        w.close()
+    finally:
+        await server.close()
+
+
+async def test_registry_glitch_keeps_last_good_then_reports_unavailable(tmp_path):
+    path = tmp_path / "auth.json"
+    write_credentials(path)
+    clock = [0]
+    credentials = Credentials(path, grace=30, clock=lambda: clock[0])
+    g = Gateway()
+    server = await DeviceServer(g, credentials, port=0).start()
+    try:
+        r, w, reply = await connect(server)
+        assert reply["ok"]
+        path.write_text("")  # A truncating, non-atomic editor save.
+        assert (await exchange(r, w, {"type": "ping"}))["ok"]
+        clock[0] = 31
+        assert (await exchange(r, w, {"type": "ping"}))["error"]["code"] == "unavailable"
+        assert credentials.status == "invalid"
+        write_credentials(path)
+        assert (await exchange(r, w, {"type": "ping"}))["ok"]
+        assert g.state("dev-1")["available"]
+        path.chmod(0o644)
+        assert (await exchange(r, w, {"type": "ping"}))["error"]["code"] == "unavailable"
+        w.close()
+    finally:
+        await server.close()
+
+
+async def test_pre_auth_failures_are_indistinguishable(tmp_path):
+    path = tmp_path / "auth.json"
+    write_credentials(path)
+    server = await DeviceServer(Gateway(), Credentials(path), port=0).start()
+    try:
+        replies = []
+        for device_id in ("dev-1", "not-enrolled"):
+            _, w, reply = await connect(server, token="é" * 16, device_id=device_id)
+            replies.append(reply)
+            w.close()
+        assert replies[0] == replies[1]
+        assert replies[0]["error"]["code"] == "unauthorized"
+    finally:
+        await server.close()
+
+
+async def test_pre_auth_deep_json_gets_reply_and_hello_retry_works(tmp_path):
+    path = tmp_path / "auth.json"
+    write_credentials(path)
+    g = Gateway()
+    server = await DeviceServer(g, Credentials(path), port=0).start()
+    try:
+        r, w = await asyncio.open_connection("127.0.0.1", server.port)
+        w.write(b"[" * 1000 + b"]" * 1000 + b"\n")
+        await w.drain()
+        assert json.loads(await r.readline())["error"]["code"] == "invalid_request"
+        bad = {**hello(), "token": TOKEN}
+        bad["device"] = {**bad["device"], "capabilities": ["rgb.set", "relay.set"]}
+        bad["device"]["capability_schemas"] = {"relay.set": {"$ref": "https://invalid.test"}}
+        assert (await exchange(r, w, bad))["error"]["code"] == "invalid_request"
+        assert (await exchange(r, w, {**hello(), "token": TOKEN}))["ok"]
+        assert (await exchange(r, w, {"type": "ping"}))["ok"]
+        w.close()
+    finally:
+        await server.close()
+
+
+async def test_idle_unauthenticated_sockets_cannot_lock_out_devices(tmp_path):
+    path = tmp_path / "auth.json"
+    write_credentials(path)
+    server = await DeviceServer(Gateway(), Credentials(path), port=0, hello_timeout=0.5).start()
+    hogs = []
+    try:
+        for _ in range(40):
+            hogs.append((await asyncio.open_connection("127.0.0.1", server.port))[1])
+        await asyncio.sleep(0.05)
+        assert len(server.pending) <= server.max_pending
+        _, w, reply = await connect(server)
+        assert reply["ok"]
+        await asyncio.sleep(0.7)
+        assert not server.pending  # Silent sockets hit the short hello deadline.
+        w.close()
+    finally:
+        for hog in hogs:
+            hog.close()
+        await server.close()
+
+
+class StuckWriter(CleanupWriter):
+    """A peer that stopped reading: drain never completes."""
+
+    async def drain(self):
+        await asyncio.Event().wait()
+
+    async def wait_closed(self):
+        pass
+
+
+async def test_peer_that_stops_reading_is_disconnected(tmp_path):
+    path = tmp_path / "auth.json"
+    write_credentials(path)
+    g = Gateway()
+    server = DeviceServer(g, Credentials(path), port=0, idle_timeout=0.3)
+    reader = asyncio.StreamReader()
+    reader.feed_data((json.dumps({**hello(), "token": TOKEN}) + "\n").encode())
+    writer = StuckWriter(None)
+    async with asyncio.timeout(2):
+        await server.client(reader, writer)
+    assert writer.closed and not server.connections
+    assert not g.state("dev-1")["available"]

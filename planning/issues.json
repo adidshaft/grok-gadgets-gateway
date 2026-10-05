@@ -236,10 +236,381 @@
       ],
       "milestone": "PUBLIC-ALPHA",
       "stage": "done",
-      "commits": [],
+      "commits": [
+        "cf3d7b2"
+      ],
       "evidence": [
         ".github/workflows/checks.yml",
-        "Local YAML/pin/permission validation; runtime unchanged from fresh standalone docs acceptance"
+        "Local YAML/pin/permission validation; runtime unchanged from fresh standalone docs acceptance",
+        "Hosted PR #11 on cf3d7b2eaeddd5ccde52d02f72cd9b8b9d88da91: required aggregate check and all four Python matrix checks passed. Matrix failures propagate to the aggregate."
+      ],
+      "blocker": null
+    },
+    {
+      "id": "DOC-HOSTING-GW-001",
+      "repository": "grok-gadgets-gateway",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Explain gateway hosting boundaries and link the canonical hosting FAQ",
+      "acceptance": [
+        "README and setup guides distinguish MCP stdio, loopback device TCP, static website hosting, and future remote HTTPS/OAuth",
+        "Canonical hosting FAQ and HARD-GROK-REMOTE-001 links are present",
+        "Tunnel reachability is separate from MCP authentication and raw device-port exposure is excluded",
+        "Required local gateway checks pass without runtime or protocol changes"
+      ],
+      "dependencies": [],
+      "labels": [
+        "docs",
+        "gateway",
+        "P2"
+      ],
+      "milestone": "PUBLIC-ALPHA",
+      "stage": "done",
+      "commits": [],
+      "evidence": [
+        "Local documentation update only; canonical FAQ is being prepared in the hub. No push, deployment, service, tunnel, or account change.",
+        "README.md, docs/architecture.md, docs/local-operation.md and docs/simulator.md describe the implemented stdio/loopback boundary and link the hub hosting FAQ; README, architecture and local-operation guides link HARD-GROK-REMOTE-001.",
+        "Local checks on 2026-10-05: uv run pytest passed all 77 tests; uv run ruff check . passed; uv run ruff format --check . passed (15 files); hub python3 scripts/check.py and git diff --check passed. No runtime, protocol, dependency, workflow or hosted state changed.",
+        "The canonical hub FAQ link is prepared for the coordinated documentation update; this local-only change does not make the new FAQ publicly available. The implementing commit references DOC-HOSTING-GW-001."
+      ],
+      "blocker": null
+    },
+    {
+      "id": "REVIEW-GW-001",
+      "repository": "grok-gadgets-gateway",
+      "owner": "grok-gadgets-gateway",
+      "problem": "GW-01: DeviceServer.close() hangs on Python >=3.12 while a device is connected; CI tests only 3.11",
+      "acceptance": [
+        "close() closes/aborts client writers and cancels client tasks before a bounded server.wait_closed()",
+        "Regression test closes the server while a device polls",
+        "CI matrix runs Python 3.11, 3.12, 3.13 and 3.14 with SHA-pinned actions and existing hardening"
+      ],
+      "dependencies": [],
+      "labels": [
+        "bug",
+        "gateway",
+        "P0"
+      ],
+      "milestone": "REVIEW-2026-10-05",
+      "stage": "done",
+      "commits": [],
+      "evidence": [
+        "Without the fix, test_close_returns_while_device_polls fails on CPython 3.12.13 (timeout); with it, 78 tests pass locally on CPython 3.11.15, 3.12.13, 3.13.15 and 3.14.7 (macOS arm64). test_usb_bridge_pty_canonical_transcript no longer stalls 15 s on 3.12.",
+        "Hosted CI matrix is configured but not run: no push is authorized."
+      ],
+      "blocker": null
+    },
+    {
+      "id": "REVIEW-GW-002",
+      "repository": "grok-gadgets-gateway",
+      "owner": "grok-gadgets-gateway",
+      "problem": "GW-05 integral floats pass strict integer RGB; GW-10 canonical ID pattern accepts a trailing LF",
+      "acceptance": [
+        "rgb.set, reported state and custom capability schemas reject 255.0 and booleans as integers",
+        "Canonical $defs/id uses $(?![\\\\s\\\\S]) so device_id, boot_id and capability names with a trailing LF are rejected",
+        "Wire format stays 0.1.0 and canonical fixtures stay valid"
+      ],
+      "dependencies": [
+        "REVIEW-GW-001"
+      ],
+      "labels": [
+        "bug",
+        "protocol",
+        "gateway",
+        "P1"
+      ],
+      "milestone": "REVIEW-2026-10-05",
+      "stage": "done",
+      "commits": [],
+      "evidence": [
+        "protocol.StrictValidator redefines the integer type check; tests test_integers_are_type_strict and test_ids_reject_trailing_newline[*]. 82 tests pass on CPython 3.11.15, 3.12.13, 3.13.15, 3.14.7.",
+        "Changed protocol file: protocol/0.1.0/device-request.schema.json ($defs/id pattern) and protocol/0.1.0/README.md. SDK copies must be refreshed by the coordinator."
+      ],
+      "blocker": null
+    },
+    {
+      "id": "REVIEW-GW-003",
+      "repository": "grok-gadgets-gateway",
+      "owner": "grok-gadgets-gateway",
+      "problem": "GW-02/GW-11/GW-12/GW-04/GW-16: command IDs replay old receipts, compare loosely, error after acceptance; late ACK drops the session; never-dispatched commands look unconfirmed",
+      "acceptance": [
+        "command_id is optional; omitted IDs are generated (gw-<uuid>) and returned",
+        "Same ID + identical canonical JSON arguments within 10 minutes returns the original receipt with duplicate=true; changed arguments return duplicate_conflict; older or evicted IDs return stale_command_id",
+        "Arguments are validated before the duplicate lookup",
+        "gadgets_command always returns command status after acceptance; simulator errors go to simulator_error; the simulator device ID is reserved against TCP registration",
+        "Late ACK returns non-fatal late_ack, keeps the session and records late_ack; executed+error is invalid_request; never-dispatched commands end as not_delivered; the ACK deadline starts at dispatch",
+        "gadgets_command is async and the simulator delay uses asyncio.sleep"
+      ],
+      "dependencies": [
+        "REVIEW-GW-002"
+      ],
+      "labels": [
+        "bug",
+        "gateway",
+        "P0"
+      ],
+      "milestone": "REVIEW-2026-10-05",
+      "stage": "done",
+      "commits": [],
+      "evidence": [
+        "tests: test_command_ids_generated_window_conflict_and_type_strict_retries, test_arguments_validated_before_duplicate_lookup, test_evicted_command_id_is_not_reused_silently, test_ack_semantics_and_not_delivered_queue_timeout, test_command_disconnect_timeout_stale_session_and_queue (late_ack), test_simulator_device_id_is_reserved, test_delay_does_not_block_gateway_and_retired_session_stays_unconfirmed; demo asserts duplicate=true, generated IDs, duplicate_conflict and 255.0 rejection over the official MCP stdio client.",
+        "87 tests pass on CPython 3.11.15, 3.12.13, 3.13.15, 3.14.7. Simulated only; no Grok or physical verification."
+      ],
+      "blocker": null
+    },
+    {
+      "id": "REVIEW-GW-004",
+      "repository": "grok-gadgets-gateway",
+      "owner": "grok-gadgets-gateway",
+      "problem": "GW-08/GW-09/GW-13/GW-14/GW-15 and LIN-03: TCP handler exceptions escape, idle sockets and blocked drains hold slots, non-ASCII token oracle, failed hello wedges the connection, silent registry edge cases, transient registry errors reported as unauthorized",
+      "acceptance": [
+        "RecursionError and unexpected exceptions get one reply (invalid_request / internal_error) and a clean close",
+        "Unauthenticated sockets have a 2 s hello deadline and at most 16 pending slots (oldest evicted); drain() is bounded by idle_timeout",
+        "Tokens compare as bytes; every pre-auth credential failure has one message",
+        "Connection binds to a device only after a successful register(); a failed hello can be retried",
+        "Registry rejects duplicate keys, non-object shapes, invalid IDs, short tokens and non-bool revoked; the CLI validates it at startup with a clear stderr message",
+        "Transient read/parse errors keep the last good registry for 30 s, then return retryable unavailable; missing/insecure files return unavailable immediately; unauthorized is reserved for unknown device or token mismatch"
+      ],
+      "dependencies": [
+        "REVIEW-GW-003"
+      ],
+      "labels": [
+        "bug",
+        "security",
+        "gateway",
+        "P1"
+      ],
+      "milestone": "REVIEW-2026-10-05",
+      "stage": "done",
+      "commits": [],
+      "evidence": [
+        "tests/test_transports.py: test_malformed_registry_is_rejected_with_reply[*], test_registry_glitch_keeps_last_good_then_reports_unavailable, test_pre_auth_failures_are_indistinguishable, test_pre_auth_deep_json_gets_reply_and_hello_retry_works, test_idle_unauthenticated_sockets_cannot_lock_out_devices, test_peer_that_stops_reading_is_disconnected, test_unexpected_error_replies_once_and_cleanup_reset_is_quiet; tests/test_cli.py startup validation.",
+        "102+ tests pass on CPython 3.11.15, 3.12.13, 3.13.15, 3.14.7. Linux SDK already treats unavailable as non-fatal (agent.py _KNOWN_ERRORS); no SDK file was edited."
+      ],
+      "blocker": null
+    },
+    {
+      "id": "REVIEW-GW-005",
+      "repository": "grok-gadgets-gateway",
+      "owner": "grok-gadgets-gateway",
+      "problem": "GW-06: only the name button is treated as an event, so Linux custom events and reserved history_lost are offered as commands",
+      "acceptance": [
+        "event_capabilities includes button, reserved history_lost, and any capability whose inline schema has x-grok-gadgets-kind event",
+        "Those names are omitted from command_capabilities and capability_contracts",
+        "An event whose name is a command capability is rejected",
+        "protocol/0.1.0/README.md documents the rule; wire format stays 0.1.0"
+      ],
+      "dependencies": [
+        "REVIEW-GW-004"
+      ],
+      "labels": [
+        "bug",
+        "protocol",
+        "gateway",
+        "P1"
+      ],
+      "milestone": "REVIEW-2026-10-05",
+      "stage": "done",
+      "commits": [],
+      "evidence": [
+        "tests/test_domain.py::test_annotated_and_reserved_events_are_not_commands. A Linux-shaped schema {type:object, x-grok-gadgets-kind:event} and the reserved name history_lost are events, not commands. An event named rgb.set is rejected.",
+        "Changed protocol file: protocol/0.1.0/README.md only. No schema change. SDK copies must be refreshed by the coordinator.",
+        "Checked on CPython 3.11.15 (macOS arm64): uv sync --locked, ruff check, ruff format --check, and pytest -q (107 passed). No extra interpreters were run. Not Grok or hardware verification."
+      ],
+      "blocker": null
+    },
+    {
+      "id": "REVIEW-GW-006",
+      "repository": "grok-gadgets-gateway",
+      "owner": "grok-gadgets-gateway",
+      "problem": "GW-03: an oversize USB frame raises outside the per-frame handler, and a serial error stops the bridge",
+      "acceptance": [
+        "An oversize frame is discarded through the next LF and answered once with invalid_request",
+        "RecursionError gets one invalid_request and the bridge continues",
+        "SerialException and OSError reopen the port with backoff",
+        "Non-JSON log lines produce no reply",
+        "PTY tests cover the canonical transcript plus these failures"
+      ],
+      "dependencies": [
+        "REVIEW-GW-005"
+      ],
+      "labels": [
+        "bug",
+        "gateway",
+        "P1"
+      ],
+      "milestone": "REVIEW-2026-10-05",
+      "stage": "done",
+      "commits": [],
+      "evidence": [
+        "tests/test_transports.py: test_usb_bridge_discards_oversize_frame_then_accepts_hello, test_usb_bridge_stays_silent_on_log_lines_and_rejects_non_objects, test_usb_bridge_replies_once_when_json_recursion_fails, test_usb_bridge_reopens_serial_after_serial_exception, and the existing canonical PTY transcript.",
+        "Checked on CPython 3.11.15 (macOS arm64): uv sync --locked, ruff check, ruff format --check, and pytest -q (111 passed). No extra interpreters were run. Physical USB is not verified."
+      ],
+      "blocker": null
+    },
+    {
+      "id": "REVIEW-GW-007",
+      "repository": "grok-gadgets-gateway",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Operators need a long-running loopback gateway: device listener plus authenticated Streamable HTTP, with a dead-simple credential CLI",
+      "acceptance": [
+        "Config directory is $XDG_CONFIG_HOME/grok-gadgets or ~/.config/grok-gadgets; credentials.json is used when --credentials is omitted and the file exists",
+        "enroll writes atomically (temp file, mode 0600, os.replace) and prints GROK_GADGETS_DEVICE_TOKEN once on stdout",
+        "revoke, devices (ids only), rotate-mcp-token, init, and serve exist; stdio flags still work",
+        "serve binds 127.0.0.1 only: device listener plus MCP Streamable HTTP on port 8766 path /mcp using mcp 1.26.0 FastMCP and TokenVerifier",
+        "MCP token file mcp-token is mode 0600; test controls are impossible in HTTP mode; gadgets_command is not read-only and other tools are read-only",
+        "Redacted request logs go to stderr; Host allow-list accepts extra --allowed-host values",
+        "Official MCP Streamable HTTP client tests: missing and wrong token 401, right token lists tools and a simulator command works, test controls absent, wrong Host rejected",
+        "examples/launchd and examples/systemd show how to run serve"
+      ],
+      "dependencies": [
+        "REVIEW-GW-006"
+      ],
+      "labels": [
+        "feature",
+        "gateway",
+        "P0"
+      ],
+      "milestone": "REVIEW-2026-10-05",
+      "stage": "done",
+      "commits": [],
+      "evidence": [
+        "tests/test_cli.py covers init, enroll, devices, revoke, rotate-mcp-token, serve help, and optional XDG credentials. tests/test_http.py uses mcp.client.streamable_http.streamable_http_client.",
+        "Checked on CPython 3.11.15 (macOS arm64): uv sync --locked, ruff check, ruff format --check, and pytest -q (116 passed). No extra interpreters were run. Not Grok Bot or hardware verification. The HTTP listener is loopback bearer-token auth, not an OAuth server."
+      ],
+      "blocker": null
+    },
+    {
+      "id": "REVIEW-GW-008",
+      "repository": "grok-gadgets-gateway",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Operator docs still describe stdio-only hosting and a manual credential file",
+      "acceptance": [
+        "README opens with one paragraph, an honest What works with Grok Bot today section, and a 3-step quickstart",
+        "docs/remote-access.md explains loopback serve, the bearer token, --allowed-host, and that public HTTPS is the operator's job",
+        "local-operation.md, SECURITY.md, and CHANGELOG.md match init, enroll, and serve",
+        "No claim of Grok Bot or physical hardware verification"
+      ],
+      "dependencies": [
+        "REVIEW-GW-007"
+      ],
+      "labels": [
+        "docs",
+        "gateway",
+        "P1"
+      ],
+      "milestone": "REVIEW-2026-10-05",
+      "stage": "done",
+      "commits": [],
+      "evidence": [
+        "README.md, docs/remote-access.md, docs/local-operation.md, docs/architecture.md, SECURITY.md, and CHANGELOG.md. Local checks only; no push or deployment.",
+        "Checked on CPython 3.11.15 (macOS arm64): uv sync --locked, ruff check, ruff format --check, and pytest -q (116 passed). Not Grok Bot or hardware verification."
+      ],
+      "blocker": null
+    },
+    {
+      "id": "REVIEW-GW-009",
+      "repository": "grok-gadgets-gateway",
+      "owner": "grok-gadgets-gateway",
+      "problem": "init prints no client configuration, so the operator has to invent the MCP JSON",
+      "acceptance": [
+        "init prints copy-paste stdio MCP JSON and HTTP settings for http://127.0.0.1:8766/mcp",
+        "The MCP bearer token is omitted unless --show-token",
+        "The remote-access security checklist states that this path is not verified with Grok Bot"
+      ],
+      "dependencies": [
+        "REVIEW-GW-008"
+      ],
+      "labels": [
+        "feature",
+        "gateway",
+        "P1"
+      ],
+      "milestone": "REVIEW-2026-10-05",
+      "stage": "done",
+      "commits": [],
+      "evidence": [
+        "tests/test_cli.py::test_init_enroll_devices_revoke_and_rotate_are_atomic checks the URL, mcpServers, a hidden token, and --show-token.",
+        "Checked on CPython 3.11.15 (macOS arm64): uv sync --locked, ruff check, ruff format --check, and pytest -q (116 passed, 1 warning). No extra interpreters were run. Not Grok Bot or hardware verification."
+      ],
+      "blocker": null
+    },
+    {
+      "id": "REVIEW-GW-010",
+      "repository": "grok-gadgets-gateway",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Device-supplied regular expressions can block the gateway event loop during command validation (GW-07).",
+      "acceptance": [
+        "Reject pattern and patternProperties before registering a capability schema, including nested schema locations.",
+        "Allow ordinary string bounds, explicit properties and a data property named pattern.",
+        "Reject reference resolution and alternative schema dialects; no added dependencies or wire-protocol change."
+      ],
+      "dependencies": [],
+      "labels": [
+        "bug",
+        "gateway",
+        "P1"
+      ],
+      "milestone": "REVIEW-2026-10-05",
+      "stage": "done",
+      "commits": [],
+      "evidence": [
+        "tests/test_domain.py covers nested hostile regex, invalid regex syntax, alternate dialect and references, and accepted regex-free string schemas.",
+        "uv run pytest: 124 passed; uv run ruff check . and uv run ruff format --check . pass on CPython 3.11.15. Local software evidence only."
+      ],
+      "blocker": null
+    },
+    {
+      "id": "REVIEW-GW-011",
+      "repository": "grok-gadgets-gateway",
+      "owner": "grok-gadgets-gateway",
+      "problem": "The bounded command-ID history silently discarded recent IDs at capacity, allowing retries within the advertised window to dispatch again.",
+      "acceptance": [
+        "Within the 10-minute window, full ID history rejects new commands as busy rather than evicting replay protection.",
+        "Retries of an evicted receipt fail without dispatch; retained receipts still replay with duplicate=true.",
+        "After the window, old ID slots can be reused for new intents. The MCP contract states that restart or expiry removes the guarantee and uncertain actions need inspection."
+      ],
+      "dependencies": [
+        "REVIEW-GW-004"
+      ],
+      "labels": [
+        "bug",
+        "gateway",
+        "P1"
+      ],
+      "milestone": "REVIEW-2026-10-05",
+      "stage": "done",
+      "commits": [],
+      "evidence": [
+        "test_full_id_history_keeps_retry_protection_until_window_expires covers capacity, the exact window boundary, rejected/replayed retries and recovery after expiry.",
+        "uv run pytest: 125 passed; uv run ruff check . and uv run ruff format --check . pass on CPython 3.11.15. No durable or physical exactly-once claim."
+      ],
+      "blocker": null
+    },
+    {
+      "id": "REVIEW-GW-012",
+      "repository": "grok-gadgets-gateway",
+      "problem": "The first-run CLI and live credential lifecycle lacked end-to-end coverage; recovery instructions were stale",
+      "acceptance": [
+        "init/enroll/serve accept an enrolled software device through HTTP MCP",
+        "Repeat command IDs return replay receipts without redelivery",
+        "Revocation closes the device connection; MCP token rotation rejects the old token without server restart",
+        "Process exits within a bound and credentials are absent from logs"
+      ],
+      "dependencies": [
+        "REVIEW-GW-010",
+        "REVIEW-GW-011"
+      ],
+      "labels": [
+        "bug",
+        "gateway",
+        "P1"
+      ],
+      "milestone": "M2",
+      "stage": "done",
+      "commits": [],
+      "evidence": [
+        "tests/test_http.py::test_cli_serves_enrolled_device_and_revokes_live_access",
+        "2026-10-05: Ruff lint/format, 126 pytest checks and wheel/sdist passed. Pinned MCP can emit ClosedResourceError on SSE disconnect; test verifies actual termination. Local software only; no tunnel, account or hardware."
       ],
       "blocker": null
     }

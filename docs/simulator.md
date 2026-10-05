@@ -24,6 +24,13 @@ Use a verified Grok connection when one becomes available.
 To install a locally built wheel, replace `pip install .` with
 `pip install /absolute/path/grok_gadgets_gateway-0.1.0a1-py3-none-any.whl`.
 
+Local simulation needs no domain, public port, tunnel, or hosted service.
+The simulator runs wherever its MCP client starts the process. A cloud client's executable
+and configuration paths must exist in that cloud environment; they cannot refer to files only on your computer.
+This gateway does not provide a remote HTTPS/OAuth endpoint. Read the
+[hosting FAQ](https://github.com/adidshaft/grok-gadgets/blob/main/docs/getting-started/hosting.md)
+before choosing a host or connection method. Actual Grok execution remains unverified.
+
 The default and schema are included in the installed package. To inspect the schema,
 run `.venv/bin/python -m grok_gadgets_gateway.simulator_config --schema`.
 Development checkout users can substitute `uv run` for the `.venv/bin/` executables after

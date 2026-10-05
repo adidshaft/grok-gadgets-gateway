@@ -1,0 +1,191 @@
+"""Loopback device listener plus authenticated Streamable HTTP MCP."""
+
+import asyncio
+import hashlib
+import hmac
+import re
+from contextlib import asynccontextmanager
+
+import uvicorn
+from mcp.server.auth.provider import AccessToken
+from mcp.server.auth.settings import AuthSettings
+from mcp.server.transport_security import TransportSecuritySettings
+
+from .domain import Gateway
+from .mcp_server import RequestLog, make_server
+from .operator import OperatorError, read_mcp_token
+from .simulator import Simulator
+from .simulator_config import SimulatorConfigError, load_config
+from .transport import CredentialError, Credentials, DeviceServer
+
+_HOST = re.compile(r"[A-Za-z0-9][A-Za-z0-9.-]*(?::[0-9]{1,5})?$")
+MCP_PATH = "/mcp"
+
+
+class FileTokenVerifier:
+    """Bearer check against the mode-0600 mcp-token file. The token is never logged."""
+
+    def __init__(self, path):
+        self.path = path
+
+    async def verify_token(self, token):
+        try:
+            expected = read_mcp_token(self.path)
+        except CredentialError:
+            return None
+        if not isinstance(token, str):
+            return None
+        matched = hmac.compare_digest(
+            hashlib.sha256(expected.encode()).digest(),
+            hashlib.sha256(token.encode()).digest(),
+        )
+        if not matched:
+            return None
+        return AccessToken(token=token, client_id="local-operator", scopes=["gadgets"])
+
+
+def transport_security(extra_hosts=()):
+    hosts = ["127.0.0.1:*", "localhost:*", "[::1]:*", "127.0.0.1", "localhost", "[::1]"]
+    origins = [
+        "http://127.0.0.1:*",
+        "http://localhost:*",
+        "http://[::1]:*",
+        "http://127.0.0.1",
+        "http://localhost",
+        "http://[::1]",
+    ]
+    for name in extra_hosts:
+        if not isinstance(name, str) or not _HOST.fullmatch(name):
+            raise ValueError("allowed host must be a hostname or hostname:port")
+        hosts.append(name)
+        origins.extend((f"http://{name}", f"https://{name}"))
+        if ":" not in name:
+            hosts.append(f"{name}:*")
+            origins.extend((f"http://{name}:*", f"https://{name}:*"))
+    return TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=hosts,
+        allowed_origins=origins,
+    )
+
+
+class Running:
+    def __init__(self, server, task, mcp_port, device_port):
+        self.server = server
+        self.task = task
+        self.mcp_port = mcp_port
+        self.device_port = device_port
+        self.url = f"http://127.0.0.1:{mcp_port}{MCP_PATH}"
+
+    async def wait(self):
+        await self.task
+
+
+async def _wait_started(server, task):
+    for _ in range(200):
+        if getattr(server, "started", False):
+            return
+        if task.done():
+            raise RuntimeError("MCP HTTP server stopped during startup") from task.exception()
+        await asyncio.sleep(0.01)
+    raise RuntimeError("MCP HTTP server did not start")
+
+
+@asynccontextmanager
+async def serve_gateway(
+    credentials,
+    mcp_token,
+    *,
+    simulator=False,
+    simulator_config=None,
+    device_port=8765,
+    port=8766,
+    allowed_hosts=(),
+    log_stream=None,
+    host="127.0.0.1",
+):
+    """Run until the context exits. HTTP and the device listener bind 127.0.0.1 only."""
+    if host != "127.0.0.1":
+        raise ValueError("MCP HTTP binds 127.0.0.1 only")
+    if simulator_config and not simulator:
+        raise OperatorError("--simulator-config requires --simulator")
+    try:
+        config = load_config(simulator_config) if simulator_config else None
+        security = transport_security(allowed_hosts)
+        registry = Credentials(credentials)
+        registry.validate()
+        read_mcp_token(mcp_token)
+    except (CredentialError, SimulatorConfigError, ValueError) as exc:
+        raise OperatorError(str(exc)) from None
+
+    gateway = Gateway()
+    sim = Simulator(gateway, config=config) if simulator else None
+    device_server = DeviceServer(
+        gateway,
+        registry,
+        host="127.0.0.1",
+        port=device_port,
+        reserved_ids=[sim.device_id] if sim else [],
+    )
+    await device_server.start()
+    try:
+        async with _serve_http(
+            gateway,
+            sim,
+            device_server,
+            mcp_token,
+            port=port,
+            security=security,
+            log_stream=log_stream,
+        ) as running:
+            yield running
+    finally:
+        await device_server.close()
+
+
+@asynccontextmanager
+async def _serve_http(gateway, sim, device_server, mcp_token, *, port, security, log_stream):
+    mcp = make_server(
+        gateway,
+        sim,
+        None,
+        False,
+        request_log=RequestLog("streamable-http", stream=log_stream),
+        listener_status=device_server.status,
+        http=True,
+        host="127.0.0.1",
+        port=port,
+        streamable_http_path=MCP_PATH,
+        json_response=True,
+        log_level="WARNING",
+        token_verifier=FileTokenVerifier(mcp_token),
+        auth=AuthSettings(
+            issuer_url=f"http://127.0.0.1:{port}",
+            resource_server_url=f"http://127.0.0.1:{port}",
+        ),
+        transport_security=security,
+    )
+    config = uvicorn.Config(
+        mcp.streamable_http_app(),
+        host="127.0.0.1",
+        port=port,
+        log_level="warning",
+        access_log=False,
+        proxy_headers=False,
+    )
+    server = uvicorn.Server(config)
+    server.install_signal_handlers = lambda: None
+    task = asyncio.create_task(server.serve())
+    try:
+        await _wait_started(server, task)
+        bound = server.servers[0].sockets[0].getsockname()
+        if bound[0] != "127.0.0.1":
+            raise RuntimeError("MCP HTTP bound a non-loopback address")
+        yield Running(server, task, bound[1], device_server.port)
+    finally:
+        server.should_exit = True
+        if not task.done():
+            try:
+                await asyncio.wait_for(task, 5)
+            except asyncio.TimeoutError:
+                task.cancel()
