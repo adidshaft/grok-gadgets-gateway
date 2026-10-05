@@ -2,9 +2,17 @@
 
 ## Software demo and MCP launch
 
-Run `uv sync --locked`, then `uv run python -m grok_gadgets_gateway.demo`. To configure a local MCP test client, use absolute uv path and this repository's working directory with arguments `run`, `--directory`, `/absolute/path/grok-gadgets-gateway`, `grok-gadgets-gateway`, `--simulator`. This is local MCP configuration guidance, not a verified Grok Bot configuration.
+1. Run `uv sync --locked`.
+2. Run `uv run python -m grok_gadgets_gateway.demo`.
 
-The client launches and supervises the stdio process. Keep the client and host awake. The gateway is intentionally not a background systemd service: a standalone stdio process without its client cannot serve assistant requests. A future authenticated reachable MCP transport is tracked separately. If the client exits, restart the gateway and device agent; state/history are in memory and event cursors reset explicitly.
+To configure a local MCP test client, use the absolute uv path and this repository as the working directory.
+Set the arguments to `run`, `--directory`, `/absolute/path/grok-gadgets-gateway`, `grok-gadgets-gateway`, `--simulator`.
+These instructions configure a local MCP client. They are not a verified Grok Bot configuration.
+
+The client starts and manages the stdio process. Keep the client and host awake.
+The gateway is not a background systemd service. A stdio process cannot serve assistant requests without its client.
+A reachable MCP transport with authentication is separate future work.
+If the client exits, restart the gateway and device agent. State and history are stored in memory. Event cursors reset on restart.
 
 ## Per-device credential enrollment
 
@@ -27,13 +35,20 @@ with os.fdopen(fd, 'w') as handle:
 PY
 ```
 
-Launch the gateway from your MCP client with `--credentials /absolute/private/path/devices.json --device-port 8765`. The TCP listener starts during MCP initialization and stops on process shutdown. Credential IDs must match the SDK hello. Set revoked true to terminate that device on its next request; denied requests close the session. Revocation does not erase previously reported state/history; it prevents subsequent access.
+Launch the gateway from your MCP client with `--credentials /absolute/private/path/devices.json --device-port 8765`.
+The TCP listener starts during MCP initialization. It stops when the process stops.
+Credential IDs must match the SDK hello. Set `revoked` to `true` to terminate access on the device's next request.
+A denied request closes the session. Revocation prevents subsequent access. It does not erase previously reported state or history.
 
-The JSON structure is `{ "devices": { "device-id": { "token": "private value >=16 chars", "revoked": false } } }`. Never commit the file or put it in a support report. Permissions allowing group/world access are rejected. Rotation requires updating both operator file and agent/bridge secret, then reconnecting.
+Use this JSON structure: `{ "devices": { "device-id": { "token": "private value >=16 chars", "revoked": false } } }`.
+Never commit the file or include it in a support report. The gateway rejects permissions that allow group or public access.
+To rotate a token, update the private credential file and the agent or bridge secret. Then reconnect.
 
 ## USB bridge
 
-Use an actual USB-C data cable and verified C124 firmware when hardware is available. Identify the serial device through your OS (commonly /dev/cu.usbmodem… on macOS, /dev/ttyACM… on Linux). Obtain your private token from the file into the current shell environment without echoing it:
+When hardware is available, use a USB-C data cable and verified C124 firmware.
+Find the serial device in your operating system. Common paths are `/dev/cu.usbmodem…` on macOS and `/dev/ttyACM…` on Linux.
+Load the private token into the current shell environment without printing it:
 
 ```sh
 export GROK_GADGETS_DEVICE_TOKEN="$(python3 -c 'import json,pathlib;print(json.loads((pathlib.Path.home()/".config/grok-gadgets/devices.json").read_text())["devices"]["atoms3-lite-1"]["token"])')"
@@ -41,7 +56,18 @@ uv run python -m grok_gadgets_gateway.usb_bridge /dev/cu.YOUR_DEVICE
 unset GROK_GADGETS_DEVICE_TOKEN
 ```
 
-The gateway must already be running and initialized. The bridge never logs the token or compiles it into firmware. It forwards one reply for every firmware request and enforces frame bounds. Baudrate is 115200; native USB CDC may ignore baudrate. If TCP disconnects or the gateway restarts, the bridge returns gateway_unavailable and waits for a fresh firmware hello; each hello opens a new authenticated TCP session. Firmware owns the retry backoff and must discard pending old-session acknowledgements. A USB cable/serial device disconnect requires restarting the bridge after the device returns. This is session recovery, not durable action replay. USB hardware operation remains pending; pseudo-terminal software transport acceptance passes locally.
+The gateway must be running and initialized before you start the bridge.
+The bridge does not log the token or compile it into firmware.
+It forwards one reply for each firmware request and enforces frame limits.
+The baud rate is 115200. Native USB CDC can ignore the baud rate.
+
+If TCP disconnects or the gateway restarts, the bridge returns `gateway_unavailable`.
+It then waits for a new firmware hello. Each hello opens a new authenticated TCP session.
+Firmware controls the retry delay. It must discard pending acknowledgements from the old session.
+If USB disconnects, wait for the device to return. Then restart the bridge.
+This procedure restores the session. It does not replay actions from durable storage.
+
+Physical USB operation remains unverified. Local software tests with a pseudo-terminal pass.
 
 ## Troubleshooting and recovery
 
@@ -54,4 +80,6 @@ The gateway must already be running and initialized. The bridge never logs the t
 - Port busy: choose a free --device-port and configure SDK/bridge to match.
 - USB failed: verify data cable, port permissions and firmware model. Unplug/reconnect is a pending physical test.
 
-Rollback uses a known compatible gateway/SDK commit and fresh process. Protocol 0.1.0 rejects mismatched versions. No persistent database migrations exist. Run the demo after rollback; commands/history are intentionally lost and earlier action outcomes remain uncertain.
+To roll back, select known compatible gateway and SDK commits. Start a new process.
+Protocol 0.1.0 rejects mismatched versions. There are no persistent database migrations.
+Run the demo after rollback. Commands and history are lost. Earlier action outcomes remain uncertain.
