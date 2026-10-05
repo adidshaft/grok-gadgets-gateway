@@ -35,6 +35,42 @@ def test_canonical_fixtures_and_schema():
     fails("invalid_request", lambda: validate_request(bad))
 
 
+@pytest.mark.parametrize("field", ["device_id", "boot_id", "capability"])
+def test_ids_reject_trailing_newline(field):
+    bad = hello()
+    if field == "capability":
+        bad["device"]["capabilities"].append("rgb.set\n")
+    else:
+        bad["device"][field] += "\n"
+    fails("invalid_request", lambda: validate_request(bad))
+    fails("invalid_request", lambda: Gateway().register(bad))
+
+
+def test_integers_are_type_strict():
+    g = Gateway()
+    sid = g.register(hello())
+    for value in (255.0, 0.0, True):
+        args = {"r": value, "g": 0, "b": 0, "on": True}
+        fails("invalid_arguments", lambda: g.command("dev-1", "rgb.set", args, "float"))
+    fails(
+        "invalid_request",
+        lambda: g.handle(
+            "dev-1", sid, {"type": "state", "state": {"rgb": {"r": 1.0, "g": 0, "b": 0, "on": 1}}}
+        ),
+    )
+    floaty = hello("dev-2")
+    floaty["device"]["state"] = {"rgb": {"r": 255.0, "g": 0, "b": 0, "on": True}}
+    fails("invalid_request", lambda: g.register(floaty))
+    custom = hello("dev-3")
+    custom["device"]["capabilities"].append("level.set")
+    custom["device"]["capability_schemas"] = {
+        "level.set": {"type": "object", "properties": {"level": {"type": "integer"}}}
+    }
+    g.register(custom)
+    fails("invalid_arguments", lambda: g.command("dev-3", "level.set", {"level": 1.0}, "lvl"))
+    assert g.command("dev-3", "level.set", {"level": 1}, "lvl")["status"] == "accepted"
+
+
 def test_simulation_and_idempotency():
     g = Gateway()
     sim = Simulator(g)

@@ -7,9 +7,17 @@ import uuid
 from collections import OrderedDict, deque
 from datetime import datetime, timezone
 
-from jsonschema import Draft202012Validator, SchemaError
+from jsonschema import SchemaError
 
-from .protocol import GatewayError, RGB_VALIDATOR, SCHEMA, validate_request, validate_state
+from .protocol import (
+    RGB_VALIDATOR,
+    SCHEMA,
+    GatewayError,
+    StrictValidator,
+    is_valid,
+    validate_request,
+    validate_state,
+)
 
 
 def now_iso():
@@ -49,7 +57,7 @@ class Gateway:
             if contains_ref(schema):
                 raise GatewayError("invalid_request", "Capability schemas must be inline")
             try:
-                Draft202012Validator.check_schema(schema)
+                StrictValidator.check_schema(schema)
             except SchemaError:
                 raise GatewayError("invalid_request", "Invalid capability schema") from None
         if did not in self.devices and len(self.devices) >= 64:
@@ -133,7 +141,7 @@ class Gateway:
             raise GatewayError("invalid_command_id", "Use a stable 1–64 character command ID")
         if not isinstance(arguments, dict):
             raise GatewayError("invalid_arguments", "Arguments must be an object")
-        if capability == "rgb.set" and not RGB_VALIDATOR.is_valid(arguments):
+        if capability == "rgb.set" and not is_valid(RGB_VALIDATOR, arguments):
             raise GatewayError("invalid_arguments", "RGB requires integer channels 0..255 and on")
         existing = self.commands.get(command_id)
         if existing:
@@ -150,7 +158,7 @@ class Gateway:
         if not dev["connected"]:
             raise GatewayError("unavailable", "Device is disconnected")
         schema = dev.get("capability_schemas", {}).get(capability)
-        if schema and not Draft202012Validator(schema).is_valid(arguments):
+        if schema and not is_valid(StrictValidator(schema), arguments):
             raise GatewayError("invalid_arguments", "Arguments violate declared capability schema")
         if capability not in dev["capabilities"] or capability in ("button", "state"):
             raise GatewayError("unsupported_capability", "Device does not declare this command")

@@ -295,6 +295,34 @@
         "Hosted CI matrix is configured but not run: no push is authorized."
       ],
       "blocker": null
+    },
+    {
+      "id": "REVIEW-GW-002",
+      "repository": "grok-gadgets-gateway",
+      "owner": "grok-gadgets-gateway",
+      "problem": "GW-05 integral floats pass strict integer RGB; GW-10 canonical ID pattern accepts a trailing LF",
+      "acceptance": [
+        "rgb.set, reported state and custom capability schemas reject 255.0 and booleans as integers",
+        "Canonical $defs/id uses $(?![\\\\s\\\\S]) so device_id, boot_id and capability names with a trailing LF are rejected",
+        "Wire format stays 0.1.0 and canonical fixtures stay valid"
+      ],
+      "dependencies": [
+        "REVIEW-GW-001"
+      ],
+      "labels": [
+        "bug",
+        "protocol",
+        "gateway",
+        "P1"
+      ],
+      "milestone": "REVIEW-2026-10-05",
+      "stage": "done",
+      "commits": [],
+      "evidence": [
+        "protocol.StrictValidator redefines the integer type check; tests test_integers_are_type_strict and test_ids_reject_trailing_newline[*]. 82 tests pass on CPython 3.11.15, 3.12.13, 3.13.15, 3.14.7.",
+        "Changed protocol file: protocol/0.1.0/device-request.schema.json ($defs/id pattern) and protocol/0.1.0/README.md. SDK copies must be refreshed by the coordinator."
+      ],
+      "blocker": null
     }
   ]
 }
