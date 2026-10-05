@@ -1,6 +1,6 @@
 # Public-alpha documentation verification
 
-LAUNCH-DOCS-GW-001 covers L2/L3/L6 preparation from `e3cd6f0`. Checks on
+LAUNCH-DOCS-GW-001 covers L2/L3/L6 preparation from `08f0f12`. Checks on
 2026-10-05 used macOS 27 arm64, CPython 3.11.15. This is documentation/policy
 preparation; runtime, tests, scripts, protocol, metadata and lock files are unchanged.
 

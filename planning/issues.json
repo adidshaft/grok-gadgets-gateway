@@ -17,7 +17,7 @@
       "milestone": "M0",
       "stage": "done",
       "commits": [
-        "932e992"
+        "c5faad4"
       ],
       "evidence": "uv sync --locked and initial pytest smoke check"
     },
@@ -40,7 +40,7 @@
       "milestone": "M1",
       "stage": "done",
       "commits": [
-        "9cf5a25"
+        "9f65e48"
       ],
       "evidence": "7 pytest tests pass: schemas/fixtures, RGB bounds, custom capability discovery, ACK isolation, offline/timeouts/reconnect, bounded cursor history and restart"
     },
@@ -64,8 +64,8 @@
       "milestone": "M2",
       "stage": "done",
       "commits": [
-        "cf3e29d",
-        "d9ab081"
+        "68e27aa",
+        "293bddb"
       ],
       "evidence": "13 passing tests; real official MCP stdio client; TCP revocation/isolation/timeouts; USB PTY command/events/repeated hello/gateway restart; clean wheel install demo passes. Hardware and real Bot separate GW-004."
     },
@@ -118,10 +118,10 @@
       "milestone": "MH",
       "stage": "done",
       "commits": [
-        "e0b7256"
+        "66ff03c"
       ],
       "evidence": [
-        "Starting 4606023: button and state both executed and replaced RGB with 1,2,3,true.",
+        "Starting d2b1008: button and state both executed and replaced RGB with 1,2,3,true.",
         "17 pytest tests pass, Ruff passes, hub scripts/check.py passes; official MCP ClientSession rejects button/state/unknown and four malformed RGB forms without state mutation. See docs/verification/hardening.md."
       ],
       "blocker": null
@@ -149,10 +149,10 @@
       "milestone": "MH",
       "stage": "done",
       "commits": [
-        "7a4ba40"
+        "ac12b44"
       ],
       "evidence": [
-        "Starting 4606023: A retry accepted as new after B256 (sequence258).",
+        "Starting d2b1008: A retry accepted as new after B256 (sequence258).",
         "21 pytest tests, Ruff and hub check pass; current-boot windows bounded64x256; direct lifecycle and actual MCP plus two authenticated devices verify no sequence/history increment on A retry. See docs/verification/hardening.md."
       ],
       "blocker": null
@@ -180,7 +180,7 @@
       "milestone": "M2",
       "stage": "done",
       "commits": [
-        "5123eff"
+        "240262b"
       ],
       "evidence": [
         "73 gateway pytest tests and Ruff pass; hub scripts/check.py passes.",
@@ -209,7 +209,7 @@
       "milestone": "PUBLIC-ALPHA",
       "stage": "done",
       "commits": [
-        "668abd5bae48e316f9808e02cd08d39a854ddfea"
+        "1d853ba4f40a5e1b5781dadaf25566d3a192bfe6"
       ],
       "evidence": [
         "docs/verification/launch-docs.md: exact fresh installed README journey passed on macOS27 arm64 CPython3.11.15; canonical public-alpha policy/contact/CODEOWNERS and original Mermaid prepared.",
