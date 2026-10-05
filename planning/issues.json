@@ -530,6 +530,31 @@
         "Checked on CPython 3.11.15 (macOS arm64): uv sync --locked, ruff check, ruff format --check, and pytest -q (116 passed, 1 warning). No extra interpreters were run. Not Grok Bot or hardware verification."
       ],
       "blocker": null
+    },
+    {
+      "id": "REVIEW-GW-010",
+      "repository": "grok-gadgets-gateway",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Device-supplied regular expressions can block the gateway event loop during command validation (GW-07).",
+      "acceptance": [
+        "Reject pattern and patternProperties before registering a capability schema, including nested schema locations.",
+        "Allow ordinary string bounds, explicit properties and a data property named pattern.",
+        "Reject reference resolution and alternative schema dialects; no added dependencies or wire-protocol change."
+      ],
+      "dependencies": [],
+      "labels": [
+        "bug",
+        "gateway",
+        "P1"
+      ],
+      "milestone": "REVIEW-2026-10-05",
+      "stage": "done",
+      "commits": [],
+      "evidence": [
+        "tests/test_domain.py covers nested hostile regex, invalid regex syntax, alternate dialect and references, and accepted regex-free string schemas.",
+        "uv run pytest: 124 passed; uv run ruff check . and uv run ruff format --check . pass on CPython 3.11.15. Local software evidence only."
+      ],
+      "blocker": null
     }
   ]
 }

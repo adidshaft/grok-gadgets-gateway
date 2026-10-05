@@ -38,6 +38,57 @@ def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
 
 
+def check_capability_schema(schema):
+    """Reject device-controlled regex before jsonschema compiles or evaluates it.
+
+    Visit schema locations only: a property named 'pattern' or a literal object in
+    enum/const is data, not a regex. Unknown annotation values are not evaluated.
+    """
+    pending = [schema]
+    maps = {"properties", "$defs", "definitions", "dependentSchemas"}
+    arrays = {"allOf", "anyOf", "oneOf", "prefixItems"}
+    singles = {
+        "additionalProperties",
+        "unevaluatedProperties",
+        "propertyNames",
+        "items",
+        "contains",
+        "not",
+        "if",
+        "then",
+        "else",
+        "unevaluatedItems",
+        "contentSchema",
+    }
+    while pending:
+        current = pending.pop()
+        if not isinstance(current, dict):
+            continue
+        if current.get("$schema", "https://json-schema.org/draft/2020-12/schema") != (
+            "https://json-schema.org/draft/2020-12/schema"
+        ):
+            raise GatewayError("invalid_request", "Capability schemas require Draft 2020-12")
+        if "$ref" in current or "$dynamicRef" in current:
+            raise GatewayError("invalid_request", "Capability schemas must be inline")
+        if "pattern" in current or "patternProperties" in current:
+            raise GatewayError(
+                "invalid_request",
+                "Capability schemas cannot use pattern or patternProperties; "
+                "use enum, lengths and explicit properties",
+            )
+        for key, value in current.items():
+            if key in maps and isinstance(value, dict):
+                pending.extend(value.values())
+            elif key in arrays and isinstance(value, list):
+                pending.extend(value)
+            elif key in singles:
+                pending.append(value)
+    try:
+        StrictValidator.check_schema(schema)
+    except (SchemaError, RecursionError):
+        raise GatewayError("invalid_request", "Invalid capability schema") from None
+
+
 class Gateway:
     def __init__(
         self,
@@ -69,21 +120,7 @@ class Gateway:
             if name not in descriptor["capabilities"] or name == "rgb.set":
                 raise GatewayError("invalid_request", "Schema must match a custom capability")
 
-            def contains_ref(value):
-                if isinstance(value, dict):
-                    return (
-                        "$ref" in value
-                        or "$dynamicRef" in value
-                        or any(contains_ref(v) for v in value.values())
-                    )
-                return isinstance(value, list) and any(contains_ref(v) for v in value)
-
-            if contains_ref(schema):
-                raise GatewayError("invalid_request", "Capability schemas must be inline")
-            try:
-                StrictValidator.check_schema(schema)
-            except SchemaError:
-                raise GatewayError("invalid_request", "Invalid capability schema") from None
+            check_capability_schema(schema)
         if did not in self.devices and len(self.devices) >= 64:
             raise GatewayError("busy", "Device registry is full")
         previous = self.devices.get(did)
