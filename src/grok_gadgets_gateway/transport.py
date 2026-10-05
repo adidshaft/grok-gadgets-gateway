@@ -9,6 +9,14 @@ from pathlib import Path
 from .protocol import GatewayError, MAX_FRAME, VERSION, validate_request
 
 
+async def _close_writer(writer):
+    writer.close()
+    try:
+        await writer.wait_closed()
+    except (ConnectionResetError, BrokenPipeError):
+        pass  # The peer has already gone; cleanup must not report another failure.
+
+
 class Credentials:
     """Small operator-managed credential registry, re-read for prompt revocation."""
 
@@ -64,8 +72,7 @@ class DeviceServer:
     async def client(self, reader, writer):
         task = asyncio.current_task()
         if len(self.connections) >= 64:
-            writer.close()
-            await writer.wait_closed()
+            await _close_writer(writer)
             return
         self.connections.add(task)
         self.writers.add(writer)
@@ -112,9 +119,12 @@ class DeviceServer:
         except (asyncio.TimeoutError, ConnectionError, OSError):
             pass  # Diagnostics expose status only, never raw input or credential errors.
         finally:
-            if did is not None and sid is not None:
-                self.gateway.disconnect(did, sid)
-            writer.close()
-            await writer.wait_closed()
-            self.writers.discard(writer)
-            self.connections.discard(task)
+            try:
+                if did is not None and sid is not None:
+                    self.gateway.disconnect(did, sid)
+            finally:
+                try:
+                    await _close_writer(writer)
+                finally:
+                    self.writers.discard(writer)
+                    self.connections.discard(task)

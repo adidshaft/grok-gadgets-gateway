@@ -2,7 +2,10 @@ import asyncio
 import json
 import os
 import select
+import socket
+import struct
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 from jsonschema import Draft202012Validator
@@ -116,6 +119,92 @@ async def test_network_frame_bound_and_loopback_guard(tmp_path):
         await w.wait_closed()
     finally:
         await server.close()
+
+
+async def test_peer_reset_does_not_escape_server_callback(tmp_path):
+    path = tmp_path / "auth.json"
+    write_credentials(path)
+    gateway = Gateway()
+    server = await DeviceServer(gateway, Credentials(path), port=0).start()
+    loop = asyncio.get_running_loop()
+    previous_handler = loop.get_exception_handler()
+    unhandled = []
+    loop.set_exception_handler(lambda _loop, context: unhandled.append(context))
+    writer = None
+    try:
+        _, writer, reply = await connect(server)
+        assert reply["ok"]
+        gateway.command("dev-1", "rgb.set", {"r": 1, "g": 2, "b": 3, "on": True}, "pending")
+        # An abortive TCP close reproduces a child agent disappearing with a reset.
+        writer.get_extra_info("socket").setsockopt(
+            socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0)
+        )
+        writer.close()
+        await writer.wait_closed()
+        async with asyncio.timeout(2):
+            while any(not task.done() for task in server.connections):
+                await asyncio.sleep(0)
+        await asyncio.sleep(0)  # Deliver the stream protocol's task-done callback.
+        assert not unhandled, unhandled
+        assert not server.connections
+        assert not server.writers
+        assert not gateway.state("dev-1")["available"]
+        assert gateway.command_status("pending")["status"] == "unconfirmed"
+    finally:
+        if writer is not None:
+            writer.close()
+        await server.close()
+        loop.set_exception_handler(previous_handler)
+
+
+class CleanupWriter:
+    def __init__(self, error):
+        self.error = error
+        self.closed = False
+
+    def write(self, _data):
+        pass
+
+    async def drain(self):
+        pass
+
+    def close(self):
+        self.closed = True
+
+    async def wait_closed(self):
+        raise self.error
+
+
+async def test_cancelled_cleanup_propagates_and_removes_connection(tmp_path):
+    reader = asyncio.StreamReader()
+    reader.feed_eof()
+    writer = CleanupWriter(asyncio.CancelledError())
+    server = DeviceServer(Gateway(), Credentials(tmp_path / "unused.json"), port=0)
+    with pytest.raises(asyncio.CancelledError):
+        await server.client(reader, writer)
+    assert writer.closed
+    assert not server.connections
+    assert not server.writers
+
+
+@pytest.mark.parametrize("cleanup_error", [ConnectionResetError, BrokenPipeError])
+async def test_cleanup_reset_preserves_gateway_command_error(tmp_path, monkeypatch, cleanup_error):
+    path = tmp_path / "auth.json"
+    write_credentials(path)
+    gateway = Gateway()
+    monkeypatch.setattr(gateway, "handle", Mock(side_effect=RuntimeError("command failure")))
+    server = DeviceServer(gateway, Credentials(path), port=0)
+    greeting = {**hello(), "token": TOKEN}
+    reader = asyncio.StreamReader()
+    reader.feed_data((json.dumps(greeting) + '\n{"type":"ping"}\n').encode())
+    reader.feed_eof()
+    writer = CleanupWriter(cleanup_error("peer closed"))
+    with pytest.raises(RuntimeError, match="command failure"):
+        await server.client(reader, writer)
+    assert writer.closed
+    assert not server.connections
+    assert not server.writers
+    assert not gateway.state("dev-1")["available"]
 
 
 async def test_usb_bridge_pty_canonical_transcript(tmp_path):
