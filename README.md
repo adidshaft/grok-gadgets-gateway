@@ -1,6 +1,6 @@
 # Grok Gadgets gateway
 
-A local MCP server for Grok Gadgets. It lists gadget capabilities, sends commands, and reports state and events. It includes a software C124 simulator. Experimental alpha. Exclusively for Grok.
+A local MCP server to connect your existing Grok Bot to gadgets. It lists capabilities, sends commands, and reports state and events. It includes a software C124 simulator. Experimental alpha; the Grok Bot connection remains unverified.
 
 ## What works with Grok Bot today
 

@@ -582,6 +582,34 @@
         "uv run pytest: 125 passed; uv run ruff check . and uv run ruff format --check . pass on CPython 3.11.15. No durable or physical exactly-once claim."
       ],
       "blocker": null
+    },
+    {
+      "id": "REVIEW-GW-012",
+      "repository": "grok-gadgets-gateway",
+      "problem": "The first-run CLI and live credential lifecycle lacked end-to-end coverage; recovery instructions were stale",
+      "acceptance": [
+        "init/enroll/serve accept an enrolled software device through HTTP MCP",
+        "Repeat command IDs return replay receipts without redelivery",
+        "Revocation closes the device connection; MCP token rotation rejects the old token without server restart",
+        "Process exits within a bound and credentials are absent from logs"
+      ],
+      "dependencies": [
+        "REVIEW-GW-010",
+        "REVIEW-GW-011"
+      ],
+      "labels": [
+        "bug",
+        "gateway",
+        "P1"
+      ],
+      "milestone": "M2",
+      "stage": "done",
+      "commits": [],
+      "evidence": [
+        "tests/test_http.py::test_cli_serves_enrolled_device_and_revokes_live_access",
+        "2026-10-05: Ruff lint/format, 126 pytest checks and wheel/sdist passed. Pinned MCP can emit ClosedResourceError on SSE disconnect; test verifies actual termination. Local software only; no tunnel, account or hardware."
+      ],
+      "blocker": null
     }
   ]
 }
