@@ -103,6 +103,35 @@ async def test_unauthorized_device_isolation_and_reconnect(tmp_path):
         await server.close()
 
 
+async def test_close_returns_while_device_polls(tmp_path):
+    path = tmp_path / "auth.json"
+    write_credentials(path)
+    g = Gateway()
+    server = await DeviceServer(g, Credentials(path), port=0).start()
+    r, w, reply = await connect(server)
+    assert reply["ok"]
+
+    async def poll_forever():
+        while True:
+            w.write(b'{"type":"poll"}\n')
+            await w.drain()
+            if not await r.readline():
+                return "eof"
+            await asyncio.sleep(0.05)
+
+    poller = asyncio.create_task(poll_forever())
+    await asyncio.sleep(0.2)
+    try:
+        async with asyncio.timeout(3):
+            await server.close()
+        assert await asyncio.wait_for(poller, 2) == "eof"
+        assert not server.connections and not server.writers
+        assert not g.state("dev-1")["available"]
+    finally:
+        poller.cancel()
+        w.close()
+
+
 async def test_network_frame_bound_and_loopback_guard(tmp_path):
     path = tmp_path / "auth.json"
     write_credentials(path)

@@ -270,6 +270,31 @@
         "The canonical hub FAQ link is prepared for the coordinated documentation update; this local-only change does not make the new FAQ publicly available. The implementing commit references DOC-HOSTING-GW-001."
       ],
       "blocker": null
+    },
+    {
+      "id": "REVIEW-GW-001",
+      "repository": "grok-gadgets-gateway",
+      "owner": "grok-gadgets-gateway",
+      "problem": "GW-01: DeviceServer.close() hangs on Python >=3.12 while a device is connected; CI tests only 3.11",
+      "acceptance": [
+        "close() closes/aborts client writers and cancels client tasks before a bounded server.wait_closed()",
+        "Regression test closes the server while a device polls",
+        "CI matrix runs Python 3.11, 3.12, 3.13 and 3.14 with SHA-pinned actions and existing hardening"
+      ],
+      "dependencies": [],
+      "labels": [
+        "bug",
+        "gateway",
+        "P0"
+      ],
+      "milestone": "REVIEW-2026-10-05",
+      "stage": "done",
+      "commits": [],
+      "evidence": [
+        "Without the fix, test_close_returns_while_device_polls fails on CPython 3.12.13 (timeout); with it, 78 tests pass locally on CPython 3.11.15, 3.12.13, 3.13.15 and 3.14.7 (macOS arm64). test_usb_bridge_pty_canonical_transcript no longer stalls 15 s on 3.12.",
+        "Hosted CI matrix is configured but not run: no push is authorized."
+      ],
+      "blocker": null
     }
   ]
 }
