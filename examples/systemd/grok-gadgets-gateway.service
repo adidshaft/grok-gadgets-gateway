@@ -1,0 +1,12 @@
+[Unit]
+Description=Grok Gadgets gateway (loopback MCP and device listener)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/ABSOLUTE/PATH/grok-gadgets-gateway serve
+Restart=on-failure
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

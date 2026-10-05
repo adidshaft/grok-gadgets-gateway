@@ -443,6 +443,38 @@
         "Checked on CPython 3.11.15 (macOS arm64): uv sync --locked, ruff check, ruff format --check, and pytest -q (111 passed). No extra interpreters were run. Physical USB is not verified."
       ],
       "blocker": null
+    },
+    {
+      "id": "REVIEW-GW-007",
+      "repository": "grok-gadgets-gateway",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Operators need a long-running loopback gateway: device listener plus authenticated Streamable HTTP, with a dead-simple credential CLI",
+      "acceptance": [
+        "Config directory is $XDG_CONFIG_HOME/grok-gadgets or ~/.config/grok-gadgets; credentials.json is used when --credentials is omitted and the file exists",
+        "enroll writes atomically (temp file, mode 0600, os.replace) and prints GROK_GADGETS_DEVICE_TOKEN once on stdout",
+        "revoke, devices (ids only), rotate-mcp-token, init, and serve exist; stdio flags still work",
+        "serve binds 127.0.0.1 only: device listener plus MCP Streamable HTTP on port 8766 path /mcp using mcp 1.26.0 FastMCP and TokenVerifier",
+        "MCP token file mcp-token is mode 0600; test controls are impossible in HTTP mode; gadgets_command is not read-only and other tools are read-only",
+        "Redacted request logs go to stderr; Host allow-list accepts extra --allowed-host values",
+        "Official MCP Streamable HTTP client tests: missing and wrong token 401, right token lists tools and a simulator command works, test controls absent, wrong Host rejected",
+        "examples/launchd and examples/systemd show how to run serve"
+      ],
+      "dependencies": [
+        "REVIEW-GW-006"
+      ],
+      "labels": [
+        "feature",
+        "gateway",
+        "P0"
+      ],
+      "milestone": "REVIEW-2026-10-05",
+      "stage": "done",
+      "commits": [],
+      "evidence": [
+        "tests/test_cli.py covers init, enroll, devices, revoke, rotate-mcp-token, serve help, and optional XDG credentials. tests/test_http.py uses mcp.client.streamable_http.streamable_http_client.",
+        "Checked on CPython 3.11.15 (macOS arm64): uv sync --locked, ruff check, ruff format --check, and pytest -q (116 passed). No extra interpreters were run. Not Grok Bot or hardware verification. The HTTP listener is loopback bearer-token auth, not an OAuth server."
+      ],
+      "blocker": null
     }
   ]
 }
