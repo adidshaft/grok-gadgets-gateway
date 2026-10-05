@@ -353,6 +353,37 @@
         "87 tests pass on CPython 3.11.15, 3.12.13, 3.13.15, 3.14.7. Simulated only; no Grok or physical verification."
       ],
       "blocker": null
+    },
+    {
+      "id": "REVIEW-GW-004",
+      "repository": "grok-gadgets-gateway",
+      "owner": "grok-gadgets-gateway",
+      "problem": "GW-08/GW-09/GW-13/GW-14/GW-15 and LIN-03: TCP handler exceptions escape, idle sockets and blocked drains hold slots, non-ASCII token oracle, failed hello wedges the connection, silent registry edge cases, transient registry errors reported as unauthorized",
+      "acceptance": [
+        "RecursionError and unexpected exceptions get one reply (invalid_request / internal_error) and a clean close",
+        "Unauthenticated sockets have a 2 s hello deadline and at most 16 pending slots (oldest evicted); drain() is bounded by idle_timeout",
+        "Tokens compare as bytes; every pre-auth credential failure has one message",
+        "Connection binds to a device only after a successful register(); a failed hello can be retried",
+        "Registry rejects duplicate keys, non-object shapes, invalid IDs, short tokens and non-bool revoked; the CLI validates it at startup with a clear stderr message",
+        "Transient read/parse errors keep the last good registry for 30 s, then return retryable unavailable; missing/insecure files return unavailable immediately; unauthorized is reserved for unknown device or token mismatch"
+      ],
+      "dependencies": [
+        "REVIEW-GW-003"
+      ],
+      "labels": [
+        "bug",
+        "security",
+        "gateway",
+        "P1"
+      ],
+      "milestone": "REVIEW-2026-10-05",
+      "stage": "done",
+      "commits": [],
+      "evidence": [
+        "tests/test_transports.py: test_malformed_registry_is_rejected_with_reply[*], test_registry_glitch_keeps_last_good_then_reports_unavailable, test_pre_auth_failures_are_indistinguishable, test_pre_auth_deep_json_gets_reply_and_hello_retry_works, test_idle_unauthenticated_sockets_cannot_lock_out_devices, test_peer_that_stops_reading_is_disconnected, test_unexpected_error_replies_once_and_cleanup_reset_is_quiet; tests/test_cli.py startup validation.",
+        "102+ tests pass on CPython 3.11.15, 3.12.13, 3.13.15, 3.14.7. Linux SDK already treats unavailable as non-fatal (agent.py _KNOWN_ERRORS); no SDK file was edited."
+      ],
+      "blocker": null
     }
   ]
 }

@@ -7,7 +7,7 @@ from .domain import Gateway
 from .mcp_server import make_server
 from .simulator import Simulator
 from .simulator_config import SimulatorConfigError, load_config
-from .transport import Credentials, DeviceServer
+from .transport import CredentialError, Credentials, DeviceServer
 
 
 def main():
@@ -30,16 +30,22 @@ def main():
         config = load_config(args.simulator_config) if args.simulator_config else None
     except SimulatorConfigError as exc:
         parser.error(str(exc))
+    credentials = Credentials(args.credentials) if args.credentials else None
+    if credentials:
+        try:
+            credentials.validate()
+        except CredentialError as exc:
+            parser.error(f"{exc}: {args.credentials}")
     gateway = Gateway()
     simulator = Simulator(gateway, config=config) if args.simulator else None
     device_server = (
         DeviceServer(
             gateway,
-            Credentials(args.credentials),
+            credentials,
             port=args.device_port,
             reserved_ids=[simulator.device_id] if simulator else [],
         )
-        if args.credentials
+        if credentials
         else None
     )
     server = make_server(gateway, simulator, device_server, args.test_controls)
