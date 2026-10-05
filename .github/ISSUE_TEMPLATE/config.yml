@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+- name: Questions and build discussion
+  url: https://www.reddit.com/r/GrokGadgets/
+  about: Questions do not require a full bug form.
+- name: Private security or conduct report
+  url: mailto:adidshaft@kyokasuigetsu.xyz
+  about: Use the private contact. GitHub private reporting activation is pending.

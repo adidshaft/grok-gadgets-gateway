@@ -1,0 +1,31 @@
+name: Hardware verification report
+description: Actual observations from an identified device
+labels:
+- needs hardware
+body:
+- type: input
+  id: model
+  attributes:
+    label: Exact model and firmware source/hash
+  validations:
+    required: true
+- type: input
+  id: host
+  attributes:
+    label: Host, runtime and cable/transport
+  validations:
+    required: true
+- type: textarea
+  id: steps
+  attributes:
+    label: Steps and expected/observed results
+    description: Separate firmware acknowledgement from physical observation; include disconnect/recovery.
+  validations:
+    required: true
+- type: textarea
+  id: evidence
+  attributes:
+    label: Safe redacted evidence
+    description: Do not include private device identifiers or account details.
+  validations:
+    required: false
