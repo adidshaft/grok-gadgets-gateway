@@ -38,7 +38,7 @@ uv run grok-gadgets-gateway devices
 uv run grok-gadgets-gateway serve
 ```
 
-`init` creates the directory mode 0700, `credentials.json`, and `mcp-token`. It does not print tokens. `enroll` writes the device with an atomic replace (temp file, mode 0600, `os.replace`) and prints one stdout line, `GROK_GADGETS_DEVICE_TOKEN=...`. Copy that value to the device once. It is not printed again. `devices` prints ids only. `revoke <device-id>` sets `revoked` to true. `rotate-mcp-token` replaces the MCP bearer token and prints `GROK_GADGETS_MCP_TOKEN=...` once.
+`init` creates the directory mode 0700, `credentials.json`, and `mcp-token`. Stdout is copy-paste stdio MCP JSON, then HTTP settings for `http://127.0.0.1:8766/mcp`. It does not print the MCP token unless you pass `--show-token`. `enroll` writes the device with an atomic replace (temp file, mode 0600, `os.replace`) and prints one stdout line, `GROK_GADGETS_DEVICE_TOKEN=...`. Copy that value to the device once. It is not printed again. `devices` prints ids only. `revoke <device-id>` sets `revoked` to true. `rotate-mcp-token` replaces the MCP bearer token and prints `GROK_GADGETS_MCP_TOKEN=...` once.
 
 The registry shape is `{ "devices": { "device-id": { "token": "private value >=16 chars", "revoked": false } } }`.
 Never commit the file or include it in a support report. The gateway rejects permissions that allow group or public access.

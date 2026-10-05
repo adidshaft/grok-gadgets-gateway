@@ -53,11 +53,17 @@ def test_init_enroll_devices_revoke_and_rotate_are_atomic(tmp_path):
 
     env = isolated_env(tmp_path)
     created = gateway("init", env=env)
-    assert created.returncode == 0 and created.stdout == ""
+    assert created.returncode == 0
+    assert "http://127.0.0.1:8766/mcp" in created.stdout
+    assert '"mcpServers"' in created.stdout and "grok-gadgets-gateway" in created.stdout
     assert "GROK_GADGETS_DEVICE_TOKEN" not in created.stderr
     root = tmp_path / "grok-gadgets"
     credentials = root / "credentials.json"
     mcp_token = root / "mcp-token"
+    mcp_secret = mcp_token.read_text().strip()
+    assert mcp_secret not in created.stdout and mcp_secret not in created.stderr
+    shown = gateway("init", "--show-token", env=env)
+    assert shown.returncode == 0 and f"Bearer {mcp_secret}" in shown.stdout
     assert (credentials.stat().st_mode & 0o777) == 0o600
     assert (mcp_token.stat().st_mode & 0o777) == 0o600
     assert (root.stat().st_mode & 0o777) == 0o700

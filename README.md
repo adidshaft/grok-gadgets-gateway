@@ -4,7 +4,7 @@ This gateway is a local MCP server for Grok Gadgets. It lists gadget capabilitie
 
 ## What works with Grok Bot today
 
-The simulator works on this computer when you run `serve --simulator` or the stdio MCP process. That path is covered by local tests. It does not call Grok. A gadget works only if you run `serve` on the gadget's computer and you expose the authenticated MCP URL yourself over HTTPS. That loopback service is implemented and tested here. It has not been verified with Grok Bot, a mobile client, or physical hardware. A device acknowledgement is a report, not proof of a physical effect.
+A software simulator can run inside a Grok Bot cloud computer as the stdio process `grok-gadgets-gateway --simulator`. A gadget on a Mac or Raspberry Pi needs `serve` on that computer and an HTTPS tunnel that you operate to `http://127.0.0.1:8766/mcp`. That loopback service is implemented and tested here with the official MCP client. It has not been verified with Grok Bot. Physical hardware has not been verified. A device acknowledgement is a report, not proof of a physical effect.
 
 ## Quick start
 

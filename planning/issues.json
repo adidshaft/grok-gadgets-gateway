@@ -503,6 +503,33 @@
         "Checked on CPython 3.11.15 (macOS arm64): uv sync --locked, ruff check, ruff format --check, and pytest -q (116 passed). Not Grok Bot or hardware verification."
       ],
       "blocker": null
+    },
+    {
+      "id": "REVIEW-GW-009",
+      "repository": "grok-gadgets-gateway",
+      "owner": "grok-gadgets-gateway",
+      "problem": "init prints no client configuration, so the operator has to invent the MCP JSON",
+      "acceptance": [
+        "init prints copy-paste stdio MCP JSON and HTTP settings for http://127.0.0.1:8766/mcp",
+        "The MCP bearer token is omitted unless --show-token",
+        "The remote-access security checklist states that this path is not verified with Grok Bot"
+      ],
+      "dependencies": [
+        "REVIEW-GW-008"
+      ],
+      "labels": [
+        "feature",
+        "gateway",
+        "P1"
+      ],
+      "milestone": "REVIEW-2026-10-05",
+      "stage": "done",
+      "commits": [],
+      "evidence": [
+        "tests/test_cli.py::test_init_enroll_devices_revoke_and_rotate_are_atomic checks the URL, mcpServers, a hidden token, and --show-token.",
+        "Checked on CPython 3.11.15 (macOS arm64): uv sync --locked, ruff check, ruff format --check, and pytest -q (116 passed, 1 warning). No extra interpreters were run. Not Grok Bot or hardware verification."
+      ],
+      "blocker": null
     }
   ]
 }

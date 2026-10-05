@@ -30,3 +30,17 @@ Keep the bearer token in the client configuration. A tunnel without that token i
 ## What this does not prove
 
 Local tests use the official MCP Streamable HTTP client against `127.0.0.1`. They check a missing token, a wrong token, a matching token, a simulator command, the absence of test controls, and a rejected Host. They do not open a public URL and they do not talk to Grok Bot or a board.
+
+## Security checklist
+
+This path is implemented locally. It is not verified with Grok Bot or on hardware.
+
+- `serve` binds `127.0.0.1` only. There is no flag for a public address.
+- Publish the MCP port only. Leave device port 8765 on loopback.
+- `mcp-token` and `credentials.json` are mode 0600 and stay out of Git.
+- Pass the tunnel hostname with `--allowed-host`. Any other Host is rejected.
+- The client sends `Authorization: Bearer`. The token is not in the URL.
+- Run `init` as the same user that will run `serve`.
+- `init` prints client JSON and hides the MCP token unless you pass `--show-token`.
+- A local MCP client test is not a Grok Bot session and not physical proof.
+
