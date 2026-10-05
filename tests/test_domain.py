@@ -193,6 +193,44 @@ def test_custom_capability_discovery_and_validation():
     fails("invalid_request", lambda: g.register(registration))
 
 
+@pytest.mark.parametrize(
+    "schema",
+    [
+        {"type": "object", "properties": {"text": {"pattern": "^(a+)+$"}}},
+        {"patternProperties": {"^(a+)+$": {"type": "string"}}},
+        {"allOf": [{"propertyNames": {"pattern": "^(a+)+$"}}]},
+        {"dependentSchemas": {"text": {"not": {"patternProperties": {"(": {}}}}}},
+        {"properties": {"items": {"items": {"if": {"pattern": "("}}}}},
+        {"$schema": "http://json-schema.org/draft-07/schema#", "dependencies": {}},
+        {"properties": {"text": {"$dynamicRef": "#recursive"}}},
+    ],
+)
+def test_device_regex_schemas_are_rejected_before_validation(schema):
+    gateway = Gateway()
+    registration = hello()
+    registration["device"]["capabilities"].append("text.set")
+    registration["device"]["capability_schemas"] = {"text.set": schema}
+    fails("invalid_request", lambda: gateway.register(registration))
+    assert gateway.devices == {}
+
+
+def test_regex_free_strings_and_literal_pattern_properties_remain_usable():
+    gateway = Gateway()
+    registration = hello()
+    registration["device"]["capabilities"].append("text.set")
+    registration["device"]["capability_schemas"] = {
+        "text.set": {
+            "type": "object",
+            "properties": {"pattern": {"type": "string", "minLength": 1, "maxLength": 5}},
+            "required": ["pattern"],
+            "additionalProperties": False,
+        }
+    }
+    gateway.register(registration)
+    assert gateway.command("dev-1", "text.set", {"pattern": "hello"})["status"] == "accepted"
+    fails("invalid_arguments", lambda: gateway.command("dev-1", "text.set", {"pattern": "longer"}))
+
+
 async def test_only_command_capabilities_are_callable_and_discovered():
     g = Gateway()
     sim = Simulator(g)
