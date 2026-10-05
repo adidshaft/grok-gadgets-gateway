@@ -2,6 +2,7 @@
 
 import argparse
 import asyncio
+import json
 import sys
 
 from .domain import Gateway
@@ -14,10 +15,11 @@ from .operator import (
     enroll,
     init_config,
     mcp_token_path,
+    read_mcp_token,
     revoke,
     rotate_mcp_token,
 )
-from .service import serve_gateway
+from .service import MCP_PATH, serve_gateway
 from .simulator import Simulator
 from .simulator_config import SimulatorConfigError, load_config
 from .transport import CredentialError, Credentials, DeviceServer
@@ -94,17 +96,57 @@ def _credential_argument(parser):
     )
 
 
+def client_settings(port, show_token):
+    """Copy-paste MCP client JSON. The bearer token is included only with show_token."""
+    stdio = {
+        "mcpServers": {
+            "grok-gadgets": {
+                "command": "grok-gadgets-gateway",
+                "args": ["--simulator"],
+            }
+        }
+    }
+    url = f"http://127.0.0.1:{port}{MCP_PATH}"
+    header = "Bearer <mcp-token>"
+    if show_token:
+        header = "Bearer " + read_mcp_token(mcp_token_path())
+    remote = {"mcpServers": {"grok-gadgets": {"url": url, "headers": {"Authorization": header}}}}
+    body = json.dumps(stdio, indent=2) + "\n\n" + json.dumps(remote, indent=2) + "\n"
+    return body
+
+
 def command_main(argv):
     parser = argparse.ArgumentParser(prog=f"grok-gadgets-gateway {argv[0]}")
     command = argv[0]
     if command == "init":
-        parser.parse_args(argv[1:])
+        parser.add_argument(
+            "--show-token",
+            action="store_true",
+            help="Print the MCP bearer token once inside the HTTP client JSON",
+        )
+        parser.add_argument(
+            "--port",
+            type=int,
+            default=8766,
+            help="Port written into the HTTP client URL (default 8766)",
+        )
+        args = parser.parse_args(argv[1:])
         created = init_config()
         print(f"Config directory {config_dir()}", file=sys.stderr)
         if created:
             print("Created " + ", ".join(str(path) for path in created), file=sys.stderr)
         else:
             print("Existing files kept", file=sys.stderr)
+        print(
+            "Stdout is copy-paste stdio JSON, then HTTP JSON. "
+            "The MCP token stays in the file unless you passed --show-token.",
+            file=sys.stderr,
+        )
+        try:
+            settings = client_settings(args.port, args.show_token)
+        except CredentialError as exc:
+            _fail(parser, str(exc))
+        print(settings, end="")
         return 0
     if command == "enroll":
         parser.add_argument("device_id")
