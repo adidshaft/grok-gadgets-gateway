@@ -384,6 +384,36 @@
         "102+ tests pass on CPython 3.11.15, 3.12.13, 3.13.15, 3.14.7. Linux SDK already treats unavailable as non-fatal (agent.py _KNOWN_ERRORS); no SDK file was edited."
       ],
       "blocker": null
+    },
+    {
+      "id": "REVIEW-GW-005",
+      "repository": "grok-gadgets-gateway",
+      "owner": "grok-gadgets-gateway",
+      "problem": "GW-06: only the name button is treated as an event, so Linux custom events and reserved history_lost are offered as commands",
+      "acceptance": [
+        "event_capabilities includes button, reserved history_lost, and any capability whose inline schema has x-grok-gadgets-kind event",
+        "Those names are omitted from command_capabilities and capability_contracts",
+        "An event whose name is a command capability is rejected",
+        "protocol/0.1.0/README.md documents the rule; wire format stays 0.1.0"
+      ],
+      "dependencies": [
+        "REVIEW-GW-004"
+      ],
+      "labels": [
+        "bug",
+        "protocol",
+        "gateway",
+        "P1"
+      ],
+      "milestone": "REVIEW-2026-10-05",
+      "stage": "done",
+      "commits": [],
+      "evidence": [
+        "tests/test_domain.py::test_annotated_and_reserved_events_are_not_commands. A Linux-shaped schema {type:object, x-grok-gadgets-kind:event} and the reserved name history_lost are events, not commands. An event named rgb.set is rejected.",
+        "Changed protocol file: protocol/0.1.0/README.md only. No schema change. SDK copies must be refreshed by the coordinator.",
+        "Checked on CPython 3.11.15 (macOS arm64): uv sync --locked, ruff check, ruff format --check, and pytest -q (107 passed). No extra interpreters were run. Not Grok or hardware verification."
+      ],
+      "blocker": null
     }
   ]
 }

@@ -217,6 +217,39 @@ async def test_only_command_capabilities_are_callable_and_discovered():
     assert g.state(sim.device_id)["state"]["button"] == {"pressed": True}
 
 
+def test_annotated_and_reserved_events_are_not_commands():
+    g = Gateway()
+    registration = hello()
+    registration["device"]["capabilities"].extend(["motion", "history_lost"])
+    registration["device"]["capability_schemas"] = {
+        "motion": {"type": "object", "x-grok-gadgets-kind": "event"}
+    }
+    sid = g.register(registration)
+    discovery = g.state("dev-1")
+    assert discovery["event_capabilities"] == ["button", "motion", "history_lost"]
+    assert discovery["command_capabilities"] == ["rgb.set"]
+    assert set(discovery["capability_contracts"]) == {"rgb.set"}
+    for name in ("motion", "history_lost", "button"):
+        fails(
+            "unsupported_capability",
+            lambda name=name: g.command("dev-1", name, {}, name),
+        )
+    fails(
+        "unsupported_capability",
+        lambda: g.handle(
+            "dev-1",
+            sid,
+            {"type": "event", "event_id": "cmd-edge", "name": "rgb.set", "data": {}},
+        ),
+    )
+    assert g.handle(
+        "dev-1",
+        sid,
+        {"type": "event", "event_id": "motion-1", "name": "motion", "data": {"x": 1}},
+    )["ok"]
+    assert g.read_events()["events"][0]["name"] == "motion"
+
+
 def test_custom_string_only_commands_remain_callable():
     g = Gateway()
     registration = hello()
