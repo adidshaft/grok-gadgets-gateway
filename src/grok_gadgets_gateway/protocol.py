@@ -7,7 +7,13 @@ from pathlib import Path
 from jsonschema import Draft202012Validator, validators
 
 VERSION = "0.1.0"
+# Every gateway reply and every USB serial frame fits 2048 bytes (firmware framing).
 MAX_FRAME = 2048
+# A TCP device (for example a Linux agent) may send request frames up to 16 KiB, so a
+# hello can carry schemas and descriptions for all 16 capabilities.
+MAX_TCP_FRAME = 16384
+# Device-supplied capability descriptions shown to the assistant.
+MAX_DESCRIPTION = 300
 _root = Path(__file__).resolve().parents[2] / "protocol" / VERSION
 if not _root.exists():
     _root = files("grok_gadgets_gateway").joinpath("protocol", VERSION)
