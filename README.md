@@ -1,8 +1,9 @@
 # Grok Gadgets gateway
 
-A local MCP server that lets your Grok Bot, or any MCP client, list and control gadgets: a
-built-in simulated light, Linux gadgets and ESP32 devices. Experimental alpha: Grok Bot and
-hardware are not verified yet. See the [project status](https://grok-gadgets.pages.dev/doc-docs-public-support-matrix).
+A local MCP server that lets MCP clients today, and your Grok Bot later, list and control
+gadgets: a built-in simulated light, Linux gadgets and ESP32 devices. Experimental alpha: Grok Bot and
+hardware are not verified yet ([project status](https://grok-gadgets.pages.dev/doc-docs-public-support-matrix)).
+Independent project, not affiliated with SpaceXAI or xAI.
 
 ## Quick start
 
@@ -19,56 +20,82 @@ uv run grok-gadgets-gateway serve --simulator
 `init` prints pasteable MCP client settings. Then call the tools from MCP Inspector:
 [first success in five minutes](docs/first-success.md).
 
-## Settings and devices
-
-`init` prints two blocks with absolute paths: one where your client starts the gateway (`stdio`), one for the running `serve`. `init --client http` prints just one. The MCP URL is `http://127.0.0.1:8766/mcp`. The bearer token is the single line in `~/.config/grok-gadgets/mcp-token` (mode 0600). Devices listen on `127.0.0.1:8765`. Both sockets are loopback only.
-
-For a real device id: `uv run grok-gadgets-gateway enroll <device-id>`, then give that device the printed `GROK_GADGETS_DEVICE_TOKEN` once (or use `--token-file <path>`). `enroll <device-id> --rotate` issues a new token for the same device. Read [remote access](docs/remote-access.md) before you put anything on the network.
-
-Optional local demo (stdio child, no HTTP):
-
-```sh
-uv run python -m grok_gadgets_gateway.demo
-```
-
-The demo uses `--test-controls`. HTTP `serve` does not expose them.
-
-## What works with Grok Bot today
-
-| You can do this now | You cannot do this yet |
-| --- | --- |
-| Run a local MCP client against this gateway. | Treat a local test as a Grok Bot session. |
-| Run `serve` on `http://127.0.0.1:8766/mcp` with a file bearer token. | Point Grok Bot at `127.0.0.1`. A cloud Bot cannot open that port. |
-| Put your own HTTPS in front of `serve`. | Claim that path is verified. No Grok Bot or hardware check exists here. |
-
-A device acknowledgement is a report, not proof of a physical effect. Button events do not wake Grok Bot.
+## How it works
 
 ```mermaid
 flowchart LR
-    C["Local MCP client"] --> G["Gateway"]
-    G --> S["Software C124 simulator"]
-    G --> D["Linux / ESP32 device application"]
-    B["Grok Bot: not verified"] -.-> G
+    C["MCP client<br>(Inspector, desktop apps)"] --> G["Gateway<br>127.0.0.1"]
+    G --> S["Simulated light"]
+    G --> D["Linux / ESP32 gadgets"]
+    B["Grok Bot<br>(not connected yet)"] -.-> G
 ```
 
-## Next
+The gateway gives any MCP client six tools:
 
-- Customize the simulator: [simulator guide](docs/simulator.md)
-- Connect a gadget: [local operation](docs/local-operation.md) and [protocol 0.1.0](protocol/0.1.0/README.md)
-- HTTPS in front of `serve`: [remote access](docs/remote-access.md)
-- Contribute: [CONTRIBUTING](CONTRIBUTING.md), [support](SUPPORT.md), [issues](https://github.com/adidshaft/grok-gadgets-gateway/issues)
+| Tool | What it does |
+| --- | --- |
+| `gadgets_list_devices` | Lists gadgets, their commands and what each one does. Call it first. |
+| `gadgets_get_state` | Reads a gadget's last reported state and how fresh it is. |
+| `gadgets_command` | Sends a command and waits up to 3 seconds for the result. |
+| `gadgets_command_status` | Reads the result of a slower command later. |
+| `gadgets_read_events` | Reads button presses and other events in order. |
+| `gadgets_diagnostics` | A support report with no tokens, state or arguments. |
 
-Standard tools: `gadgets_list_devices`, `gadgets_get_state`, `gadgets_command`, `gadgets_command_status`, `gadgets_read_events`, `gadgets_diagnostics`.
+A result is the gadget's own report, not proof of a physical effect.
 
-This repository owns the gateway, simulator, and canonical schemas. Device libraries live in the [Linux SDK](https://github.com/adidshaft/grok-gadgets-linux-sdk) and [ESP32 SDK](https://github.com/adidshaft/grok-gadgets-esp32-sdk). Shared docs live in the [hub](https://github.com/adidshaft/grok-gadgets).
+## Connect a gadget
 
-There is no OAuth server. A tunnel moves packets; it does not replace the bearer token. Do not expose port 8765. See [HARD-GROK-REMOTE-001](https://github.com/adidshaft/grok-gadgets/issues/4), [hosting FAQ](https://github.com/adidshaft/grok-gadgets/blob/main/docs/getting-started/hosting.md), [architecture](docs/architecture.md), and [security](SECURITY.md).
+`init` prints two settings blocks with absolute paths: one where your MCP client starts the
+gateway (`stdio`), and one for a running `serve` (`http://127.0.0.1:8766/mcp` with the bearer
+token from `~/.config/grok-gadgets/mcp-token`). `init --client http` prints just one.
+
+Gadgets connect to `127.0.0.1:8765` with their own token:
+
+```sh
+uv run grok-gadgets-gateway enroll desk-lamp --token-file desk-lamp.token
+```
+
+`enroll desk-lamp --rotate` issues a new token for the same gadget. Write gadgets with the
+[Linux SDK](https://github.com/adidshaft/grok-gadgets-linux-sdk) or the
+[ESP32 SDK](https://github.com/adidshaft/grok-gadgets-esp32-sdk); the Linux SDK's `dev`
+command needs no token at all. Both ports are loopback only.
+
+## Grok Bot today
+
+A cloud Grok Bot cannot open `127.0.0.1` on your computer, so today the gateway works with
+local MCP clients. A supported remote route is later work
+([HARD-GROK-REMOTE-001](https://github.com/adidshaft/grok-gadgets/issues/4)). `serve` is not an
+OAuth server, and a tunnel does not replace the bearer token. Never expose port 8765. Read
+[remote access](docs/remote-access.md) and [security](SECURITY.md) first.
+
+## Troubleshooting
 
 | Symptom | Next step |
 | --- | --- |
-| Not sure which command | Run `grok-gadgets-gateway --help`. `stdio` is for an MCP client that starts the gateway itself; use `serve` for a long-running process. |
-| No simulated device | Pass `--simulator`. |
-| Config rejected | Use strict v1 JSON and the [documented bounds](docs/simulator.md). |
-| Unconfirmed / timed out | Inspect state. Do not invent a new command ID for an uncertain physical action. |
+| Not sure which command | Run `grok-gadgets-gateway --help`. Use `serve` for a long-running process; `stdio` is for an MCP client that starts the gateway itself. |
+| No simulated light | Start with `--simulator`. |
+| `401` from the client | Send `Authorization: Bearer <token>` with the exact contents of the token file. |
+| Config rejected | Use strict v1 JSON within the [documented bounds](docs/simulator.md). |
+| Command still `accepted` or `dispatched` | The gadget is slow. Poll `gadgets_command_status`; never resend with a new command ID. |
 
-Apache-2.0. Not affiliated with xAI. Pre-publication commit dates were reconstructed; verification records keep their real dates. See the [history record](https://github.com/adidshaft/grok-gadgets/blob/main/docs/verification/publication-sanitization.md).
+## Learn more
+
+- [First success with MCP Inspector](docs/first-success.md) and the [simulator guide](docs/simulator.md)
+- [Local operation](docs/local-operation.md), [architecture](docs/architecture.md) and [protocol 0.1.0](protocol/0.1.0/README.md)
+- Demo without HTTP: `uv run python -m grok_gadgets_gateway.demo` (uses test-only controls)
+- Shared docs and the website: [hub repository](https://github.com/adidshaft/grok-gadgets) and <https://grok-gadgets.pages.dev/>
+
+## Community
+
+Questions, build photos and ideas are welcome on
+[r/GrokGadgets](https://www.reddit.com/r/GrokGadgets/). Report bugs and request features in
+[GitHub Issues](https://github.com/adidshaft/grok-gadgets-gateway/issues). New here? Pick a
+[good first issue](https://github.com/adidshaft/grok-gadgets-gateway/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+and read [CONTRIBUTING](CONTRIBUTING.md). Get help: [SUPPORT](SUPPORT.md).
+
+## License and affiliation
+
+Apache-2.0; see [LICENSE](LICENSE) and [NOTICE](NOTICE). Grok Gadgets is an independent
+open-source project. It is **not affiliated with, endorsed by or sponsored by SpaceXAI or
+xAI**, which make Grok and Grok Bot. Pre-publication commit dates were reconstructed; see the
+[history record](https://github.com/adidshaft/grok-gadgets/blob/main/docs/verification/publication-sanitization.md).
