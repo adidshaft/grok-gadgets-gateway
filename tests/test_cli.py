@@ -192,3 +192,26 @@ def test_starting_serve_prints_no_dependency_warning(tmp_path):
         rest = process.communicate(timeout=10)[1]
     assert line.startswith("MCP http://127.0.0.1:"), line
     assert "Warning" not in line + rest
+
+
+def test_enroll_rotate_and_token_file(tmp_path):
+    import json
+
+    env = isolated_env(tmp_path)
+    assert gateway("init", env=env).returncode == 0
+    registry = tmp_path / "grok-gadgets/credentials.json"
+    token_file = tmp_path / "lamp.token"
+    first = gateway("enroll", "lamp", "--token-file", str(token_file), env=env)
+    assert first.returncode == 0 and first.stdout == ""
+    token = token_file.read_text().strip()
+    assert (token_file.stat().st_mode & 0o777) == 0o600
+    assert token not in first.stderr
+    assert json.loads(registry.read_text())["devices"]["lamp"]["token"] == token
+    again = gateway("enroll", "lamp", env=env)
+    assert again.returncode == 2 and "enroll lamp --rotate" in again.stderr
+    rotated = gateway("enroll", "lamp", "--rotate", "--token-file", str(token_file), env=env)
+    assert rotated.returncode == 0 and "old token stops working" in rotated.stderr
+    new = token_file.read_text().strip()
+    assert new != token and json.loads(registry.read_text())["devices"]["lamp"]["token"] == new
+    missing = gateway("enroll", "ghost", "--rotate", env=env)
+    assert missing.returncode == 2 and "enroll ghost" in missing.stderr
