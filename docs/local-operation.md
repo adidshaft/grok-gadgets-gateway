@@ -56,7 +56,7 @@ Load the private token into the current shell environment without printing it:
 
 ```sh
 export GROK_GADGETS_DEVICE_TOKEN='value-printed-once-by-enroll'
-uv run python -m grok_gadgets_gateway.usb_bridge /dev/cu.YOUR_DEVICE
+uv run grok-gadgets-gateway usb-bridge /dev/cu.YOUR_DEVICE
 unset GROK_GADGETS_DEVICE_TOKEN
 ```
 
