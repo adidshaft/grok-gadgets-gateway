@@ -30,6 +30,10 @@ documentation commits. Run the demo when setup/tool guidance or simulator/MCP be
 changes. Build and inspect packages when packaging or installation guidance changes.
 Hardware checks need separately authorized hardware and remain unverified until observed.
 
+## Branches
+
+Branch from `dev` and open your PR into `dev`; it is the default branch and is squash-merged when checks pass. `main` holds only tagged stable releases and changes through release or hotfix PRs. Name branches `<type>/<ISSUE-ID>-<short-slug>`, for example `fix/GW-021-short-name`. The shared [branch and release policy](https://github.com/adidshaft/grok-gadgets/blob/main/CONTRIBUTING.md#branches-and-releases) covers releases, hotfixes and cross-repository changes.
+
 ## Make a focused pull request
 
 1. Link the GitHub issue. Include its local ID if one exists.
@@ -38,7 +42,7 @@ Hardware checks need separately authorized hardware and remain unverified until 
 4. Record check commands, actual results, host, runtime, and evidence level.
 5. Update the user guide. Respond to review. Resolve branch conflicts. Run the affected checks again.
 
-Make small commits on short-lived branches from `main`. The maintainer reviews changes
+Make small commits on short-lived branches from `dev`. The maintainer reviews changes
 and credits code, documentation, testing, and reviews. Get approval before a test
 that publishes files, deploys a service, or operates a live device.
 
