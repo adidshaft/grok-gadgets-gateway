@@ -7,8 +7,6 @@ import re
 from contextlib import asynccontextmanager
 
 import uvicorn
-from mcp.server.auth.provider import AccessToken
-from mcp.server.auth.settings import AuthSettings
 from mcp.server.transport_security import TransportSecuritySettings
 
 from .domain import Gateway
@@ -32,16 +30,47 @@ class FileTokenVerifier:
         try:
             expected = read_mcp_token(self.path)
         except CredentialError:
-            return None
+            return False
         if not isinstance(token, str):
-            return None
-        matched = hmac.compare_digest(
+            return False
+        return hmac.compare_digest(
             hashlib.sha256(expected.encode()).digest(),
             hashlib.sha256(token.encode()).digest(),
         )
-        if not matched:
-            return None
-        return AccessToken(token=token, client_id="local-operator", scopes=["gadgets"])
+
+
+class BearerAuth:
+    """Static bearer token for every HTTP request.
+
+    This is not OAuth: a 401 carries a plain `WWW-Authenticate: Bearer` challenge and the
+    server publishes no OAuth discovery metadata, so clients never look for an
+    authorization server on loopback.
+    """
+
+    def __init__(self, app, verifier):
+        self.app = app
+        self.verifier = verifier
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            header = dict(scope.get("headers") or []).get(b"authorization", b"")
+            scheme, _, token = header.decode("latin-1").partition(" ")
+            if scheme.lower() != "bearer" or not await self.verifier.verify_token(token):
+                body = b'{"error":"invalid_token","error_description":"Bearer token required"}'
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 401,
+                        "headers": [
+                            (b"content-type", b"application/json"),
+                            (b"content-length", str(len(body)).encode()),
+                            (b"www-authenticate", b'Bearer error="invalid_token"'),
+                        ],
+                    }
+                )
+                await send({"type": "http.response.body", "body": body})
+                return
+        await self.app(scope, receive, send)
 
 
 def transport_security(extra_hosts=()):
@@ -158,15 +187,10 @@ async def _serve_http(gateway, sim, device_server, mcp_token, *, port, security,
         streamable_http_path=MCP_PATH,
         json_response=True,
         log_level="WARNING",
-        token_verifier=FileTokenVerifier(mcp_token),
-        auth=AuthSettings(
-            issuer_url=f"http://127.0.0.1:{port}",
-            resource_server_url=f"http://127.0.0.1:{port}",
-        ),
         transport_security=security,
     )
     config = uvicorn.Config(
-        mcp.streamable_http_app(),
+        BearerAuth(mcp.streamable_http_app(), FileTokenVerifier(mcp_token)),
         host="127.0.0.1",
         port=port,
         log_level="warning",
@@ -174,6 +198,7 @@ async def _serve_http(gateway, sim, device_server, mcp_token, *, port, security,
         proxy_headers=False,
     )
     server = uvicorn.Server(config)
+    # The CLI owns SIGTERM/SIGINT so the device listener closes too; see cli._serve.
     server.install_signal_handlers = lambda: None
     task = asyncio.create_task(server.serve())
     try:
