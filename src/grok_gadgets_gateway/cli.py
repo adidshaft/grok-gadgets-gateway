@@ -16,6 +16,7 @@ from .operator import (
     device_ids,
     enroll,
     init_config,
+    write_token_file,
     mcp_token_path,
     read_mcp_token,
     revoke,
@@ -133,6 +134,16 @@ def build_parser():
 
     enroll_cmd = sub.add_parser("enroll", help="issue a device token for a device ID")
     enroll_cmd.add_argument("device_id")
+    enroll_cmd.add_argument(
+        "--rotate",
+        action="store_true",
+        help="replace the token of an enrolled device; it keeps its identity",
+    )
+    enroll_cmd.add_argument(
+        "--token-file",
+        help="write the token to this mode-0600 file instead of printing it "
+        "(pass the same file to the agent's --token-file)",
+    )
     _credentials_option(enroll_cmd)
     revoke_cmd = sub.add_parser("revoke", help="revoke a device token")
     revoke_cmd.add_argument("device_id")
@@ -226,9 +237,19 @@ def run(parser, args):
         return 0
     if command == "enroll":
         try:
-            token = enroll(args.device_id, args.credentials)
-        except (OperatorError, CredentialError) as exc:
+            token = enroll(args.device_id, args.credentials, rotate=args.rotate)
+            if args.token_file:
+                write_token_file(args.token_file, token)
+        except (OperatorError, CredentialError, OSError) as exc:
             parser.error(str(exc))
+        if args.rotate:
+            print(
+                f"New token for {args.device_id}; its old token stops working now.",
+                file=sys.stderr,
+            )
+        if args.token_file:
+            print(f"Wrote the token to {args.token_file} (mode 0600).", file=sys.stderr)
+            return 0
         print(f"GROK_GADGETS_DEVICE_TOKEN={token}")
         print(
             "Give this token to the device once. It is stored mode 0600 and will not be shown again.",
