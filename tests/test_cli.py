@@ -107,9 +107,15 @@ def test_serve_help_and_missing_config(tmp_path):
     missing = gateway("serve", "--port", "9", env=env)
     assert missing.returncode == 2 and missing.stdout == ""
     assert "does not exist" in missing.stderr
-    stdio_help = gateway("--help", env=env)
+    top = gateway("--help", env=env)
+    assert top.returncode == 0
+    for command in ("init", "serve", "stdio", "enroll", "usb-bridge", "rotate-mcp-token"):
+        assert command in top.stdout
+    stdio_help = gateway("stdio", "--help", env=env)
     assert stdio_help.returncode == 0 and "--simulator" in stdio_help.stdout
     assert "--test-controls" in stdio_help.stdout
+    bridge_help = gateway("usb-bridge", "--help", env=env)
+    assert bridge_help.returncode == 0 and "serial_port" in bridge_help.stdout
 
 
 def test_stdio_uses_xdg_credentials_when_present(tmp_path, monkeypatch):
@@ -123,3 +129,66 @@ def test_stdio_uses_xdg_credentials_when_present(tmp_path, monkeypatch):
     registry.write_text("{}\n")
     assert resolve_credentials(None) == str(registry)
     assert resolve_credentials(str(tmp_path / "other.json")) == str(tmp_path / "other.json")
+
+
+def test_init_prints_pasteable_settings_with_absolute_paths(tmp_path):
+    import json
+    import os
+
+    env = isolated_env(tmp_path)
+    both = gateway("init", env=env)
+    assert both.returncode == 0
+    blocks = [b for b in both.stdout.split("# ") if b.strip()]
+    assert len(blocks) == 2
+    parsed = [json.loads(block.split("\n", 1)[1]) for block in blocks]
+    stdio = parsed[0]["mcpServers"]["grok-gadgets"]
+    assert os.path.isabs(stdio["command"]) and os.path.exists(stdio["command"])
+    assert stdio["args"][-2:] == ["stdio", "--simulator"]
+    assert parsed[1]["mcpServers"]["grok-gadgets"]["url"] == "http://127.0.0.1:8766/mcp"
+    only_http = json.loads(gateway("init", "--client", "http", env=env).stdout)
+    assert set(only_http["mcpServers"]["grok-gadgets"]) == {"url", "headers"}
+    only_stdio = json.loads(gateway("init", "--client", "stdio", env=env).stdout)
+    entry = only_stdio["mcpServers"]["grok-gadgets"]
+    # The printed command really starts the stdio server.
+    started = subprocess.run(
+        [entry["command"], *entry["args"], "--help"], capture_output=True, text=True, env=env
+    )
+    assert started.returncode == 0 and "--test-controls" in started.stdout
+
+
+def test_bare_command_in_a_terminal_shows_help(monkeypatch, capsys):
+    from grok_gadgets_gateway import cli
+
+    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: True)
+    assert cli.main([]) == 2
+    assert "grok-gadgets-gateway serve --simulator" in capsys.readouterr().err
+
+
+def test_legacy_root_flags_still_mean_stdio(tmp_path):
+    result = gateway("--simulator", "--credentials", str(tmp_path / "missing.json"))
+    assert result.returncode == 2 and "does not exist" in result.stderr
+
+
+def test_starting_serve_prints_no_dependency_warning(tmp_path):
+    env = isolated_env(tmp_path)
+    assert gateway("init", env=env).returncode == 0
+    import socket
+
+    with socket.socket() as one, socket.socket() as two:
+        one.bind(("127.0.0.1", 0))
+        two.bind(("127.0.0.1", 0))
+        ports = [str(one.getsockname()[1]), str(two.getsockname()[1])]
+    process = subprocess.Popen(
+        [sys.executable, "-m", "grok_gadgets_gateway.cli", "serve", "--simulator"]
+        + ["--port", ports[0], "--device-port", ports[1]],
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+    )
+    try:
+        line = process.stderr.readline()
+    finally:
+        process.terminate()
+        rest = process.communicate(timeout=10)[1]
+    assert line.startswith("MCP http://127.0.0.1:"), line
+    assert "Warning" not in line + rest
