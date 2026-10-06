@@ -4,6 +4,7 @@
 
 - `serve` no longer publishes OAuth discovery metadata that pointed at loopback. A 401 now carries a plain `WWW-Authenticate: Bearer` challenge; `/.well-known/oauth-*` return 404.
 - `serve` handles SIGTERM and Ctrl+C: it closes device sessions and HTTP, prints `Gateway stopped`, and exits 0.
+- Protocol README split into sections, with `late_ack` (non-fatal, session kept) and a device-action table for every error code. Wire format unchanged.
 - `gadgets_command` now waits up to 3 seconds (never past the 10-second ACK deadline) for the device's report and returns the final status, so a model sees `executed` or `failed` instead of `accepted`. A slow device still returns `accepted`/`dispatched`; poll `gadgets_command_status`.
 - Add a five-minute first-success guide with MCP Inspector and a CI job that runs the README quick start from a clean checkout on every push and nightly.
 
