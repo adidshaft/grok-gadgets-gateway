@@ -1,5 +1,6 @@
 """Grok-facing tool adapter implemented with the official MCP Python SDK."""
 
+import asyncio
 import hashlib
 import inspect
 import json
@@ -12,7 +13,12 @@ from datetime import datetime, timezone
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
+from .domain import ACK_TIMEOUT_SECONDS
 from .protocol import GatewayError
+
+# How long gadgets_command waits for the device's report before returning an open status.
+COMMAND_WAIT_SECONDS = 3.0
+_OPEN_STATUSES = ("accepted", "dispatched")
 
 READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False)
 ACTUATE = ToolAnnotations(
@@ -20,6 +26,10 @@ ACTUATE = ToolAnnotations(
 )
 
 COMMAND_DESCRIPTION = """Ask a gadget to run one command capability with JSON arguments.
+
+The call waits up to 3 seconds for the device's report and returns the final status when
+it arrives. If command.status is still accepted or dispatched, the device is slow: poll
+gadgets_command_status with command.command_id instead of sending the command again.
 
 command_id is optional. For a new action, omit it: the gateway creates a unique ID and
 returns it as command.command_id. Within 10 minutes and the same gateway process, repeating
@@ -61,8 +71,11 @@ def make_server(
     request_log=None,
     listener_status=None,
     http=False,
+    command_wait=COMMAND_WAIT_SECONDS,
     **fastmcp_options,
 ):
+    # Never wait past the gateway's own acknowledgement deadline.
+    command_wait = max(0.0, min(command_wait, ACK_TIMEOUT_SECONDS))
     if http and (test_controls or device_server is not None):
         # HTTP sessions each run the MCP lifespan; the service owns the listener instead.
         raise ValueError("HTTP mode never exposes test controls or a per-session listener")
@@ -161,7 +174,21 @@ def make_server(
                 **gateway.command_status(value["command_id"]),
                 "duplicate": False,
             }
+        elif value["status"] in _OPEN_STATUSES:
+            response["command"] = {
+                **await wait_for_outcome(value["command_id"]),
+                "duplicate": value["duplicate"],
+            }
         return finish("gadgets_command", request, started, response)
+
+    async def wait_for_outcome(command_id):
+        """Bounded wait for a device report; the device loop runs while this sleeps."""
+        deadline = time.monotonic() + command_wait
+        status = gateway.command_status(command_id)
+        while status["status"] in _OPEN_STATUSES and time.monotonic() < deadline:
+            await asyncio.sleep(0.02)
+            status = gateway.command_status(command_id)
+        return status
 
     @tool(READ_ONLY)
     async def gadgets_command_status(command_id: str) -> dict:
