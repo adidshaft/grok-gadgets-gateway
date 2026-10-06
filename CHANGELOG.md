@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `enroll <id> --rotate` replaces a device's token and keeps its identity and receipts; the old token is refused at once. `enroll --token-file <path>` writes the token to a mode-0600 file instead of printing it. Re-enrolling an existing ID now says the exact command to run.
 - Real subcommands: `init`, `serve`, `stdio`, `enroll`, `revoke`, `devices`, `rotate-mcp-token`, `usb-bridge`. `--help` lists them. The bare command in a terminal prints help instead of silently waiting; MCP clients that start it without arguments, or with the older `--simulator` flags, still get stdio.
 - `init` prints pasteable settings: one complete JSON block per mode, with the absolute executable path. `--client stdio|http` prints a single block.
 - The harmless `IncompleteFieldDefinitionWarning` from the `mcp` dependency no longer prints on start.

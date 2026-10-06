@@ -46,7 +46,11 @@ Never commit the file or include it in a support report. The gateway rejects per
 Stdio still accepts `--credentials /absolute/path`. If you omit it and `credentials.json` already exists in the config directory, stdio uses that file. `serve` uses the same default. The device listener starts with `serve`, or during stdio MCP initialization when a registry is configured. It stops when the process stops.
 Credential IDs must match the SDK hello. Revocation is checked on the device's next request.
 A denied request closes the session. Revocation prevents subsequent access. It does not erase previously reported state or history.
-To replace a device token, enroll a new id or edit the private file, update the agent or bridge secret, and reconnect. Do not commit the edit.
+To replace a device token, keep the device ID and run
+`grok-gadgets-gateway enroll <device-id> --rotate`. The old token stops working at once, also
+for an open session; command receipts are kept. Rotating a revoked device reactivates it.
+Add `--token-file <path>` to write the token to a mode-0600 file instead of printing it, and
+give the Linux agent the same `--token-file`.
 
 ## USB bridge
 
