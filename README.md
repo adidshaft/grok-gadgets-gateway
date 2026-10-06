@@ -1,28 +1,27 @@
 # Grok Gadgets gateway
 
-A local MCP server to connect your existing Grok Bot to gadgets. It lists capabilities, sends commands, and reports state and events. It includes a software C124 simulator. Experimental alpha; the Grok Bot connection remains unverified.
-
-## What works with Grok Bot today
-
-| You can do this now | You cannot do this yet |
-| --- | --- |
-| Run a local MCP client against this gateway. | Treat a local test as a Grok Bot session. |
-| Run `serve` on `http://127.0.0.1:8766/mcp` with a file bearer token. | Point Grok Bot at `127.0.0.1`. A cloud Bot cannot open that port. |
-| Put your own HTTPS in front of `serve`. | Claim that path is verified. No Grok Bot or hardware check exists here. |
-
-A device acknowledgement is a report, not proof of a physical effect. Button events do not wake Grok Bot.
+A local MCP server that lets your Grok Bot, or any MCP client, list and control gadgets: a
+built-in simulated light, Linux gadgets and ESP32 devices. Experimental alpha: Grok Bot and
+hardware are not verified yet. See the [project status](https://grok-gadgets.pages.dev/doc-docs-public-support-matrix).
 
 ## Quick start
 
+Needs Git and [uv](https://docs.astral.sh/uv/getting-started/installation/).
+
 ```sh
+git clone https://github.com/adidshaft/grok-gadgets-gateway.git
+cd grok-gadgets-gateway
 uv sync --locked
 uv run grok-gadgets-gateway init
 uv run grok-gadgets-gateway serve --simulator
 ```
 
-Then call the tools from MCP Inspector: [first success in five minutes](docs/first-success.md).
+`init` prints pasteable MCP client settings. Then call the tools from MCP Inspector:
+[first success in five minutes](docs/first-success.md).
 
-`init` prints two pasteable MCP client settings blocks with absolute paths: one where your client starts the gateway (`stdio`), one for the running `serve`. `init --client http` prints just one. The MCP URL is `http://127.0.0.1:8766/mcp`. The bearer token is the single line in `~/.config/grok-gadgets/mcp-token` (mode 0600). Devices listen on `127.0.0.1:8765`. Both sockets are loopback only.
+## Settings and devices
+
+`init` prints two blocks with absolute paths: one where your client starts the gateway (`stdio`), one for the running `serve`. `init --client http` prints just one. The MCP URL is `http://127.0.0.1:8766/mcp`. The bearer token is the single line in `~/.config/grok-gadgets/mcp-token` (mode 0600). Devices listen on `127.0.0.1:8765`. Both sockets are loopback only.
 
 For a real device id: `uv run grok-gadgets-gateway enroll <device-id>`, then give that device the printed `GROK_GADGETS_DEVICE_TOKEN` once (or use `--token-file <path>`). `enroll <device-id> --rotate` issues a new token for the same device. Read [remote access](docs/remote-access.md) before you put anything on the network.
 
@@ -33,6 +32,16 @@ uv run python -m grok_gadgets_gateway.demo
 ```
 
 The demo uses `--test-controls`. HTTP `serve` does not expose them.
+
+## What works with Grok Bot today
+
+| You can do this now | You cannot do this yet |
+| --- | --- |
+| Run a local MCP client against this gateway. | Treat a local test as a Grok Bot session. |
+| Run `serve` on `http://127.0.0.1:8766/mcp` with a file bearer token. | Point Grok Bot at `127.0.0.1`. A cloud Bot cannot open that port. |
+| Put your own HTTPS in front of `serve`. | Claim that path is verified. No Grok Bot or hardware check exists here. |
+
+A device acknowledgement is a report, not proof of a physical effect. Button events do not wake Grok Bot.
 
 ```mermaid
 flowchart LR
