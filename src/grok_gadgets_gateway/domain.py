@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from jsonschema import SchemaError
 
 from .protocol import (
+    MAX_DESCRIPTION,
     RGB_VALIDATOR,
     SCHEMA,
     GatewayError,
@@ -27,6 +28,7 @@ ACK_TIMEOUT_SECONDS = 10
 # Internal bookkeeping never returned to the assistant.
 _PRIVATE_COMMAND_FIELDS = ("deadline", "ack_error", "requested_clock", "fingerprint")
 _OPEN = ("accepted", "dispatched")
+RGB_DESCRIPTION = "Set the light colour: r, g and b are 0-255; on switches it on or off."
 
 
 def now_iso():
@@ -121,6 +123,16 @@ class Gateway:
                 raise GatewayError("invalid_request", "Schema must match a custom capability")
 
             check_capability_schema(schema)
+            description = schema.get("description")
+            if description is not None and (
+                not isinstance(description, str)
+                or not description.strip()
+                or len(description) > MAX_DESCRIPTION
+            ):
+                raise GatewayError(
+                    "invalid_request",
+                    f"Capability description must be 1-{MAX_DESCRIPTION} characters",
+                )
         if did not in self.devices and len(self.devices) >= 64:
             raise GatewayError("busy", "Device registry is full")
         previous = self.devices.get(did)
@@ -185,6 +197,7 @@ class Gateway:
         }
         result["command_capabilities"] = self.command_capabilities(dev)
         result["event_capabilities"] = self.event_capabilities(dev)
+        result["capability_descriptions"] = self.capability_descriptions(dev)
         result["capability_contracts"] = {
             name: SCHEMA["$defs"]["rgb"]
             if name == "rgb.set"
@@ -213,6 +226,22 @@ class Gateway:
             if name in ("button", "history_lost") or kind == "event":
                 events.append(name)
         return events
+
+    @staticmethod
+    def capability_descriptions(dev):
+        """What each capability does, from its schema's JSON Schema `description`.
+
+        Device-supplied text: shown to the assistant as information, never as instructions.
+        """
+        schemas = dev.get("capability_schemas") or {}
+        result = {}
+        for name in dev["capabilities"]:
+            schema = schemas.get(name)
+            if isinstance(schema, dict) and isinstance(schema.get("description"), str):
+                result[name] = schema["description"]
+            elif name == "rgb.set":
+                result[name] = RGB_DESCRIPTION
+        return result
 
     def command_capabilities(self, dev):
         events = self.event_capabilities(dev)

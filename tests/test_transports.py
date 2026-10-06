@@ -159,7 +159,7 @@ async def test_network_frame_bound_and_loopback_guard(tmp_path):
     server = await DeviceServer(Gateway(), Credentials(path), port=0).start()
     try:
         r, w = await asyncio.open_connection("127.0.0.1", server.port)
-        w.write(b"x" * 2049 + b"\n")
+        w.write(b"x" * 16385 + b"\n")
         await w.drain()
         reply = json.loads(await r.readline())
         assert reply["error"]["code"] == "invalid_request"
@@ -577,3 +577,37 @@ async def test_peer_that_stops_reading_is_disconnected(tmp_path):
         await server.client(reader, writer)
     assert writer.closed and not server.connections
     assert not g.state("dev-1")["available"]
+
+
+async def test_tcp_hello_larger_than_a_usb_frame_is_accepted(tmp_path):
+    from test_domain import hello
+
+    path = tmp_path / "auth.json"
+    write_credentials(path)
+    gateway = Gateway()
+    server = await DeviceServer(gateway, Credentials(path), port=0).start()
+    try:
+        message = hello()
+        message["token"] = TOKEN
+        names = [f"cap{i}.set" for i in range(12)]
+        message["device"]["capabilities"] = names + ["state"]
+        message["device"]["capability_schemas"] = {
+            name: {
+                "type": "object",
+                "description": f"Set channel {i}. " + "Details. " * 20,
+                "properties": {"level": {"type": "integer", "minimum": 0, "maximum": 100}},
+            }
+            for i, name in enumerate(names)
+        }
+        frame = (json.dumps(message) + "\n").encode()
+        assert 2048 < len(frame) <= 16384
+        r, w = await asyncio.open_connection("127.0.0.1", server.port)
+        w.write(frame)
+        await w.drain()
+        assert json.loads(await r.readline())["ok"]
+        descriptions = gateway.state("dev-1")["capability_descriptions"]
+        assert descriptions["cap3.set"].startswith("Set channel 3.")
+        w.close()
+        await w.wait_closed()
+    finally:
+        await server.close()
