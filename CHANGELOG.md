@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Protocol README split into sections, with `late_ack` (non-fatal, session kept) and a device-action table for every error code. Wire format unchanged.
 - Add a five-minute first-success guide with MCP Inspector and a CI job that runs the README quick start from a clean checkout on every push and nightly.
 
 ## 0.1.0a1 — local alpha candidate, 2026-10-04
