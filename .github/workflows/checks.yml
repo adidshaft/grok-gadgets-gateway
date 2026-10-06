@@ -29,6 +29,8 @@ jobs:
       - run: uv sync --locked --python ${{ matrix.python }}
       - run: uv run --locked ruff check .
       - run: uv run --locked ruff format --check .
+      - name: Plain language (ASD-STE100 sentence limit)
+        run: python3 scripts/check_ste.py README.md docs/first-success.md
       - run: uv run --locked pytest -q
       - run: uv run --locked python -m grok_gadgets_gateway.demo
       - run: uv build

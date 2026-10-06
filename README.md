@@ -1,7 +1,6 @@
 # Grok Gadgets gateway
 
-A local MCP server that lets MCP clients today, and your Grok Bot later, list and control
-gadgets: a built-in simulated light, Linux gadgets and ESP32 devices. Experimental alpha: Grok Bot and
+A local MCP server for gadgets: a built-in simulated light, Linux gadgets and ESP32 devices. MCP clients can list and control them today, and your Grok Bot later. Experimental alpha: Grok Bot and
 hardware are not verified yet ([project status](https://grok-gadgets.pages.dev/doc-docs-public-support-matrix)).
 Independent project, not affiliated with SpaceXAI or xAI.
 
@@ -45,9 +44,7 @@ A result is the gadget's own report, not proof of a physical effect.
 
 ## Connect a gadget
 
-`init` prints two settings blocks with absolute paths: one where your MCP client starts the
-gateway (`stdio`), and one for a running `serve` (`http://127.0.0.1:8766/mcp` with the bearer
-token from `~/.config/grok-gadgets/mcp-token`). `init --client http` prints just one.
+`init` prints two settings blocks with absolute paths. Use the first when your MCP client starts the gateway (`stdio`). Use the second for a running `serve` at `http://127.0.0.1:8766/mcp`, with the bearer token from `~/.config/grok-gadgets/mcp-token`. `init --client http` prints just one.
 
 Gadgets connect to `127.0.0.1:8765` with their own token:
 
@@ -98,5 +95,5 @@ Contribute on the `dev` branch; `main` holds tagged stable releases ([branches](
 
 Apache-2.0; see [LICENSE](LICENSE) and [NOTICE](NOTICE). Grok Gadgets is an independent
 open-source project. It is **not affiliated with, endorsed by or sponsored by SpaceXAI or
-xAI**, which make Grok and Grok Bot. Pre-publication commit dates were reconstructed; see the
+xAI**, which make Grok and Grok Bot. We reconstructed the pre-publication commit dates; see the
 [history record](https://github.com/adidshaft/grok-gadgets/blob/main/docs/verification/publication-sanitization.md).

@@ -2,7 +2,7 @@
 
 Run the gateway with its simulated light, then drive it from
 [MCP Inspector](https://github.com/modelcontextprotocol/inspector), the official MCP developer tool.
-No model, hardware, account or API key is involved.
+You need no model, hardware, account or API key.
 
 You need Git, [uv](https://docs.astral.sh/uv/getting-started/installation/) and Node.js 22 or later.
 
@@ -37,8 +37,7 @@ Open the printed `http://127.0.0.1:6274?...` link. Turn on the switch next to
 ## 3. Call the tools
 
 1. Open **Tools**. You see six tools, from `gadgets_list_devices` to `gadgets_diagnostics`.
-2. Select `gadgets_list_devices` and press **Execute Tool**. The simulated light `sim-c124`
-   ("Desk light") is listed with `"simulated": true`.
+2. Select `gadgets_list_devices` and press **Execute Tool**. The list shows the simulated light `sim-c124` ("Desk light") with `"simulated": true`.
 3. Select `gadgets_command`, turn on **Edit as JSON**, and enter:
 
    ```json
