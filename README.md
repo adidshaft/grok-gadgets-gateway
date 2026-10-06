@@ -92,6 +92,7 @@ Questions, build photos and ideas are welcome on
 [GitHub Issues](https://github.com/adidshaft/grok-gadgets-gateway/issues). New here? Pick a
 [good first issue](https://github.com/adidshaft/grok-gadgets-gateway/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
 and read [CONTRIBUTING](CONTRIBUTING.md). Get help: [SUPPORT](SUPPORT.md).
+Contribute on the `dev` branch; `main` holds tagged stable releases ([branches](CONTRIBUTING.md#branches)).
 
 ## License and affiliation
 
