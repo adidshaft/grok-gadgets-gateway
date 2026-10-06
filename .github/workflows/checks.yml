@@ -32,6 +32,8 @@ jobs:
       - run: uv run --locked pytest -q
       - run: uv run --locked python -m grok_gadgets_gateway.demo
       - run: uv build
+      - name: Package metadata renders on PyPI (nothing is uploaded)
+        run: uvx --from 'twine==6.2.0' twine check --strict dist/*
   first-success:
     # The README quick start from a clean checkout, driven by MCP Inspector. Nightly too.
     runs-on: ubuntu-latest

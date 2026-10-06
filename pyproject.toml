@@ -4,7 +4,27 @@ version = "0.1.0a1"
 description = "Local Grok Gadgets MCP gateway and device protocol"
 requires-python = ">=3.11"
 license = "Apache-2.0"
+readme = "README.md"
+authors = [{ name = "adidshaft" }]
+keywords = ["mcp", "grok", "gadgets", "iot", "simulator"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Home Automation",
+]
 dependencies = ["mcp==1.26.0", "jsonschema==4.26.0", "pyserial==3.5"]
+
+[project.urls]
+Homepage = "https://grok-gadgets.pages.dev/"
+Source = "https://github.com/adidshaft/grok-gadgets-gateway"
+Issues = "https://github.com/adidshaft/grok-gadgets-gateway/issues"
+Changelog = "https://github.com/adidshaft/grok-gadgets-gateway/blob/main/CHANGELOG.md"
 [project.scripts]
 grok-gadgets-gateway = "grok_gadgets_gateway.cli:main"
 [build-system]
