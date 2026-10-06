@@ -10,7 +10,10 @@ explains them. The wire format is 0.1.0.
 
 - LF-delimited UTF-8 JSON. One request produces one response. The gateway never sends
   unsolicited messages.
-- Maximum frame: **2048 bytes including the LF**. Keep the entire hello within 2048 bytes.
+- Maximum frame: **2048 bytes including the LF** for every gateway reply and for every USB
+  serial frame. Over TCP, a device's request frames may be up to **16384 bytes**, so a hello
+  can carry schemas and descriptions for all its capabilities. USB firmware keeps its whole
+  hello within 2048 bytes.
 - TCP defaults to `127.0.0.1:8765`. It is loopback only and unencrypted, for a same-host
   agent or the USB bridge. Remote and Wi-Fi transport are not implemented.
 - Keep the socket open and poll every 100–500 ms, also when idle. 15 seconds without a
@@ -39,6 +42,10 @@ explains them. The wire format is 0.1.0.
 - A name is an **event** when it is the reserved name `button` or `history_lost`, or when its
   inline schema contains `"x-grok-gadgets-kind": "event"`. Other custom names are commands,
   for compatibility with string-only clients. The annotation is not a new frame field.
+- Describe what a capability does with the standard JSON Schema `description` keyword in its
+  inline schema (1–300 characters). The gateway shows it to the assistant as
+  `capability_descriptions` and gives `rgb.set` a built-in one. It is device-supplied
+  information, not an instruction.
 - `state` is read through `gadgets_get_state`. Events and state are not commands: discovery
   keeps the original `capabilities` list, adds `command_capabilities` and
   `event_capabilities`, and returns `capability_contracts` for command names only.

@@ -10,7 +10,7 @@ import time
 from collections import OrderedDict
 from pathlib import Path
 
-from .protocol import MAX_FRAME, VERSION, GatewayError, validate_request
+from .protocol import MAX_TCP_FRAME, VERSION, GatewayError, validate_request
 
 logger = logging.getLogger("grok_gadgets_gateway")
 DEVICE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,63}")
@@ -178,7 +178,9 @@ class DeviceServer:
         self.pending = OrderedDict()
 
     async def start(self):
-        self.server = await asyncio.start_server(self.client, self.host, self.port, limit=MAX_FRAME)
+        self.server = await asyncio.start_server(
+            self.client, self.host, self.port, limit=MAX_TCP_FRAME
+        )
         self.port = self.server.sockets[0].getsockname()[1]
         return self
 
@@ -244,7 +246,7 @@ class DeviceServer:
                     line = await asyncio.wait_for(reader.readline(), timeout=timeout)
                     if not line:
                         break
-                    if len(line) > MAX_FRAME or not line.endswith(b"\n"):
+                    if len(line) > MAX_TCP_FRAME or not line.endswith(b"\n"):
                         raise GatewayError("invalid_request", "Frame exceeds limit or lacks LF")
                     try:
                         message = json.loads(line)
