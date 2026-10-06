@@ -496,3 +496,25 @@ def test_ack_semantics_and_not_delivered_queue_timeout():
     assert g.handle("dev-1", sid, bad) == {"ok": True}
     assert g.command_status("sent")["status"] == "executed"
     assert "error" not in g.command_status("sent")
+
+
+def test_capability_descriptions_are_surfaced_and_bounded():
+    g = Gateway()
+    message = hello()
+    message["device"]["capabilities"] = ["rgb.set", "lamp.set", "plain.set", "button", "state"]
+    message["device"]["capability_schemas"] = {
+        "lamp.set": {"type": "object", "description": "Turn the desk lamp on or off"},
+        "plain.set": {"type": "object"},
+    }
+    g.register(message)
+    listed = g.list_devices()[0]["capability_descriptions"]
+    assert listed["lamp.set"] == "Turn the desk lamp on or off"
+    assert listed["rgb.set"].startswith("Set the light colour")
+    assert "plain.set" not in listed and "button" not in listed
+    for bad in ("", "   ", 7, "x" * 301):
+        message = hello("dev-2")
+        message["device"]["capabilities"] = ["lamp.set", "state"]
+        message["device"]["capability_schemas"] = {
+            "lamp.set": {"type": "object", "description": bad}
+        }
+        fails("invalid_request", lambda message=message: g.register(message))
