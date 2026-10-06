@@ -2,7 +2,6 @@ import asyncio
 import io
 import json
 import os
-import signal
 import socket
 import sys
 from pathlib import Path
@@ -103,6 +102,20 @@ async def test_streamable_http_requires_token_and_runs_simulator(tmp_path):
         assert running.device_port == device_port
         assert await first_status(running.url) == [401]
         assert await first_status(running.url, {"Authorization": "Bearer wrong-token"}) == [401]
+        # Static bearer mode is not OAuth: no resource metadata, no discovery documents.
+        base = running.url.removesuffix("/mcp")
+        async with httpx.AsyncClient(trust_env=False) as plain:
+            denied = await plain.post(running.url, json={})
+            assert denied.status_code == 401
+            assert denied.headers["www-authenticate"] == 'Bearer error="invalid_token"'
+            assert "resource_metadata" not in denied.text
+            for path in (
+                "/.well-known/oauth-protected-resource",
+                "/.well-known/oauth-protected-resource/mcp",
+                "/.well-known/oauth-authorization-server",
+            ):
+                found = await plain.get(base + path, headers={"Authorization": f"Bearer {TOKEN}"})
+                assert found.status_code == 404, path
 
         async with httpx.AsyncClient(
             headers={"Authorization": f"Bearer {TOKEN}"},
@@ -314,6 +327,6 @@ async def test_cli_serves_enrolled_device_and_revokes_live_access(tmp_path):
     logs = (tmp_path / "serve.log").read_text()
     assert device_token not in logs and mcp_token not in logs and rotated not in logs
     assert '"event":"mcp_tool_call"' in logs and '"duplicate":true' in logs
-    # MCP 1.26 can log ClosedResourceError while its optional SSE stream closes.
-    # Check the actual process lifecycle, not upstream logging wording.
-    assert process.returncode in (0, -signal.SIGTERM)
+    # SIGTERM is a graceful stop: devices and HTTP close, and the process exits 0.
+    assert process.returncode == 0
+    assert "Gateway stopped; device sessions closed." in logs

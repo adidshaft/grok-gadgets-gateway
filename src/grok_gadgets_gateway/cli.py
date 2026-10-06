@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import json
+import signal
 import sys
 
 from .domain import Gateway
@@ -236,13 +237,24 @@ def command_main(argv):
 
 
 async def _serve(credentials, mcp_token, **kwargs):
+    # SIGTERM (launchd, systemd) and Ctrl+C both close devices and HTTP cleanly.
+    stop = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    for number in (signal.SIGTERM, signal.SIGINT):
+        try:
+            loop.add_signal_handler(number, stop.set)
+        except (NotImplementedError, RuntimeError):  # Windows: Ctrl+C still raises
+            pass
     async with serve_gateway(credentials, mcp_token, **kwargs) as running:
         print(
             f"MCP {running.url} on 127.0.0.1; device listener 127.0.0.1:{running.device_port}. "
             "Bearer token is the mcp-token file. This process does not prove Grok or hardware.",
             file=sys.stderr,
         )
-        await running.wait()
+        stopping = asyncio.create_task(stop.wait())
+        await asyncio.wait({running.task, stopping}, return_when=asyncio.FIRST_COMPLETED)
+        stopping.cancel()
+    print("Gateway stopped; device sessions closed.", file=sys.stderr)
 
 
 def main(argv=None):
