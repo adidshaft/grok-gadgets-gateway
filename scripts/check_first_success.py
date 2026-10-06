@@ -2,7 +2,8 @@
 
     python3 scripts/check_first_success.py
 
-The commands come from the README "Quick start" block, so the README cannot drift.
+The commands come from the README "Quick start" block, so the README cannot drift
+(its `git clone` and `cd` lines are skipped: this checkout is the clone).
 Uses a temporary config directory and free loopback ports. Needs uv and Node.js 22+.
 Software only: a simulated light. It proves nothing about Grok Bot or hardware.
 """
@@ -36,7 +37,9 @@ def quick_start():
     match = re.search(r"## Quick start\n.*?```sh\n(.*?)```", readme, re.S)
     if not match:
         raise SystemExit("README has no Quick start sh block")
-    return [shlex.split(line) for line in match[1].splitlines() if line.strip()]
+    # The clone already exists: this script runs inside it.
+    lines = [line for line in match[1].splitlines() if line.strip()]
+    return [shlex.split(line) for line in lines if not line.startswith(("git clone", "cd "))]
 
 
 def free_port():
