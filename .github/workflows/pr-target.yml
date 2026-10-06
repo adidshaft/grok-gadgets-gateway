@@ -1,0 +1,25 @@
+name: PR target
+# main holds releases only. A PR into main must come from this repository's dev branch
+# (a release) or a hotfix/* branch. Everything else belongs in dev.
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  pr-target:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Release or hotfix branches only
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          if [ "$HEAD_REPO" = "$GITHUB_REPOSITORY" ]; then
+            case "$HEAD_REF" in
+              dev|hotfix/*) echo "OK: $HEAD_REF may target main."; exit 0 ;;
+            esac
+          fi
+          echo "::error::Pull requests into main are for releases (from dev) and hotfixes (hotfix/* branches) only. Please change the base branch to dev." >&2
+          exit 1
