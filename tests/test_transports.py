@@ -577,3 +577,39 @@ async def test_peer_that_stops_reading_is_disconnected(tmp_path):
         await server.client(reader, writer)
     assert writer.closed and not server.connections
     assert not g.state("dev-1")["available"]
+
+
+async def test_rotation_rejects_the_old_token_and_keeps_receipts(tmp_path):
+    from grok_gadgets_gateway.operator import enroll, revoke
+
+    path = tmp_path / "auth.json"
+    write_credentials(path)
+    gateway = Gateway()
+    server = await DeviceServer(gateway, Credentials(path), port=0).start()
+    try:
+        reader, writer, reply = await connect(server)
+        assert reply["ok"]
+        gateway.command("dev-1", "rgb.set", {"r": 1, "g": 2, "b": 3, "on": True}, "kept")
+        new = enroll("dev-1", path, rotate=True)
+        # The open session's next request carries the old token and is refused.
+        refused = await exchange(reader, writer, {"type": "poll"})
+        assert refused["error"]["code"] == "unauthorized"
+        writer.close()
+        await writer.wait_closed()
+        old = await connect(server)
+        assert old[2]["error"]["code"] == "unauthorized"
+        old[1].close()
+        fresh = await connect(server, token=new)
+        assert fresh[2]["ok"]
+        # The receipt survives rotation: retrying the same ID never runs a new action.
+        retry = gateway.command("dev-1", "rgb.set", {"r": 1, "g": 2, "b": 3, "on": True}, "kept")
+        assert retry["duplicate"] is True
+        fresh[1].close()
+        # Rotating a revoked device is an explicit operator action that reactivates it.
+        revoke("dev-1", path)
+        again = enroll("dev-1", path, rotate=True)
+        reactivated = await connect(server, token=again)
+        assert reactivated[2]["ok"]
+        reactivated[1].close()
+    finally:
+        await server.close()

@@ -76,19 +76,32 @@ def init_config():
     return created
 
 
-def enroll(device_id, path=None):
+def enroll(device_id, path=None, *, rotate=False):
+    """Issue a device token. rotate=True replaces an enrolled device's token, same identity."""
     if not isinstance(device_id, str) or not DEVICE_ID.fullmatch(device_id):
         raise OperatorError("Device ID must match [A-Za-z0-9][A-Za-z0-9._:-]{0,63}")
     path = Path(path) if path else credentials_path()
     token = secrets.token_urlsafe(32)
 
     def add(devices):
-        if device_id in devices:
-            raise OperatorError(f"{device_id} is already enrolled")
+        if device_id in devices and not rotate:
+            raise OperatorError(
+                f"{device_id} is already enrolled. For a new token run: "
+                f"grok-gadgets-gateway enroll {device_id} --rotate"
+            )
+        if device_id not in devices and rotate:
+            raise OperatorError(
+                f"{device_id} is not enrolled. Run: grok-gadgets-gateway enroll {device_id}"
+            )
         devices[device_id] = {"token": token, "revoked": False}
 
     update_devices(path, add)
     return token
+
+
+def write_token_file(path, token):
+    """Store a device token for an agent's --token-file, mode 0600, never printed."""
+    atomic_write(path, (token + "\n").encode())
 
 
 def revoke(device_id, path=None):
