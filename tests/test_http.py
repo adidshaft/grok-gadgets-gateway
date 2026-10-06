@@ -249,12 +249,15 @@ async def test_cli_serves_enrolled_device_and_revokes_live_access(tmp_path):
                             "capability": "rgb.set",
                             "arguments": arguments,
                         }
-                        receipt = (await call("gadgets_command", request))["command"]
-                        assert receipt["status"] == "accepted"
-                        delivered = (await exchange({"type": "poll"}))["commands"]
+                        # gadgets_command waits for the device's ACK and returns the outcome.
+                        pending = asyncio.create_task(call("gadgets_command", request))
+                        delivered = []
+                        while not delivered:
+                            delivered = (await exchange({"type": "poll"}))["commands"]
+                        command_id = delivered[0]["command_id"]
                         assert delivered == [
                             {
-                                "command_id": receipt["command_id"],
+                                "command_id": command_id,
                                 "capability": "rgb.set",
                                 "arguments": arguments,
                             }
@@ -263,12 +266,16 @@ async def test_cli_serves_enrolled_device_and_revokes_live_access(tmp_path):
                             await exchange(
                                 {
                                     "type": "ack",
-                                    "command_id": receipt["command_id"],
+                                    "command_id": command_id,
                                     "status": "executed",
                                     "state": {"rgb": arguments},
                                 }
                             )
                         )["ok"]
+                        receipt = (await pending)["command"]
+                        assert receipt["command_id"] == command_id
+                        assert receipt["status"] == "executed"
+                        assert receipt["reported_state"] == {"rgb": arguments}
                         retry = (
                             await call(
                                 "gadgets_command", {**request, "command_id": receipt["command_id"]}

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `gadgets_command` now waits up to 3 seconds (never past the 10-second ACK deadline) for the device's report and returns the final status, so a model sees `executed` or `failed` instead of `accepted`. A slow device still returns `accepted`/`dispatched`; poll `gadgets_command_status`.
 - Add a five-minute first-success guide with MCP Inspector and a CI job that runs the README quick start from a clean checkout on every push and nightly.
 
 ## 0.1.0a1 — local alpha candidate, 2026-10-04
