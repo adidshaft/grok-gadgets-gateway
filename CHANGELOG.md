@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.0a1 — 6 October 2026
+
 - `enroll <id> --rotate` replaces a device's token and keeps its identity and receipts; the old token is refused at once. `enroll --token-file <path>` writes the token to a mode-0600 file instead of printing it. Re-enrolling an existing ID now says the exact command to run.
 - `gadgets_list_devices` returns `capability_descriptions`: each capability's JSON Schema `description` (1–300 characters, validated at hello), and a built-in description for `rgb.set`.
 - TCP devices may send request frames up to 16 KiB, so a Linux hello can carry schemas and descriptions for all capabilities. USB frames and gateway replies stay at 2048 bytes.
