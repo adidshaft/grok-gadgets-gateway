@@ -20,6 +20,8 @@ uv run grok-gadgets-gateway init
 uv run grok-gadgets-gateway serve --simulator
 ```
 
+Then call the tools from MCP Inspector: [first success in five minutes](docs/first-success.md).
+
 `init` prints copy-paste MCP client settings. The MCP URL is `http://127.0.0.1:8766/mcp`. The bearer token is the single line in `~/.config/grok-gadgets/mcp-token` (mode 0600). Devices listen on `127.0.0.1:8765`. Both sockets are loopback only.
 
 For a real device id: `uv run grok-gadgets-gateway enroll <device-id>`, then give that device the printed `GROK_GADGETS_DEVICE_TOKEN` once. Read [remote access](docs/remote-access.md) before you put anything on the network.
