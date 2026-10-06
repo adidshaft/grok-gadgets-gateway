@@ -7,6 +7,7 @@ import json
 import sys
 import time
 import uuid
+import warnings
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
@@ -15,6 +16,10 @@ from mcp.types import ToolAnnotations
 
 from .domain import ACK_TIMEOUT_SECONDS
 from .protocol import GatewayError
+
+# mcp 1.26 + pydantic-settings warn about FastMCP's own `lifespan` field on every start.
+# It is harmless and looks like an error to users, so hide exactly that warning.
+warnings.filterwarnings("ignore", message=r"Field 'lifespan' has an incomplete definition")
 
 # How long gadgets_command waits for the device's report before returning an open status.
 COMMAND_WAIT_SECONDS = 3.0
