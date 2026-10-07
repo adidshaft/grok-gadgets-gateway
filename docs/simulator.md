@@ -3,7 +3,7 @@
 Use this software device to test the MCP tools intended for Grok.
 You do not need hardware, an account, or an API key. Original code is Apache-2.0.
 Results include `simulated: true`. Command results and diagnostics include `physical_verified: false`.
-Actual Grok calls, mobile clients, and physical C124 operation remain unverified.
+Actual Grok Bot calls, Grok Bot on mobile, and physical C124 operation remain unverified.
 
 ## Install and start
 
@@ -17,15 +17,15 @@ python3 -m venv .venv
 .venv/bin/grok-gadgets-gateway stdio --simulator --simulator-config "$PWD/my-light.json"
 ```
 
-The last command starts a stdio MCP server. Configure your local MCP client to start it.
-Use absolute executable and configuration paths. The server waits for an MCP client.
+The last command starts a stdio MCP server for a connector that starts it.
+Use absolute executable and configuration paths. The server waits for its connector.
 It does not provide an interactive terminal or a conversation backend.
-Use a verified Grok connection when one becomes available.
+Use a verified Grok Bot connection when one becomes available.
 To install a locally built wheel, replace `pip install .` with
 `pip install /absolute/path/grok_gadgets_gateway-0.1.0a1-py3-none-any.whl`.
 
 Local simulation needs no domain, public port, tunnel, or hosted service.
-The simulator runs wherever its MCP client starts the process. A cloud client's executable
+The simulator runs wherever its connector starts the process. A cloud Grok Bot's executable
 and configuration paths must exist in that cloud environment; they cannot refer to files only on your computer.
 This gateway does not provide a remote HTTPS/OAuth endpoint. Read the
 [hosting FAQ](https://github.com/adidshaft/grok-gadgets/blob/main/docs/getting-started/hosting.md)
@@ -88,7 +88,7 @@ Edit settings before you start the process. There is no automatic reload.
 
 ## Local evidence
 
-`uv run pytest` covers the actual official MCP stdio client and subprocess gateway with
+`uv run pytest` covers a real MCP stdio session and subprocess gateway with
 custom identity, display name, initial RGB, configured acknowledgement delay, offline
 startup, reconnect, simulated button events and retry results. It also verifies controls
 remain absent unless explicitly enabled, strict config and CLI rejection, packaged resource
