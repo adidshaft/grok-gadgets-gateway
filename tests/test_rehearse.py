@@ -46,3 +46,18 @@ async def test_main_rejects_a_wrong_token(tmp_path, capsys):
         )
     assert code == 1
     assert "Rehearsal failed" in capsys.readouterr().out
+
+
+async def test_rehearse_calls_a_named_command_with_arguments(tmp_path):
+    credentials, mcp_token = write_local_config(tmp_path)
+    lines = []
+    async with serve_gateway(
+        credentials, mcp_token, simulator=True, port=free_port(), device_port=free_port()
+    ) as running:
+        args = {"r": 1, "g": 2, "b": 3, "on": True}
+        state = await rehearse(running.mcp_port, TOKEN, "sim-c124", lines.append, "rgb.set", args)
+        with pytest.raises(RehearsalError, match="no gadget offers led.set"):
+            await rehearse(running.mcp_port, TOKEN, None, lambda _l: None, "led.set", {})
+        with pytest.raises(RehearsalError, match="no gadget nope"):
+            await rehearse(running.mcp_port, TOKEN, "nope", lambda _l: None)
+    assert state["state"]["rgb"] == args

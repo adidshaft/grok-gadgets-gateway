@@ -35,10 +35,10 @@ async def _call(session, tool, arguments=None):
     return value
 
 
-async def rehearse(port, token, device_id=None, out=print):
+async def rehearse(port, token, device_id=None, out=print, capability=None, arguments=None):
     """Call the tools Grok Bot will call. Returns the final state of the commanded gadget."""
     try:
-        return await _rehearse(port, token, device_id, out)
+        return await _rehearse(port, token, device_id, out, capability, arguments)
     except Exception as exc:  # The MCP client wraps step failures in exception groups.
         failure = _find(exc, RehearsalError)
         if failure is None or failure is exc:
@@ -46,7 +46,25 @@ async def rehearse(port, token, device_id=None, out=print):
         raise failure from None
 
 
-async def _rehearse(port, token, device_id, out):
+def _pick(devices, device_id, capability):
+    wanted = capability or "rgb.set"
+    if device_id is None:
+        offering = [d for d in devices if wanted in d["command_capabilities"]]
+        if not offering:
+            hint = "pass --device and --command" if capability else "start serve with --simulator"
+            raise RehearsalError(f"no gadget offers {wanted}; {hint}")
+        return offering[0], wanted
+    for device in devices:
+        if device["device_id"] == device_id:
+            if capability is None and "rgb.set" not in device["command_capabilities"]:
+                raise RehearsalError(f"{device_id} has no rgb.set; pass --command and --args")
+            if wanted not in device["command_capabilities"]:
+                raise RehearsalError(f"{device_id} does not offer {wanted}")
+            return device, wanted
+    raise RehearsalError(f"no gadget {device_id} is connected")
+
+
+async def _rehearse(port, token, device_id, out, capability, arguments):
     url = f"http://127.0.0.1:{port}{MCP_PATH}"
     headers = {"Authorization": "Bearer " + token}
     async with streamablehttp_client(url, headers=headers) as (read, write, _):
@@ -62,25 +80,27 @@ async def _rehearse(port, token, device_id, out):
                 label = "simulated" if device["simulated"] else "reported by the gadget"
                 commands = ", ".join(device["command_capabilities"]) or "none"
                 out(f"ok  gadget {device['device_id']} ({label}); commands: {commands}")
-            if device_id is None:
-                with_rgb = [d for d in devices if "rgb.set" in d["command_capabilities"]]
-                if not with_rgb:
-                    raise RehearsalError("no gadget offers rgb.set; start serve with --simulator")
-                device_id = with_rgb[0]["device_id"]
+            device, capability = _pick(devices, device_id, capability)
+            device_id = device["device_id"]
+            if arguments is None:
+                if capability != "rgb.set":
+                    raise RehearsalError(f"pass --args with JSON arguments for {capability}")
+                arguments = BLUE
 
             command = (
                 await _call(
                     session,
                     "gadgets_command",
-                    {"device_id": device_id, "capability": "rgb.set", "arguments": BLUE},
+                    {"device_id": device_id, "capability": capability, "arguments": arguments},
                 )
             )["command"]
-            out(f"ok  gadgets_command rgb.set blue -> {command['status']}")
+            sent = json.dumps(arguments, separators=(",", ":"))
+            out(f"ok  gadgets_command {capability} {sent} -> {command['status']}")
             if command["status"] != "executed":
                 raise RehearsalError(f"command status is {command['status']}, not executed")
 
             state = (await _call(session, "gadgets_get_state", {"device_id": device_id}))["device"]
-            out(f"ok  gadgets_get_state {device_id}: {json.dumps(state['state'].get('rgb'))}")
+            out(f"ok  gadgets_get_state {device_id}: {json.dumps(state['state'])}")
             return state
 
 
@@ -94,10 +114,10 @@ def _find(exc, kind):
     return None
 
 
-def main(port, token_path_text, device_id, read_token):
+def main(port, token_path_text, device_id, read_token, capability=None, arguments=None):
     token = read_token(token_path_text)
     try:
-        asyncio.run(rehearse(port, token, device_id))
+        asyncio.run(rehearse(port, token, device_id, print, capability, arguments))
     except Exception as exc:
         failure = _find(exc, RehearsalError)
         if failure is None:

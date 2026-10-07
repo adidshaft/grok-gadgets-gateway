@@ -104,7 +104,10 @@ def main():
             output = rehearsed.stdout
             check("six tools Grok Bot will use" in output, "the gateway offers the six tools")
             check("sim-c124 (simulated)" in output, "the simulated light sim-c124 is listed")
-            check("rgb.set blue -> executed" in output, "gadgets_command rgb.set returns executed")
+            check(
+                "rgb.set" in output and "-> executed" in output,
+                "gadgets_command rgb.set returns executed",
+            )
             check('"b": 255' in output, "gadgets_get_state reports the new colour")
         finally:
             if serve is not None and serve.poll() is None:

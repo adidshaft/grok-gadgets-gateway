@@ -187,7 +187,11 @@ def build_parser():
     )
     rehearse.add_argument("--port", type=int, default=8766, help="MCP HTTP port (default 8766)")
     rehearse.add_argument("--mcp-token", help=f"bearer token file (default {mcp_token_path()})")
-    rehearse.add_argument("--device", help="gadget to set blue (default: first with rgb.set)")
+    rehearse.add_argument("--device", help="gadget to command (default: first with the command)")
+    rehearse.add_argument(
+        "--command", dest="capability", help="command to call (default rgb.set, set to blue)"
+    )
+    rehearse.add_argument("--args", help="JSON arguments for --command, e.g. '{\"on\": true}'")
     return parser
 
 
@@ -323,7 +327,20 @@ def run(parser, args):
             except CredentialError as exc:
                 parser.error(f"{exc}; run grok-gadgets-gateway init first")
 
-        return rehearse_main(args.port, args.mcp_token or mcp_token_path(), args.device, token)
+        try:
+            arguments = json.loads(args.args) if args.args is not None else None
+        except ValueError:
+            parser.error("--args must be a JSON object")
+        if arguments is not None and not isinstance(arguments, dict):
+            parser.error("--args must be a JSON object")
+        return rehearse_main(
+            args.port,
+            args.mcp_token or mcp_token_path(),
+            args.device,
+            token,
+            args.capability,
+            arguments,
+        )
     return run_stdio(parser, args)
 
 
