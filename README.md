@@ -1,7 +1,8 @@
 # Grok Gadgets gateway
 
-A local MCP server for gadgets: a built-in simulated light, Linux gadgets and ESP32 devices. MCP clients can list and control them today, and your Grok Bot later. Experimental alpha: Grok Bot and
-hardware are not verified yet ([project status](https://grok-gadgets.pages.dev/doc-docs-public-support-matrix)).
+The connection point between your Grok Bot and your gadgets: a built-in simulated light,
+Linux gadgets and ESP32 devices. It is the custom MCP server Grok Bot will call. Experimental
+alpha: the Grok Bot connection and hardware are not verified yet ([project status](https://grok-gadgets.pages.dev/doc-docs-public-support-matrix)).
 Independent project, not affiliated with SpaceXAI or xAI.
 
 ## Quick start
@@ -14,22 +15,24 @@ cd grok-gadgets-gateway
 uv sync --locked
 uv run grok-gadgets-gateway init
 uv run grok-gadgets-gateway serve --simulator
+uv run grok-gadgets-gateway rehearse
 ```
 
-`init` prints pasteable MCP client settings. Then call the tools from MCP Inspector:
+Run `rehearse` in a second terminal while `serve` keeps running. It calls the six tools in the
+order Grok Bot will: list the gadgets, set the simulated light blue, read its state. See
 [first success in five minutes](docs/first-success.md).
 
 ## How it works
 
 ```mermaid
 flowchart LR
-    C["MCP client<br>(Inspector, desktop apps)"] --> G["Gateway<br>127.0.0.1"]
+    B["Grok Bot<br>(connection in progress)"] -.-> G["Gateway<br>127.0.0.1"]
+    R["rehearse<br>(local check)"] --> G
     G --> S["Simulated light"]
     G --> D["Linux / ESP32 gadgets"]
-    B["Grok Bot<br>(not connected yet)"] -.-> G
 ```
 
-The gateway gives any MCP client six tools:
+The gateway gives Grok Bot six tools:
 
 | Tool | What it does |
 | --- | --- |
@@ -44,7 +47,7 @@ A result is the gadget's own report, not proof of a physical effect.
 
 ## Connect a gadget
 
-`init` prints two settings blocks with absolute paths. Use the first when your MCP client starts the gateway (`stdio`). Use the second for a running `serve` at `http://127.0.0.1:8766/mcp`, with the bearer token from `~/.config/grok-gadgets/mcp-token`. `init --client http` prints just one.
+`init` prints two settings blocks with absolute paths. Use the first when the connector starts the gateway itself (`stdio`). Use the second for a running `serve` at `http://127.0.0.1:8766/mcp`, with the bearer token from `~/.config/grok-gadgets/mcp-token`. `init --client http` prints just one.
 
 Gadgets connect to `127.0.0.1:8765` with their own token:
 
@@ -59,8 +62,8 @@ command needs no token at all. Both ports are loopback only.
 
 ## Grok Bot today
 
-A cloud Grok Bot cannot open `127.0.0.1` on your computer, so today the gateway works with
-local MCP clients. A supported remote route is later work
+A cloud Grok Bot cannot open `127.0.0.1` on your computer yet, so today you check the gateway
+locally with `rehearse`. The Grok Bot route is the next milestone
 ([HARD-GROK-REMOTE-001](https://github.com/adidshaft/grok-gadgets/issues/4)). `serve` is not an
 OAuth server, and a tunnel does not replace the bearer token. Never expose port 8765. Read
 [remote access](docs/remote-access.md) and [security](SECURITY.md) first.
@@ -69,15 +72,15 @@ OAuth server, and a tunnel does not replace the bearer token. Never expose port 
 
 | Symptom | Next step |
 | --- | --- |
-| Not sure which command | Run `grok-gadgets-gateway --help`. Use `serve` for a long-running process; `stdio` is for an MCP client that starts the gateway itself. |
+| Not sure which command | Run `grok-gadgets-gateway --help`. Use `serve` for a long-running process; `stdio` is for a connector that starts the gateway itself. |
 | No simulated light | Start with `--simulator`. |
-| `401` from the client | Send `Authorization: Bearer <token>` with the exact contents of the token file. |
+| `401` from `rehearse` | Send `Authorization: Bearer <token>` with the exact contents of the token file. |
 | Config rejected | Use strict v1 JSON within the [documented bounds](docs/simulator.md). |
 | Command still `accepted` or `dispatched` | The gadget is slow. Poll `gadgets_command_status`; never resend with a new command ID. |
 
 ## Learn more
 
-- [First success with MCP Inspector](docs/first-success.md) and the [simulator guide](docs/simulator.md)
+- [First success](docs/first-success.md) and the [simulator guide](docs/simulator.md)
 - [Local operation](docs/local-operation.md), [architecture](docs/architecture.md) and [protocol 0.1.0](protocol/0.1.0/README.md)
 - Demo without HTTP: `uv run python -m grok_gadgets_gateway.demo` (uses test-only controls)
 - Shared docs and the website: [hub repository](https://github.com/adidshaft/grok-gadgets) and <https://grok-gadgets.pages.dev/>

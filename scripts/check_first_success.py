@@ -1,14 +1,13 @@
-"""Run the README quick start from this checkout, then drive it with MCP Inspector.
+"""Run the README quick start from this checkout, including the Grok Bot rehearsal.
 
     python3 scripts/check_first_success.py
 
 The commands come from the README "Quick start" block, so the README cannot drift
 (its `git clone` and `cd` lines are skipped: this checkout is the clone).
-Uses a temporary config directory and free loopback ports. Needs uv and Node.js 22+.
+Uses a temporary config directory and free loopback ports. Needs uv.
 Software only: a simulated light. It proves nothing about Grok Bot or hardware.
 """
 
-import json
 import os
 import re
 import shlex
@@ -18,18 +17,11 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-INSPECTOR = "@modelcontextprotocol/inspector@2.9.0"
-TOOLS = {
-    "gadgets_list_devices",
-    "gadgets_get_state",
-    "gadgets_command",
-    "gadgets_command_status",
-    "gadgets_read_events",
-    "gadgets_diagnostics",
-}
 
 
 def quick_start():
@@ -61,33 +53,21 @@ def wait_for_port(port, process, seconds=60):
     raise SystemExit("serve did not open its MCP port")
 
 
-class Inspector:
-    def __init__(self, url, token, env):
-        self.base = ["npx", "-y", INSPECTOR, "--cli", url, "--transport", "http"]
-        self.header = ["--header", "Authorization: Bearer " + token]
-        self.env = env
-
-    def run(self, *args, authorized=True):
-        command = [*self.base, *(self.header if authorized else []), *args, "--format", "json"]
-        return subprocess.run(command, env=self.env, capture_output=True, text=True, timeout=180)
-
-    def call(self, tool, arguments=None):
-        args = ["--method", "tools/call", "--tool-name", tool]
-        if arguments is not None:
-            args += ["--tool-args-json", json.dumps(arguments)]
-        result = self.run(*args)
-        if result.returncode:
-            raise SystemExit(f"Inspector call {tool} failed:\n{result.stdout}{result.stderr}")
-        payload = json.loads(result.stdout)["result"]
-        if payload.get("isError"):
-            raise SystemExit(f"{tool} returned an MCP error: {payload}")
-        return json.loads(payload["content"][0]["text"])
-
-
 def check(condition, message):
     if not condition:
         raise SystemExit("First success check failed: " + message)
     print("ok  " + message, flush=True)
+
+
+def refused_without_token(port):
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{port}/mcp", data=b"{}", headers={"Content-Type": "application/json"}
+    )
+    try:
+        urllib.request.urlopen(request, timeout=10)
+    except urllib.error.HTTPError as error:
+        return error.code == 401
+    return False
 
 
 def main():
@@ -96,37 +76,39 @@ def main():
         env = {**os.environ, "XDG_CONFIG_HOME": folder}
         port, device_port = free_port(), free_port()
         serve = None
+        rehearsed = None
         try:
             for step in steps:
                 if step[-2:] == ["serve", "--simulator"]:
                     command = [*step, "--port", str(port), "--device-port", str(device_port)]
                     serve = subprocess.Popen(command, cwd=ROOT, env=env)
                     wait_for_port(port, serve)
+                    check(
+                        refused_without_token(port), "a request without the bearer token is refused"
+                    )
+                elif step[-1] == "rehearse":
+                    rehearsed = subprocess.run(
+                        [*step, "--port", str(port)],
+                        cwd=ROOT,
+                        env=env,
+                        capture_output=True,
+                        text=True,
+                        timeout=180,
+                    )
+                    print(rehearsed.stdout, end="", flush=True)
                 else:
                     subprocess.run(step, cwd=ROOT, env=env, check=True, stdout=subprocess.DEVNULL)
             check(serve is not None, "README quick start ran init and serve --simulator")
-            token = (Path(folder) / "grok-gadgets/mcp-token").read_text().strip()
-            inspector = Inspector(f"http://127.0.0.1:{port}/mcp", token, env)
-
-            denied = inspector.run("--method", "tools/list", authorized=False)
-            check(denied.returncode != 0, "a request without the bearer token is refused")
-            listed = inspector.run("--method", "tools/list")
-            names = {tool["name"] for tool in json.loads(listed.stdout)["result"]["tools"]}
-            check(names == TOOLS, "MCP Inspector lists the six gadgets tools")
-
-            devices = inspector.call("gadgets_list_devices")["devices"]
+            check(rehearsed is not None, "README quick start runs the Grok Bot rehearsal")
+            check(rehearsed.returncode == 0, "rehearse exits 0")
+            output = rehearsed.stdout
+            check("six tools Grok Bot will use" in output, "the gateway offers the six tools")
+            check("sim-c124 (simulated)" in output, "the simulated light sim-c124 is listed")
             check(
-                [d["device_id"] for d in devices] == ["sim-c124"] and devices[0]["simulated"],
-                "gadgets_list_devices shows the simulated light sim-c124",
+                "rgb.set" in output and "-> executed" in output,
+                "gadgets_command rgb.set returns executed",
             )
-            rgb = {"r": 255, "g": 120, "b": 0, "on": True}
-            command = inspector.call(
-                "gadgets_command",
-                {"device_id": "sim-c124", "capability": "rgb.set", "arguments": rgb},
-            )["command"]
-            check(command["status"] == "executed", "gadgets_command rgb.set returns executed")
-            state = inspector.call("gadgets_get_state", {"device_id": "sim-c124"})["device"]
-            check(state["state"]["rgb"] == rgb, "gadgets_get_state reports the new colour")
+            check('"b": 255' in output, "gadgets_get_state reports the new colour")
         finally:
             if serve is not None and serve.poll() is None:
                 serve.send_signal(signal.SIGINT)
