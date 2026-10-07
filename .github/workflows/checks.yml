@@ -29,13 +29,15 @@ jobs:
       - run: uv sync --locked --python ${{ matrix.python }}
       - run: uv run --locked ruff check .
       - run: uv run --locked ruff format --check .
+      - name: Plain language (ASD-STE100 sentence limit)
+        run: python3 scripts/check_ste.py README.md docs/first-success.md
       - run: uv run --locked pytest -q
       - run: uv run --locked python -m grok_gadgets_gateway.demo
       - run: uv build
       - name: Package metadata renders on PyPI (nothing is uploaded)
         run: uvx --from 'twine==6.2.0' twine check --strict dist/*
   first-success:
-    # The README quick start from a clean checkout, driven by MCP Inspector. Nightly too.
+    # The README quick start from a clean checkout, including the Grok Bot rehearsal. Nightly too.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -45,9 +47,6 @@ jobs:
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: '0.12.3'
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: '22'
       - run: python3 scripts/check_first_success.py
   gateway-checks:
     name: gateway-checks

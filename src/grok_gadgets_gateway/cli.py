@@ -36,14 +36,16 @@ COMMANDS = (
     "serve",
     "stdio",
     "usb-bridge",
+    "rehearse",
 )
-DESCRIPTION = """Grok Gadgets local MCP gateway.
+DESCRIPTION = """Grok Gadgets gateway: the MCP server your Grok Bot will use to reach your gadgets.
 
 Start here:
-  grok-gadgets-gateway init                 create the config and print MCP client settings
+  grok-gadgets-gateway init                 create the config and print connector settings
   grok-gadgets-gateway serve --simulator    run HTTP MCP on 127.0.0.1:8766 with a simulated light
+  grok-gadgets-gateway rehearse             call the six tools exactly as Grok Bot will
 
-An MCP client can also start the gateway itself with: grok-gadgets-gateway stdio --simulator"""
+`stdio` runs the same server for a connector that starts the gateway itself."""
 
 
 def resolve_credentials(explicit):
@@ -57,7 +59,7 @@ def resolve_credentials(explicit):
 
 
 def executable():
-    """Absolute command that starts this gateway, for pasteable MCP client settings."""
+    """Absolute command that starts this gateway, for pasteable connector settings."""
     script = os.path.abspath(sys.argv[0]) if sys.argv and sys.argv[0] else ""
     if os.path.basename(script) == "grok-gadgets-gateway" and os.path.isfile(script):
         return script, []
@@ -80,16 +82,16 @@ def http_settings(port, show_token):
 
 
 def client_settings(port, show_token, client="both"):
-    """Pasteable MCP client JSON: one complete block per connection mode."""
+    """Pasteable MCP connector JSON: one complete block per connection mode."""
     blocks = []
     if client in ("both", "stdio"):
         blocks.append(
-            ("# Your MCP client starts the gateway (stdio, simulated light):", stdio_settings())
+            ("# The connector starts the gateway (stdio, simulated light):", stdio_settings())
         )
     if client in ("both", "http"):
         blocks.append(
             (
-                "# Your MCP client connects to a running `grok-gadgets-gateway serve`:",
+                "# The connector calls a running `grok-gadgets-gateway serve`:",
                 http_settings(port, show_token),
             )
         )
@@ -118,7 +120,7 @@ def build_parser():
     )
     sub = parser.add_subparsers(dest="command", metavar="COMMAND")
 
-    init = sub.add_parser("init", help="create the config and print MCP client settings")
+    init = sub.add_parser("init", help="create the config and print connector settings")
     init.add_argument(
         "--client",
         choices=["both", "stdio", "http"],
@@ -170,7 +172,7 @@ def build_parser():
         help="extra Host header allowed for a tunnel in front of 127.0.0.1",
     )
 
-    stdio = sub.add_parser("stdio", help="run MCP over stdin/stdout for a client that starts it")
+    stdio = sub.add_parser("stdio", help="run MCP over stdin/stdout for a connector that starts it")
     _simulator_options(stdio)
     stdio.add_argument("--test-controls", action="store_true", help="expose test-only MCP controls")
     _credentials_option(stdio)
@@ -179,6 +181,17 @@ def build_parser():
     bridge = sub.add_parser("usb-bridge", help="connect a USB serial device to the gateway")
     bridge.add_argument("serial_port")
     bridge.add_argument("--port", type=int, default=8765, help="gateway device port")
+
+    rehearse = sub.add_parser(
+        "rehearse", help="call the six tools against a running serve, as Grok Bot will"
+    )
+    rehearse.add_argument("--port", type=int, default=8766, help="MCP HTTP port (default 8766)")
+    rehearse.add_argument("--mcp-token", help=f"bearer token file (default {mcp_token_path()})")
+    rehearse.add_argument("--device", help="gadget to command (default: first with the command)")
+    rehearse.add_argument(
+        "--command", dest="capability", help="command to call (default rgb.set, set to blue)"
+    )
+    rehearse.add_argument("--args", help="JSON arguments for --command, e.g. '{\"on\": true}'")
     return parser
 
 
@@ -225,7 +238,7 @@ def run(parser, args):
         else:
             print("Existing files kept", file=sys.stderr)
         print(
-            "Paste one block into your MCP client. The MCP token stays in its file "
+            "Paste one block into your MCP connector. The MCP token stays in its file "
             "unless you pass --show-token. Next: grok-gadgets-gateway serve --simulator",
             file=sys.stderr,
         )
@@ -305,6 +318,29 @@ def run(parser, args):
             parser.error("Set GROK_GADGETS_DEVICE_TOKEN (from enroll) in the environment")
         asyncio.run(bridge(args.serial_port, token, port=args.port))
         return 0
+    if command == "rehearse":
+        from .rehearse import main as rehearse_main
+
+        def token(path):
+            try:
+                return read_mcp_token(path)
+            except CredentialError as exc:
+                parser.error(f"{exc}; run grok-gadgets-gateway init first")
+
+        try:
+            arguments = json.loads(args.args) if args.args is not None else None
+        except ValueError:
+            parser.error("--args must be a JSON object")
+        if arguments is not None and not isinstance(arguments, dict):
+            parser.error("--args must be a JSON object")
+        return rehearse_main(
+            args.port,
+            args.mcp_token or mcp_token_path(),
+            args.device,
+            token,
+            args.capability,
+            arguments,
+        )
     return run_stdio(parser, args)
 
 
@@ -337,7 +373,7 @@ def main(argv=None):
             # A person typed the bare command: show the way in instead of a silent server.
             parser.print_help(sys.stderr)
             return 2
-        argv = ["stdio"]  # Spawned by an MCP client with no arguments: stdio, as before.
+        argv = ["stdio"]  # Spawned by a connector with no arguments: stdio, as before.
     elif argv[0].startswith("-") and argv[0] not in ("-h", "--help"):
         argv = ["stdio", *argv]  # Older client settings: grok-gadgets-gateway --simulator
     args = parser.parse_args(argv)

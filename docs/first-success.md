@@ -1,12 +1,10 @@
 # First success in five minutes
 
-Run the gateway with its simulated light, then drive it from
-[MCP Inspector](https://github.com/modelcontextprotocol/inspector), the official MCP developer tool.
-No model, hardware, account or API key is involved.
+Run the gateway with its simulated light. Then rehearse what your Grok Bot will do: call the
+six gadgets tools in the same order, on your own computer. You need no hardware, account or
+API key.
 
-You need Git, [uv](https://docs.astral.sh/uv/getting-started/installation/) and Node.js 22 or later.
-
-![MCP Inspector connects to the local gateway, lists six tools, finds the simulated light and sets it blue. The reply says executed, simulated true, physical_verified false.](media/gateway-inspector-first-success.webp)
+You need Git and [uv](https://docs.astral.sh/uv/getting-started/installation/).
 
 ## 1. Start the gateway
 
@@ -21,59 +19,45 @@ uv run grok-gadgets-gateway serve --simulator
 Leave it running. It serves MCP on `http://127.0.0.1:8766/mcp` and accepts only the bearer
 token that `init` wrote to `~/.config/grok-gadgets/mcp-token`.
 
-## 2. Open MCP Inspector
+## 2. Rehearse the Grok Bot calls
 
-In a second terminal:
+In a second terminal, in the same folder:
 
 ```sh
-npx @modelcontextprotocol/inspector@2.9.0 --web --transport http \
-  --server-url http://127.0.0.1:8766/mcp \
-  --header "Authorization: Bearer $(cat ~/.config/grok-gadgets/mcp-token)"
+uv run grok-gadgets-gateway rehearse
 ```
 
-Open the printed `http://127.0.0.1:6274?...` link. Turn on the switch next to
-`127.0.0.1:8766`. It shows **Connected**.
+Expected output:
 
-## 3. Call the tools
+```text
+ok  http://127.0.0.1:8766/mcp offers the six tools Grok Bot will use
+ok  gadget sim-c124 (simulated); commands: rgb.set
+ok  gadgets_command rgb.set {"r":0,"g":120,"b":255,"on":true} -> executed
+ok  gadgets_get_state sim-c124: {"rgb": {"r": 0, "g": 120, "b": 255, "on": true}, "button": {"pressed": false}}
+Rehearsal passed: these are the calls Grok Bot will make. It does not prove a Grok Bot connection or any physical effect.
+```
 
-1. Open **Tools**. You see six tools, from `gadgets_list_devices` to `gadgets_diagnostics`.
-2. Select `gadgets_list_devices` and press **Execute Tool**. The simulated light `sim-c124`
-   ("Desk light") is listed with `"simulated": true`.
-3. Select `gadgets_command`, turn on **Edit as JSON**, and enter:
-
-   ```json
-   {"device_id": "sim-c124", "capability": "rgb.set", "arguments": {"r": 0, "g": 120, "b": 255, "on": true}}
-   ```
-
-   Press **Execute Tool**. The reply has `"status": "executed"`, `"simulated": true` and
-   `"physical_verified": false`.
-4. Optional: `gadgets_get_state` with `{"device_id": "sim-c124"}` shows the new colour.
-
-## Without a browser
-
-The same Inspector has a command-line mode:
+`rehearse` connects with the same bearer token and the same MCP tools that Grok Bot's custom
+MCP connector will use. For your own gadget, name the command and its arguments:
 
 ```sh
-TOKEN="$(cat ~/.config/grok-gadgets/mcp-token)"
-npx @modelcontextprotocol/inspector@2.9.0 --cli http://127.0.0.1:8766/mcp --transport http \
-  --header "Authorization: Bearer $TOKEN" --method tools/call --tool-name gadgets_command \
-  --tool-args-json '{"device_id":"sim-c124","capability":"rgb.set","arguments":{"r":0,"g":120,"b":255,"on":true}}'
+uv run grok-gadgets-gateway rehearse --device desk-lamp --command set.light --args '{"on": true}'
 ```
 
 ## What this proves
 
-The gateway, the simulator and the six MCP tools work in a standard MCP client on your
-computer. It does not prove a Grok Bot connection or any physical effect.
+The gateway, the simulator and the six tools work on your computer. It does not prove a Grok
+Bot connection or any physical effect.
 
 CI runs this path from a clean checkout on every push and every night:
-[`scripts/check_first_success.py`](../scripts/check_first_success.py) reads the commands from
-the README quick start, then calls the tools with the Inspector command line.
+[`scripts/check_first_success.py`](../scripts/check_first_success.py) runs the commands from the
+README quick start, including `rehearse`.
 
 ## If something fails
 
 | Symptom | Next step |
 | --- | --- |
-| `401` or Inspector cannot connect | The header must be `Authorization: Bearer <token>` with the exact file contents. |
-| Port 8766 or 8765 in use | Stop the other process, or pass `--port` and `--device-port` to `serve` and change the URL. |
-| No `sim-c124` | Start `serve` with `--simulator`. |
-| `npx` not found | Install Node.js 22 or later. |
+| `no authenticated gateway answers` | Start `serve` first. If you changed `--port` on `serve`, pass the same `--port` to `rehearse`. |
+| `MCP token file does not exist` | Run `uv run grok-gadgets-gateway init`. |
+| Port 8766 or 8765 in use | Stop the other process, or pass `--port` and `--device-port` to `serve`. |
+| `no gadget offers rgb.set` | Start `serve` with `--simulator`. |
