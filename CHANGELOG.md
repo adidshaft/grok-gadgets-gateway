@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.1.0-alpha.2 — 7 October 2026
+
+- Add `grok-gadgets-gateway rehearse` for a clean-checkout, assertion-backed simulated journey.
+- Keep the newcomer guide and its automated check centered on Grok Bot.
+
 - `grok-gadgets-gateway rehearse` calls the six tools against a running `serve` in the order Grok Bot will: list gadgets, set the light blue, read state. The first-success guide, README quick start and CI use it; they no longer need Node.js or a third-party tool.
 - Docs describe Grok Bot as the only assistant the gateway serves.
 
