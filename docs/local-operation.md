@@ -77,6 +77,22 @@ This procedure restores the session. It does not replay actions from durable sto
 
 Physical USB operation remains unverified. Local software tests with a pseudo-terminal pass.
 
+## Request log
+
+`serve --request-log PATH` appends one JSON line per MCP tool call to `PATH`. It is off by default. The file is created with mode 0600 and kept between runs.
+
+```sh
+grok-gadgets-gateway serve --simulator --request-log ~/grok-gadgets-requests.jsonl
+```
+
+The first line of each run is `serve_started`, with the gateway version and the loopback URL. Each `mcp_tool_call` line has the time, the client name and version the client sent in MCP `initialize`, the HTTP user agent, the tool, the device, the command capability, the outcome, the command status and the duration. `gadgets_command` lines include the arguments. `gadgets_get_state` lines include the reported state. The last line of a clean stop is `serve_stopped`.
+
+The log never contains the bearer token or a device token. Argument values are replaced with `[redacted]` when their capability contract marks them `writeOnly`, or when their key contains `token`, `secret`, `password`, `passwd`, `key` or `credential`. `rehearse` sends the client name `grok-gadgets-rehearse`.
+
+The log records what this gateway received. A client name is self-reported, so it does not prove which product sent a request. Reported state is the device's report, not a physical observation. Delete the file when you no longer need it.
+
+The stderr log is unchanged: it never contains arguments or state.
+
 ## Troubleshooting and recovery
 
 - No devices: simulator requires --simulator; hardware agent requires private credentials and initialized device listener.

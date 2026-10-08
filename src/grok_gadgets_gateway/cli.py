@@ -171,6 +171,11 @@ def build_parser():
         default=[],
         help="extra Host header allowed for a tunnel in front of 127.0.0.1",
     )
+    serve.add_argument(
+        "--request-log",
+        metavar="PATH",
+        help="append one JSON line per tool call to this mode-0600 file (no tokens or secrets)",
+    )
 
     stdio = sub.add_parser("stdio", help="run MCP over stdin/stdout for a connector that starts it")
     _simulator_options(stdio)
@@ -303,6 +308,7 @@ def run(parser, args):
                     device_port=args.device_port,
                     port=args.port,
                     allowed_hosts=args.allowed_host,
+                    request_log=args.request_log,
                 )
             )
         except OperatorError as exc:

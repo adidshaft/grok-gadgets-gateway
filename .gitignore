@@ -40,3 +40,4 @@ build/
 # Operating-system files.
 .DS_Store
 Thumbs.db
+grok-gadgets-requests*.jsonl

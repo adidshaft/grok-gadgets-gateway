@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import re
 from contextlib import asynccontextmanager
+from importlib.metadata import PackageNotFoundError, version
 
 import uvicorn
 from mcp.server.transport_security import TransportSecuritySettings
@@ -131,6 +132,7 @@ async def serve_gateway(
     port=8766,
     allowed_hosts=(),
     log_stream=None,
+    request_log=None,
     host="127.0.0.1",
 ):
     """Run until the context exits. HTTP and the device listener bind 127.0.0.1 only."""
@@ -146,6 +148,10 @@ async def serve_gateway(
         read_mcp_token(mcp_token)
     except (CredentialError, SimulatorConfigError, ValueError) as exc:
         raise OperatorError(str(exc)) from None
+    try:
+        log = RequestLog("streamable-http", stream=log_stream, path=request_log)
+    except OSError as exc:
+        raise OperatorError(f"cannot open request log {request_log}: {exc.strerror}") from None
 
     gateway = Gateway()
     sim = Simulator(gateway, config=config) if simulator else None
@@ -156,30 +162,42 @@ async def serve_gateway(
         port=device_port,
         reserved_ids=[sim.device_id] if sim else [],
     )
-    await device_server.start()
     try:
+        await device_server.start()
         async with _serve_http(
-            gateway,
-            sim,
-            device_server,
-            mcp_token,
-            port=port,
-            security=security,
-            log_stream=log_stream,
+            gateway, sim, device_server, mcp_token, port=port, security=security, log=log
         ) as running:
+            log.append(
+                {
+                    "event": "serve_started",
+                    "gateway_version": _version(),
+                    "url": running.url,
+                    "device_listener": f"127.0.0.1:{running.device_port}",
+                    "simulator": sim.device_id if sim else None,
+                }
+            )
             yield running
     finally:
         await device_server.close()
+        log.append({"event": "serve_stopped"})
+        log.close()
+
+
+def _version():
+    try:
+        return version("grok-gadgets-gateway")
+    except PackageNotFoundError:
+        return None
 
 
 @asynccontextmanager
-async def _serve_http(gateway, sim, device_server, mcp_token, *, port, security, log_stream):
+async def _serve_http(gateway, sim, device_server, mcp_token, *, port, security, log):
     mcp = make_server(
         gateway,
         sim,
         None,
         False,
-        request_log=RequestLog("streamable-http", stream=log_stream),
+        request_log=log,
         listener_status=device_server.status,
         http=True,
         log_level="WARNING",
