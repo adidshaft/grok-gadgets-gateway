@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add `serve --request-log PATH` (and the same option for `stdio`): an opt-in, mode-0600 JSONL file with one line per tool call (time, client name, tool, device, command, non-secret arguments, result). Secret-looking and `writeOnly` argument values are redacted; tokens are never written ([#65](https://github.com/adidshaft/grok-gadgets-gateway/issues/65)).
+- `rehearse` identifies itself to the gateway as `grok-gadgets-rehearse`.
+
 ## 0.1.0-alpha.4 — 8 October 2026
 
 - Update to `mcp` 2.3.0. The server uses `MCPServer`, and its HTTP settings move to `streamable_http_app()`. The six Grok Bot tools, their annotations, `serve` authentication and transport security are unchanged. The server still accepts MCP protocol versions 2024-11-05 to 2025-11-25 and adds 2026-07-28.
