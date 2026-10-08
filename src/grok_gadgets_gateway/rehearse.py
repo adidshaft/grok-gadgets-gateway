@@ -3,8 +3,9 @@
 import asyncio
 import json
 
+import httpx2
 from mcp import ClientSession
-from mcp.client.streamable_http import streamablehttp_client
+from mcp.client.streamable_http import streamable_http_client
 
 from .service import MCP_PATH
 
@@ -25,9 +26,9 @@ class RehearsalError(Exception):
 
 async def _call(session, tool, arguments=None):
     result = await session.call_tool(tool, arguments or {})
-    if result.isError:
+    if result.is_error:
         raise RehearsalError(f"{tool} returned an MCP error")
-    value = result.structuredContent
+    value = result.structured_content
     if value is None:
         value = json.loads(result.content[0].text)
     if not value.get("ok"):
@@ -67,41 +68,46 @@ def _pick(devices, device_id, capability):
 async def _rehearse(port, token, device_id, out, capability, arguments):
     url = f"http://127.0.0.1:{port}{MCP_PATH}"
     headers = {"Authorization": "Bearer " + token}
-    async with streamablehttp_client(url, headers=headers) as (read, write, _):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            names = {tool.name for tool in (await session.list_tools()).tools}
-            if not TOOLS <= names:
-                raise RehearsalError("the gateway does not offer the six gadgets tools")
-            out(f"ok  {url} offers the six tools Grok Bot will use")
+    # The MCP SDK's default timeouts: 30 s per request, 300 s for the event stream.
+    timeout = httpx2.Timeout(30.0, read=300.0)
+    async with (
+        httpx2.AsyncClient(headers=headers, timeout=timeout) as http,
+        streamable_http_client(url, http_client=http) as (read, write),
+        ClientSession(read, write) as session,
+    ):
+        await session.initialize()
+        names = {tool.name for tool in (await session.list_tools()).tools}
+        if not TOOLS <= names:
+            raise RehearsalError("the gateway does not offer the six gadgets tools")
+        out(f"ok  {url} offers the six tools Grok Bot will use")
 
-            devices = (await _call(session, "gadgets_list_devices"))["devices"]
-            for device in devices:
-                label = "simulated" if device["simulated"] else "reported by the gadget"
-                commands = ", ".join(device["command_capabilities"]) or "none"
-                out(f"ok  gadget {device['device_id']} ({label}); commands: {commands}")
-            device, capability = _pick(devices, device_id, capability)
-            device_id = device["device_id"]
-            if arguments is None:
-                if capability != "rgb.set":
-                    raise RehearsalError(f"pass --args with JSON arguments for {capability}")
-                arguments = BLUE
+        devices = (await _call(session, "gadgets_list_devices"))["devices"]
+        for device in devices:
+            label = "simulated" if device["simulated"] else "reported by the gadget"
+            commands = ", ".join(device["command_capabilities"]) or "none"
+            out(f"ok  gadget {device['device_id']} ({label}); commands: {commands}")
+        device, capability = _pick(devices, device_id, capability)
+        device_id = device["device_id"]
+        if arguments is None:
+            if capability != "rgb.set":
+                raise RehearsalError(f"pass --args with JSON arguments for {capability}")
+            arguments = BLUE
 
-            command = (
-                await _call(
-                    session,
-                    "gadgets_command",
-                    {"device_id": device_id, "capability": capability, "arguments": arguments},
-                )
-            )["command"]
-            sent = json.dumps(arguments, separators=(",", ":"))
-            out(f"ok  gadgets_command {capability} {sent} -> {command['status']}")
-            if command["status"] != "executed":
-                raise RehearsalError(f"command status is {command['status']}, not executed")
+        command = (
+            await _call(
+                session,
+                "gadgets_command",
+                {"device_id": device_id, "capability": capability, "arguments": arguments},
+            )
+        )["command"]
+        sent = json.dumps(arguments, separators=(",", ":"))
+        out(f"ok  gadgets_command {capability} {sent} -> {command['status']}")
+        if command["status"] != "executed":
+            raise RehearsalError(f"command status is {command['status']}, not executed")
 
-            state = (await _call(session, "gadgets_get_state", {"device_id": device_id}))["device"]
-            out(f"ok  gadgets_get_state {device_id}: {json.dumps(state['state'])}")
-            return state
+        state = (await _call(session, "gadgets_get_state", {"device_id": device_id}))["device"]
+        out(f"ok  gadgets_get_state {device_id}: {json.dumps(state['state'])}")
+        return state
 
 
 def _find(exc, kind):
@@ -118,7 +124,7 @@ def main(port, token_path_text, device_id, read_token, capability=None, argument
     token = read_token(token_path_text)
     try:
         asyncio.run(rehearse(port, token, device_id, print, capability, arguments))
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - any failure becomes one plain message
         failure = _find(exc, RehearsalError)
         if failure is None:
             failure = f"no authenticated gateway answers on 127.0.0.1:{port}; start `serve` first"

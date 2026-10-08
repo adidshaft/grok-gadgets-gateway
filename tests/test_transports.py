@@ -9,12 +9,12 @@ from unittest.mock import Mock
 
 import pytest
 from jsonschema import Draft202012Validator
+from test_domain import hello
 
 from grok_gadgets_gateway.domain import Gateway
 from grok_gadgets_gateway.simulator import Simulator
 from grok_gadgets_gateway.transport import CredentialError, Credentials, DeviceServer
 from grok_gadgets_gateway.usb_bridge import bridge
-from test_domain import hello
 
 TOKEN = "local-test-device-token-only"
 
@@ -80,12 +80,12 @@ async def test_unauthorized_device_isolation_and_reconnect(tmp_path):
     g = Gateway()
     server = await DeviceServer(g, Credentials(path), port=0, idle_timeout=0.2).start()
     try:
-        r, w, reply = await connect(server, device_id="not-authorized")
+        _r, w, reply = await connect(server, device_id="not-authorized")
         assert reply["error"]["code"] == "unauthorized"
         assert "not-authorized" not in g.devices
         w.close()
         await w.wait_closed()
-        r, w, reply = await connect(server, token="bad-token-at-least-16")
+        _r, w, reply = await connect(server, token="bad-token-at-least-16")
         assert reply["error"]["code"] == "unauthorized"
         w.close()
         await w.wait_closed()
@@ -447,8 +447,10 @@ def write_registry(path, text):
         '{"devices": {"dev-1": {"token": 5}}}',
         '{"devices": {"dev-1": {"token": "short"}}}',
         f'{{"devices": {{"dev-1": {{"token": "{TOKEN}", "revoked": "false"}}}}}}',
-        f'{{"devices": {{"dev-1": {{"token": "{TOKEN}", "revoked": true}}, '
-        f'"dev-1": {{"token": "{TOKEN}"}}}}}}',
+        (
+            f'{{"devices": {{"dev-1": {{"token": "{TOKEN}", "revoked": true}}, '
+            f'"dev-1": {{"token": "{TOKEN}"}}}}}}'
+        ),
         '{"devices": {"bad\\n": {"token": "' + TOKEN + '"}}}',
         "[" * 5000 + "]" * 5000,
     ],

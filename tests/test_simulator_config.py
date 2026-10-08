@@ -128,6 +128,7 @@ def test_cli_config_errors(args, expected):
         capture_output=True,
         text=True,
         timeout=10,
+        check=False,
     )
     assert result.returncode == 2
     assert expected in result.stderr
@@ -150,6 +151,7 @@ def test_cli_rejects_config_content_without_logging_it(tmp_path):
         capture_output=True,
         text=True,
         timeout=10,
+        check=False,
     )
     assert result.returncode == 2 and result.stdout == ""
     assert "never-log-this-value" not in result.stderr
@@ -157,7 +159,7 @@ def test_cli_rejects_config_content_without_logging_it(tmp_path):
 
 async def call_tool(server, name, arguments=None):
     result = await server.call_tool(name, arguments or {})
-    return result[1] if isinstance(result, tuple) else json.loads(result[0].text)
+    return result.structured_content or json.loads(result.content[0].text)
 
 
 async def test_delay_does_not_block_gateway_and_retired_session_stays_unconfirmed():
@@ -204,69 +206,64 @@ async def test_actual_mcp_configured_simulator(tmp_path, offline, controls):
     if controls:
         args.append("--test-controls")
     params = StdioServerParameters(command=sys.executable, args=args)
-    async with stdio_client(params) as (read, write):
-        async with ClientSession(read, write) as client:
-            await client.initialize()
-            names = {tool.name for tool in (await client.list_tools()).tools}
-            assert ("test_simulator_control" in names) is controls
+    async with stdio_client(params) as (read, write), ClientSession(read, write) as client:
+        await client.initialize()
+        names = {tool.name for tool in (await client.list_tools()).tools}
+        assert ("test_simulator_control" in names) is controls
 
-            async def call(name, args=None):
-                result = await client.call_tool(name, args or {})
-                assert not result.isError, result.content
-                return result.structuredContent or json.loads(result.content[0].text)
+        async def call(name, args=None):
+            result = await client.call_tool(name, args or {})
+            assert not result.is_error, result.content
+            return result.structured_content or json.loads(result.content[0].text)
 
-            device = (await call("gadgets_list_devices"))["devices"][0]
-            assert device["device_id"] == config["device_id"]
-            assert device["display_name"] == config["display_name"]
-            assert device["simulated"] and device["available"] is not offline
-            assert device["state"]["rgb"] == config["initial_rgb"]
-            request = {
-                "device_id": config["device_id"],
-                "capability": "rgb.set",
-                "arguments": {"r": 255, "g": 0, "b": 80, "on": True},
-                "command_id": "set",
-            }
-            if offline:
-                assert device["freshness"] == "offline"
-                assert (await call("gadgets_command", request))["error"]["code"] == "unavailable"
-                assert (
-                    await call("test_simulator_control", {"action": "button", "pressed": True})
-                )["error"]["code"] == "stale_session"
-                reconnected = (await call("test_simulator_control", {"action": "reconnect"}))[
-                    "device"
-                ]
-                assert reconnected["available"] and reconnected["boot_id"] != device["boot_id"]
-                assert reconnected["state"]["rgb"] == config["initial_rgb"]
-            started = time.monotonic()
-            command = (await call("gadgets_command", request))["command"]
-            assert time.monotonic() - started >= 0.13
-            assert command["status"] == "executed" and command["simulated"]
-            assert command["physical_verified"] is False
-            assert command["reported_state"]["rgb"] == request["arguments"]
-            assert (await call("gadgets_command", request))["command"] == {
-                **command,
-                "duplicate": True,
-            }
+        device = (await call("gadgets_list_devices"))["devices"][0]
+        assert device["device_id"] == config["device_id"]
+        assert device["display_name"] == config["display_name"]
+        assert device["simulated"] and device["available"] is not offline
+        assert device["state"]["rgb"] == config["initial_rgb"]
+        request = {
+            "device_id": config["device_id"],
+            "capability": "rgb.set",
+            "arguments": {"r": 255, "g": 0, "b": 80, "on": True},
+            "command_id": "set",
+        }
+        if offline:
+            assert device["freshness"] == "offline"
+            assert (await call("gadgets_command", request))["error"]["code"] == "unavailable"
+            assert (await call("test_simulator_control", {"action": "button", "pressed": True}))[
+                "error"
+            ]["code"] == "stale_session"
+            reconnected = (await call("test_simulator_control", {"action": "reconnect"}))["device"]
+            assert reconnected["available"] and reconnected["boot_id"] != device["boot_id"]
+            assert reconnected["state"]["rgb"] == config["initial_rgb"]
+        started = time.monotonic()
+        command = (await call("gadgets_command", request))["command"]
+        assert time.monotonic() - started >= 0.13
+        assert command["status"] == "executed" and command["simulated"]
+        assert command["physical_verified"] is False
+        assert command["reported_state"]["rgb"] == request["arguments"]
+        assert (await call("gadgets_command", request))["command"] == {
+            **command,
+            "duplicate": True,
+        }
+        state = (await call("gadgets_get_state", {"device_id": config["device_id"]}))["device"]
+        assert state["state"]["rgb"] == request["arguments"]
+        assert (await call("gadgets_get_state", {"device_id": "sim-c124"}))["error"]["code"] == (
+            "unknown_device"
+        )
+        if controls:
+            await call("test_simulator_control", {"action": "button", "pressed": True})
+            await call("test_simulator_control", {"action": "button", "pressed": False})
+            events = (await call("gadgets_read_events"))["events"]
+            assert [event["data"]["pressed"] for event in events] == [True, False]
+            assert all(event["device_id"] == config["device_id"] for event in events)
+            await call("test_simulator_control", {"action": "disconnect"})
+            await call("test_simulator_control", {"action": "reconnect"})
             state = (await call("gadgets_get_state", {"device_id": config["device_id"]}))["device"]
-            assert state["state"]["rgb"] == request["arguments"]
-            assert (await call("gadgets_get_state", {"device_id": "sim-c124"}))["error"][
-                "code"
-            ] == ("unknown_device")
-            if controls:
-                await call("test_simulator_control", {"action": "button", "pressed": True})
-                await call("test_simulator_control", {"action": "button", "pressed": False})
-                events = (await call("gadgets_read_events"))["events"]
-                assert [event["data"]["pressed"] for event in events] == [True, False]
-                assert all(event["device_id"] == config["device_id"] for event in events)
-                await call("test_simulator_control", {"action": "disconnect"})
-                await call("test_simulator_control", {"action": "reconnect"})
-                state = (await call("gadgets_get_state", {"device_id": config["device_id"]}))[
-                    "device"
-                ]
-                assert state["state"]["rgb"] == config["initial_rgb"]
-            report = (await call("gadgets_diagnostics"))["report"]
-            assert report["physical_verified"] is False
-            assert "My desk light" not in json.dumps(report)
+            assert state["state"]["rgb"] == config["initial_rgb"]
+        report = (await call("gadgets_diagnostics"))["report"]
+        assert report["physical_verified"] is False
+        assert "My desk light" not in json.dumps(report)
 
 
 @pytest.mark.parametrize("pressed", [True, False])

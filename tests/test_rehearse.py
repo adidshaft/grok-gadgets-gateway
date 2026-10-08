@@ -1,11 +1,10 @@
 import asyncio
 
 import pytest
+from test_http import TOKEN, free_port, write_local_config
 
 from grok_gadgets_gateway.rehearse import RehearsalError, main, rehearse
 from grok_gadgets_gateway.service import serve_gateway
-
-from test_http import TOKEN, free_port, write_local_config
 
 
 async def test_rehearse_calls_the_six_tools_and_sets_the_simulated_light_blue(tmp_path):

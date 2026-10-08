@@ -11,6 +11,7 @@ def gateway(*args, env=None, timeout=10):
         text=True,
         timeout=timeout,
         env=env,
+        check=False,
     )
 
 
@@ -151,7 +152,11 @@ def test_init_prints_pasteable_settings_with_absolute_paths(tmp_path):
     entry = only_stdio["mcpServers"]["grok-gadgets"]
     # The printed command really starts the stdio server.
     started = subprocess.run(
-        [entry["command"], *entry["args"], "--help"], capture_output=True, text=True, env=env
+        [entry["command"], *entry["args"], "--help"],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
     )
     assert started.returncode == 0 and "--test-controls" in started.stdout
 

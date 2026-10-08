@@ -182,15 +182,16 @@ async def _serve_http(gateway, sim, device_server, mcp_token, *, port, security,
         request_log=RequestLog("streamable-http", stream=log_stream),
         listener_status=device_server.status,
         http=True,
-        host="127.0.0.1",
-        port=port,
+        log_level="WARNING",
+    )
+    app = mcp.streamable_http_app(
         streamable_http_path=MCP_PATH,
         json_response=True,
-        log_level="WARNING",
         transport_security=security,
+        host="127.0.0.1",
     )
     config = uvicorn.Config(
-        BearerAuth(mcp.streamable_http_app(), FileTokenVerifier(mcp_token)),
+        BearerAuth(app, FileTokenVerifier(mcp_token)),
         host="127.0.0.1",
         port=port,
         log_level="warning",
@@ -212,5 +213,5 @@ async def _serve_http(gateway, sim, device_server, mcp_token, *, port, security,
         if not task.done():
             try:
                 await asyncio.wait_for(task, 5)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 task.cancel()

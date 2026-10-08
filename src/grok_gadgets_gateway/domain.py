@@ -6,7 +6,7 @@ import re
 import time
 import uuid
 from collections import OrderedDict, deque
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from jsonschema import SchemaError
 
@@ -21,7 +21,6 @@ from .protocol import (
     validate_state,
 )
 
-
 COMMAND_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,63}")
 DEDUP_WINDOW_SECONDS = 600
 ACK_TIMEOUT_SECONDS = 10
@@ -32,7 +31,7 @@ RGB_DESCRIPTION = "Set the light colour: r, g and b are 0-255; on switches it on
 
 
 def now_iso():
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def canonical(value):
