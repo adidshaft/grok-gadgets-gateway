@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import io
 import json
 import os
@@ -6,7 +7,7 @@ import socket
 import sys
 from pathlib import Path
 
-import httpx
+import httpx2
 import pytest
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
@@ -16,7 +17,6 @@ from grok_gadgets_gateway.mcp_server import make_server
 from grok_gadgets_gateway.operator import atomic_write
 from grok_gadgets_gateway.service import serve_gateway
 from grok_gadgets_gateway.simulator import Simulator
-
 
 TOKEN = "mcp-test-token-value"
 DEVICE = "0123456789abcdef"
@@ -39,9 +39,9 @@ def write_local_config(tmp_path):
     return credentials, mcp_token
 
 
-class ForcedHost(httpx.AsyncBaseTransport):
+class ForcedHost(httpx2.AsyncBaseTransport):
     def __init__(self, host):
-        self._inner = httpx.AsyncHTTPTransport()
+        self._inner = httpx2.AsyncHTTPTransport()
         self._host = host
 
     async def handle_async_request(self, request):
@@ -58,20 +58,21 @@ async def first_status(url, headers=None, transport=None):
     async def hook(response):
         seen.append(response.status_code)
 
-    client = httpx.AsyncClient(
+    client = httpx2.AsyncClient(
         headers=headers,
         transport=transport,
-        timeout=httpx.Timeout(3, read=3),
+        timeout=httpx2.Timeout(3, read=3),
         follow_redirects=True,
         event_hooks={"response": [hook]},
     )
-    try:
-        async with client:
-            async with streamable_http_client(url, http_client=client) as (read, write, _session):
-                async with ClientSession(read, write) as session:
-                    await asyncio.wait_for(session.initialize(), 3)
-    except (Exception, ExceptionGroup):
-        pass
+    # Only the observed status matters; the connection is expected to fail.
+    with contextlib.suppress(Exception):
+        async with (
+            client,
+            streamable_http_client(url, http_client=client) as (read, write),
+            ClientSession(read, write) as session,
+        ):
+            await asyncio.wait_for(session.initialize(), 3)
     return seen
 
 
@@ -104,7 +105,7 @@ async def test_streamable_http_requires_token_and_runs_simulator(tmp_path):
         assert await first_status(running.url, {"Authorization": "Bearer wrong-token"}) == [401]
         # Static bearer mode is not OAuth: no resource metadata, no discovery documents.
         base = running.url.removesuffix("/mcp")
-        async with httpx.AsyncClient(trust_env=False) as plain:
+        async with httpx2.AsyncClient(trust_env=False) as plain:
             denied = await plain.post(running.url, json={})
             assert denied.status_code == 401
             assert denied.headers["www-authenticate"] == 'Bearer error="invalid_token"'
@@ -117,47 +118,49 @@ async def test_streamable_http_requires_token_and_runs_simulator(tmp_path):
                 found = await plain.get(base + path, headers={"Authorization": f"Bearer {TOKEN}"})
                 assert found.status_code == 404, path
 
-        async with httpx.AsyncClient(
-            headers={"Authorization": f"Bearer {TOKEN}"},
-            timeout=httpx.Timeout(5, read=5),
-            follow_redirects=True,
-        ) as http:
-            async with streamable_http_client(running.url, http_client=http) as (read, write, _):
-                async with ClientSession(read, write) as session:
-                    await session.initialize()
-                    tools = (await session.list_tools()).tools
-                    names = {tool.name for tool in tools}
-                    assert "test_simulator_control" not in names
-                    assert {
-                        "gadgets_list_devices",
-                        "gadgets_get_state",
-                        "gadgets_command",
-                        "gadgets_command_status",
-                        "gadgets_read_events",
-                        "gadgets_diagnostics",
-                    } <= names
-                    for tool in tools:
-                        assert tool.annotations is not None
-                        if tool.name == "gadgets_command":
-                            assert tool.annotations.readOnlyHint is False
-                        else:
-                            assert tool.annotations.readOnlyHint is True
-                    result = await session.call_tool(
-                        "gadgets_command",
-                        {
-                            "device_id": "sim-c124",
-                            "capability": "rgb.set",
-                            "arguments": {"r": 0, "g": 255, "b": 0, "on": True},
-                        },
-                    )
-                    assert not result.isError
-                    body = result.structuredContent or json.loads(result.content[0].text)
-                    assert body["command"]["status"] == "executed"
-                    assert body["command"]["simulated"] is True
-                    report = await session.call_tool("gadgets_diagnostics", {})
-                    diag = report.structuredContent or json.loads(report.content[0].text)
-                    listener = diag["report"]["device_listener"]
-                    assert listener["host"] == "127.0.0.1" and listener["port"] == device_port
+        async with (
+            httpx2.AsyncClient(
+                headers={"Authorization": f"Bearer {TOKEN}"},
+                timeout=httpx2.Timeout(5, read=5),
+                follow_redirects=True,
+            ) as http,
+            streamable_http_client(running.url, http_client=http) as (read, write),
+            ClientSession(read, write) as session,
+        ):
+            await session.initialize()
+            tools = (await session.list_tools()).tools
+            names = {tool.name for tool in tools}
+            assert "test_simulator_control" not in names
+            assert {
+                "gadgets_list_devices",
+                "gadgets_get_state",
+                "gadgets_command",
+                "gadgets_command_status",
+                "gadgets_read_events",
+                "gadgets_diagnostics",
+            } <= names
+            for tool in tools:
+                assert tool.annotations is not None
+                if tool.name == "gadgets_command":
+                    assert tool.annotations.read_only_hint is False
+                else:
+                    assert tool.annotations.read_only_hint is True
+            result = await session.call_tool(
+                "gadgets_command",
+                {
+                    "device_id": "sim-c124",
+                    "capability": "rgb.set",
+                    "arguments": {"r": 0, "g": 255, "b": 0, "on": True},
+                },
+            )
+            assert not result.is_error
+            body = result.structured_content or json.loads(result.content[0].text)
+            assert body["command"]["status"] == "executed"
+            assert body["command"]["simulated"] is True
+            report = await session.call_tool("gadgets_diagnostics", {})
+            diag = report.structured_content or json.loads(report.content[0].text)
+            listener = diag["report"]["device_listener"]
+            assert listener["host"] == "127.0.0.1" and listener["port"] == device_port
 
         rejected = await first_status(
             running.url,
@@ -217,13 +220,13 @@ async def test_cli_serves_enrolled_device_and_revokes_live_access(tmp_path):
         )
         try:
             async with asyncio.timeout(10):
-                async with httpx.AsyncClient(timeout=1, trust_env=False) as probe:
+                async with httpx2.AsyncClient(timeout=1, trust_env=False) as probe:
                     while True:
                         assert process.returncode is None, "serve exited before readiness"
                         try:
                             if (await probe.get(url)).status_code == 401:
                                 break
-                        except httpx.TransportError:
+                        except httpx2.TransportError:
                             pass
                         await asyncio.sleep(0.05)
             reader, writer = await asyncio.open_connection("127.0.0.1", device_port)
@@ -238,65 +241,65 @@ async def test_cli_serves_enrolled_device_and_revokes_live_access(tmp_path):
             hello["device"].update(device_id="local-test-device", simulated=True)
             hello["token"] = device_token
             assert (await exchange(hello))["ok"]
-            async with httpx.AsyncClient(
-                headers={"Authorization": f"Bearer {mcp_token}"},
-                trust_env=False,
-            ) as http:
-                async with streamable_http_client(url, http_client=http) as (read, write, _):
-                    async with ClientSession(read, write) as session:
-                        await session.initialize()
+            async with (
+                httpx2.AsyncClient(
+                    headers={"Authorization": f"Bearer {mcp_token}"},
+                    trust_env=False,
+                ) as http,
+                streamable_http_client(url, http_client=http) as (read, write),
+                ClientSession(read, write) as session,
+            ):
+                await session.initialize()
 
-                        async def call(name, arguments):
-                            result = await session.call_tool(name, arguments)
-                            assert not result.isError
-                            return result.structuredContent or json.loads(result.content[0].text)
+                async def call(name, arguments):
+                    result = await session.call_tool(name, arguments)
+                    assert not result.is_error
+                    return result.structured_content or json.loads(result.content[0].text)
 
-                        devices = (await call("gadgets_list_devices", {}))["devices"]
-                        assert {d["device_id"] for d in devices} == {
-                            "sim-c124",
-                            "local-test-device",
+                devices = (await call("gadgets_list_devices", {}))["devices"]
+                assert {d["device_id"] for d in devices} == {
+                    "sim-c124",
+                    "local-test-device",
+                }
+                arguments = {"r": 7, "g": 11, "b": 13, "on": True}
+                request = {
+                    "device_id": "local-test-device",
+                    "capability": "rgb.set",
+                    "arguments": arguments,
+                }
+                # gadgets_command waits for the device's ACK and returns the outcome.
+                pending = asyncio.create_task(call("gadgets_command", request))
+                delivered = []
+                while not delivered:
+                    delivered = (await exchange({"type": "poll"}))["commands"]
+                command_id = delivered[0]["command_id"]
+                assert delivered == [
+                    {
+                        "command_id": command_id,
+                        "capability": "rgb.set",
+                        "arguments": arguments,
+                    }
+                ]
+                assert (
+                    await exchange(
+                        {
+                            "type": "ack",
+                            "command_id": command_id,
+                            "status": "executed",
+                            "state": {"rgb": arguments},
                         }
-                        arguments = {"r": 7, "g": 11, "b": 13, "on": True}
-                        request = {
-                            "device_id": "local-test-device",
-                            "capability": "rgb.set",
-                            "arguments": arguments,
-                        }
-                        # gadgets_command waits for the device's ACK and returns the outcome.
-                        pending = asyncio.create_task(call("gadgets_command", request))
-                        delivered = []
-                        while not delivered:
-                            delivered = (await exchange({"type": "poll"}))["commands"]
-                        command_id = delivered[0]["command_id"]
-                        assert delivered == [
-                            {
-                                "command_id": command_id,
-                                "capability": "rgb.set",
-                                "arguments": arguments,
-                            }
-                        ]
-                        assert (
-                            await exchange(
-                                {
-                                    "type": "ack",
-                                    "command_id": command_id,
-                                    "status": "executed",
-                                    "state": {"rgb": arguments},
-                                }
-                            )
-                        )["ok"]
-                        receipt = (await pending)["command"]
-                        assert receipt["command_id"] == command_id
-                        assert receipt["status"] == "executed"
-                        assert receipt["reported_state"] == {"rgb": arguments}
-                        retry = (
-                            await call(
-                                "gadgets_command", {**request, "command_id": receipt["command_id"]}
-                            )
-                        )["command"]
-                        assert retry["duplicate"] and retry["status"] == "executed"
-                        assert retry["simulated"] and not retry["physical_verified"]
-                        assert (await exchange({"type": "poll"}))["commands"] == []
+                    )
+                )["ok"]
+                receipt = (await pending)["command"]
+                assert receipt["command_id"] == command_id
+                assert receipt["status"] == "executed"
+                assert receipt["reported_state"] == {"rgb": arguments}
+                retry = (
+                    await call("gadgets_command", {**request, "command_id": receipt["command_id"]})
+                )["command"]
+                assert retry["duplicate"] and retry["status"] == "executed"
+                assert retry["simulated"] and not retry["physical_verified"]
+                assert (await exchange({"type": "poll"}))["commands"] == []
 
             # Device service survives the MCP client's departure.
             assert (await exchange({"type": "ping"}))["ok"]

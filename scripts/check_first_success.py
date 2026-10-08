@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def quick_start():
     readme = (ROOT / "README.md").read_text()
-    match = re.search(r"## Quick start\n.*?```sh\n(.*?)```", readme, re.S)
+    match = re.search(r"## Quick start\n.*?```sh\n(.*?)```", readme, re.DOTALL)
     if not match:
         raise SystemExit("README has no Quick start sh block")
     # The clone already exists: this script runs inside it.
@@ -94,6 +94,7 @@ def main():
                         capture_output=True,
                         text=True,
                         timeout=180,
+                        check=False,
                     )
                     print(rehearsed.stdout, end="", flush=True)
                 else:

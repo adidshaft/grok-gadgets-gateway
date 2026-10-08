@@ -15,13 +15,13 @@ from pathlib import Path
 LIMIT = 25
 PASSIVE = re.compile(
     r"\b(is|are|was|were|be|been|being)\s+(\w+ed|built|made|shown|run|done|given|kept|sent|set|found|seen|written)\b",
-    re.I,
+    re.IGNORECASE,
 )
 
 
 def sentences(text):
-    text = re.sub(r"```.*?```", "", text, flags=re.S)
-    text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
+    text = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
+    text = re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
     text = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", text)
     text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)
     kept = []

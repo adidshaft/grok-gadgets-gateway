@@ -7,27 +7,22 @@ import json
 import sys
 import time
 import uuid
-import warnings
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
 from .domain import ACK_TIMEOUT_SECONDS
 from .protocol import GatewayError
 
-# mcp 1.26 + pydantic-settings warn about FastMCP's own `lifespan` field on every start.
-# It is harmless and looks like an error to users, so hide exactly that warning.
-warnings.filterwarnings("ignore", message=r"Field 'lifespan' has an incomplete definition")
-
 # How long gadgets_command waits for the device's report before returning an open status.
 COMMAND_WAIT_SECONDS = 3.0
 _OPEN_STATUSES = ("accepted", "dispatched")
 
-READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False)
+READ_ONLY = ToolAnnotations(read_only_hint=True, destructive_hint=False, open_world_hint=False)
 ACTUATE = ToolAnnotations(
-    readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=True
+    read_only_hint=False, destructive_hint=True, idempotent_hint=False, open_world_hint=True
 )
 
 COMMAND_DESCRIPTION = """Ask a gadget to run one command capability with JSON arguments.
@@ -58,7 +53,7 @@ class RequestLog:
         self.stream = stream if stream is not None else sys.stderr
 
     def write(self, record):
-        record = {"ts": datetime.now(timezone.utc).isoformat(), **record}
+        record = {"ts": datetime.now(UTC).isoformat(), **record}
         print(json.dumps(record, separators=(",", ":")), file=self.stream, flush=True)
 
 
@@ -77,7 +72,7 @@ def make_server(
     listener_status=None,
     http=False,
     command_wait=COMMAND_WAIT_SECONDS,
-    **fastmcp_options,
+    **server_options,
 ):
     # Never wait past the gateway's own acknowledgement deadline.
     command_wait = max(0.0, min(command_wait, ACK_TIMEOUT_SECONDS))
@@ -95,7 +90,7 @@ def make_server(
             if device_server:
                 await device_server.close()
 
-    mcp = FastMCP("Grok Gadgets gateway", lifespan=lifespan, **fastmcp_options)
+    mcp = MCPServer("Grok Gadgets gateway", lifespan=lifespan, **server_options)
 
     def tool(annotations, description=None):
         def register(fn):
@@ -237,7 +232,7 @@ def make_server(
         if simulator is None:
             raise ValueError("Test controls require explicit simulator")
 
-        @tool(ToolAnnotations(readOnlyHint=False, destructiveHint=False))
+        @tool(ToolAnnotations(read_only_hint=False, destructive_hint=False))
         async def test_simulator_control(action: str, pressed: bool | None = None) -> dict:
             """TEST ONLY: inject a simulated button edge or disconnect/reconnect."""
             return run(

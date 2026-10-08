@@ -4,9 +4,10 @@ import asyncio
 import json
 import time
 
+from test_domain import hello
+
 from grok_gadgets_gateway.domain import Gateway
 from grok_gadgets_gateway.mcp_server import make_server
-from test_domain import hello
 
 RGB = {"r": 1, "g": 2, "b": 3, "on": True}
 
@@ -23,8 +24,7 @@ async def command(server, **extra):
         "gadgets_command",
         {"device_id": "dev-1", "capability": "rgb.set", "arguments": RGB, **extra},
     )
-    content = result[0] if isinstance(result, tuple) else result
-    return json.loads(content[0].text)
+    return result.structured_content or json.loads(result.content[0].text)
 
 
 async def device(gateway, session, status="executed"):
