@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Add `serve --request-log PATH`: an opt-in, mode-0600 JSONL file with one line per tool call (time, client name, tool, device, command, non-secret arguments, result). Secret-looking and `writeOnly` argument values are redacted; tokens are never written ([#65](https://github.com/adidshaft/grok-gadgets-gateway/issues/65)).
+- Add `serve --request-log PATH` (and the same option for `stdio`): an opt-in, mode-0600 JSONL file with one line per tool call (time, client name, tool, device, command, non-secret arguments, result). Secret-looking and `writeOnly` argument values are redacted; tokens are never written ([#65](https://github.com/adidshaft/grok-gadgets-gateway/issues/65)).
 - `rehearse` identifies itself to the gateway as `grok-gadgets-rehearse`.
 
 ## 0.1.0-alpha.4 — 8 October 2026

@@ -85,6 +85,8 @@ Physical USB operation remains unverified. Local software tests with a pseudo-te
 grok-gadgets-gateway serve --simulator --request-log ~/grok-gadgets-requests.jsonl
 ```
 
+`stdio --request-log PATH` writes the same lines with `transport` set to `stdio`; its run lines are `stdio_started` and `stdio_stopped`.
+
 The first line of each run is `serve_started`, with the gateway version and the loopback URL. Each `mcp_tool_call` line has the time, the client name and version the client sent in MCP `initialize`, the HTTP user agent, the tool, the device, the command capability, the outcome, the command status and the duration. `gadgets_command` lines include the arguments. `gadgets_get_state` lines include the reported state. The last line of a clean stop is `serve_stopped`.
 
 The log never contains the bearer token or a device token. Argument values are replaced with `[redacted]` when their capability contract marks them `writeOnly`, or when their key contains `token`, `secret`, `password`, `passwd`, `key` or `credential`. `rehearse` sends the client name `grok-gadgets-rehearse`.

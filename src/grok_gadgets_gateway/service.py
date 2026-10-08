@@ -170,7 +170,7 @@ async def serve_gateway(
             log.append(
                 {
                     "event": "serve_started",
-                    "gateway_version": _version(),
+                    "gateway_version": gateway_version(),
                     "url": running.url,
                     "device_listener": f"127.0.0.1:{running.device_port}",
                     "simulator": sim.device_id if sim else None,
@@ -183,7 +183,7 @@ async def serve_gateway(
         log.close()
 
 
-def _version():
+def gateway_version():
     try:
         return version("grok-gadgets-gateway")
     except PackageNotFoundError:

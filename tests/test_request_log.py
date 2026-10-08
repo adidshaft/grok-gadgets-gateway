@@ -1,10 +1,12 @@
 import io
 import json
 import stat
+import sys
 
 import httpx2
 import pytest
-from mcp import ClientSession
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamable_http_client
 from test_http import DEVICE, TOKEN, free_port, write_local_config
 
@@ -114,6 +116,31 @@ async def test_request_log_is_off_by_default_and_rejects_an_unwritable_path(tmp_
     ):
         pass
     assert sorted(path.name for path in tmp_path.iterdir()) == ["credentials.json", "mcp-token"]
+
+
+async def test_stdio_request_log_records_calls(tmp_path):
+    log_path = tmp_path / "stdio.jsonl"
+    params = StdioServerParameters(
+        command=sys.executable,
+        args=[
+            "-m",
+            "grok_gadgets_gateway.cli",
+            "stdio",
+            "--simulator",
+            "--request-log",
+            str(log_path),
+        ],
+        env={"XDG_CONFIG_HOME": str(tmp_path)},
+    )
+    async with stdio_client(params) as (read, write), ClientSession(read, write) as session:
+        await session.initialize()
+        await session.call_tool("gadgets_get_state", {"device_id": "sim-c124"})
+    assert stat.S_IMODE(log_path.stat().st_mode) == 0o600
+    lines = read_lines(log_path)
+    assert lines[0]["event"] == "stdio_started" and lines[0]["simulator"] == "sim-c124"
+    call = lines[1]
+    assert call["transport"] == "stdio" and call["tool"] == "gadgets_get_state"
+    assert call["device_id"] == "sim-c124" and call["client"] and call["state"]["rgb"]
 
 
 def test_redact_hides_write_only_properties_and_secret_looking_keys():
