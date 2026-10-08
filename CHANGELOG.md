@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.1.0-alpha.3 — 8 October 2026
+
+- Security: update `mcp` from 1.26.0 to 1.28.1. This closes the high-severity Dependabot alerts for `mcp`. `pytest` (development only) moves to 9.0.3.
+- Dependabot opens weekly grouped update PRs into `dev`.
+- CONTRIBUTING starts fork branches from `upstream/dev`. CI also runs the plain-language check on CONTRIBUTING and SUPPORT.
+
 ## 0.1.0-alpha.2 — 7 October 2026
 
 - Add `grok-gadgets-gateway rehearse` for a clean-checkout, assertion-backed simulated journey.
