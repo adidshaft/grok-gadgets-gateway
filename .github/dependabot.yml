@@ -1,0 +1,21 @@
+# Weekly version updates, grouped per ecosystem, opened as PRs into dev.
+# Security-update PRs ignore target-branch and open against main; retarget them
+# to dev before merging. Triage rules: https://github.com/adidshaft/grok-gadgets/blob/dev/SECURITY.md
+version: 2
+updates:
+  - package-ecosystem: uv
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: weekly
+    groups:
+      python:
+        patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

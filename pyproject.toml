@@ -1,6 +1,6 @@
 [project]
 name = "grok-gadgets-gateway"
-version = "0.1.0a2"
+version = "0.1.0a3"
 description = "Local Grok Gadgets MCP gateway and device protocol"
 requires-python = ">=3.11"
 license = "Apache-2.0"
@@ -18,7 +18,7 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
     "Topic :: Home Automation",
 ]
-dependencies = ["mcp==1.26.0", "jsonschema==4.26.0", "pyserial==3.5"]
+dependencies = ["mcp==1.28.1", "jsonschema==4.26.0", "pyserial==3.5"]
 
 [project.urls]
 Homepage = "https://grok-gadgets.pages.dev/"
@@ -31,7 +31,7 @@ grok-gadgets-gateway = "grok_gadgets_gateway.cli:main"
 requires = ["hatchling==1.28.0"]
 build-backend = "hatchling.build"
 [dependency-groups]
-dev = ["pytest==9.0.2", "pytest-asyncio==1.3.0", "ruff==0.14.14"]
+dev = ["pytest==9.0.3", "pytest-asyncio==1.3.0", "ruff==0.14.14"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 [tool.ruff]
