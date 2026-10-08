@@ -13,11 +13,15 @@ Discuss substantial features, interfaces, and protocol changes first.
 
 ## Work from one checkout
 
-Use Python 3.11+ and uv. Fork the gateway repository. Clone your fork.
-Run these commands from the repository root:
+Use Python 3.11+ and uv. Fork the gateway repository and clone your fork. A fork can hold only
+`main`, so start your branch from the upstream `dev`. Run these commands:
 
 ```sh
-git switch -c docs/clearer-simulator-guide
+git clone https://github.com/YOUR_ACCOUNT/grok-gadgets-gateway.git
+cd grok-gadgets-gateway
+git remote add upstream https://github.com/adidshaft/grok-gadgets-gateway.git
+git fetch upstream dev
+git switch -c docs/GW-123-clearer-simulator-guide upstream/dev
 uv sync --locked --python 3.11
 uv run pytest
 uv run ruff check .
@@ -33,6 +37,8 @@ Hardware checks need separately authorized hardware and remain unverified until 
 ## Branches
 
 Branch from `dev` and open your PR into `dev` for integration, development and testing; PRs are squash-merged when checks pass. `main` is the default branch for users, builders and the website, holds tagged releases, and changes only through release or hotfix PRs. Name branches `<type>/<ISSUE-ID>-<short-slug>`, for example `fix/GW-021-short-name`. The shared [branch and release policy](https://github.com/adidshaft/grok-gadgets/blob/main/CONTRIBUTING.md#branches-and-releases) covers releases, hotfixes and cross-repository changes.
+
+Push the branch to your fork and open the PR into `adidshaft/grok-gadgets-gateway` `dev`. The GitHub PR form selects `main` by default. Change the base branch to `dev`, because the PR-target check rejects other PRs into `main`.
 
 ## Make a focused pull request
 
