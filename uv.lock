@@ -227,7 +227,7 @@ wheels = [
 
 [[package]]
 name = "grok-gadgets-gateway"
-version = "0.1.0a3"
+version = "0.1.0a4"
 source = { editable = "." }
 dependencies = [
     { name = "httpx2" },
