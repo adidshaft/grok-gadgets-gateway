@@ -1,6 +1,7 @@
 """Authenticated loopback NDJSON device transport; domain remains independent."""
 
 import asyncio
+import contextlib
 import hmac
 import json
 import logging
@@ -280,13 +281,11 @@ class DeviceServer:
                     break
         except (TimeoutError, ConnectionError, OSError):
             pass  # Diagnostics expose status only, never raw input or credential errors.
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - one bad connection must not stop the server
             # Last resort: one reply, then close. Never log frame contents.
             logger.error("Device connection error: %s", type(exc).__name__)
-            try:
+            with contextlib.suppress(Exception):  # the peer may already be gone
                 writer.write(INTERNAL_ERROR)
-            except Exception:
-                pass
         finally:
             self.pending.pop(task, None)
             try:

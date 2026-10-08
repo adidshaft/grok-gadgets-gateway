@@ -19,7 +19,7 @@ async def _wait(stop, delay):
         return
     try:
         await asyncio.wait_for(stop.wait(), delay)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         pass
 
 
@@ -129,7 +129,7 @@ async def bridge(serial_port, token, *, host="127.0.0.1", port=8765, baudrate=11
         except RecursionError:
             await reset()
             return reply_serial("invalid_request", "Malformed USB JSON")
-        except (OSError, ConnectionError, asyncio.TimeoutError, ValueError):
+        except (TimeoutError, OSError, ConnectionError, ValueError):
             await reset()
             return reply_serial("gateway_unavailable", "Reconnect with a fresh hello")
         return True

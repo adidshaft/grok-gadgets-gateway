@@ -53,9 +53,12 @@ def is_valid(validator, value):
 
 
 def validate_request(value):
-    if isinstance(value, dict) and value.get("type") == "hello":
-        if value.get("protocol_version") != VERSION:
-            raise GatewayError("protocol_mismatch", "Expected protocol 0.1.0")
+    if (
+        isinstance(value, dict)
+        and value.get("type") == "hello"
+        and value.get("protocol_version") != VERSION
+    ):
+        raise GatewayError("protocol_mismatch", "Expected protocol 0.1.0")
     if not is_valid(VALIDATOR, value):
         raise GatewayError("invalid_request", "Request does not match protocol schema")
 

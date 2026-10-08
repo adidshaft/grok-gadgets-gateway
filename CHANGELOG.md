@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Update to `mcp` 2.3.0. The server uses `MCPServer`, and its HTTP settings move to `streamable_http_app()`. The six Grok Bot tools, their annotations, `serve` authentication and transport security are unchanged. The server still accepts MCP protocol versions 2024-11-05 to 2025-11-25 and adds 2026-07-28.
+- `rehearse` sends its bearer token through an `httpx2` client, the HTTP library `mcp` 2.x uses.
+- Development tools: `ruff` 0.16.10, `pytest` 9.1.1, `pytest-asyncio` 1.4.0 and `hatchling` 1.32.4. Code follows the new `ruff` default rules.
+
 ## 0.1.0-alpha.3 — 8 October 2026
 
 - Security: update `mcp` from 1.26.0 to 1.28.1. This closes the high-severity Dependabot alerts for `mcp`. `pytest` (development only) moves to 9.0.3.

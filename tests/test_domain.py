@@ -5,7 +5,7 @@ import pytest
 from jsonschema import Draft202012Validator
 
 from grok_gadgets_gateway.domain import Gateway
-from grok_gadgets_gateway.protocol import GatewayError, SCHEMA, validate_request
+from grok_gadgets_gateway.protocol import SCHEMA, GatewayError, validate_request
 from grok_gadgets_gateway.simulator import Simulator
 
 FIXTURES = Path(__file__).parents[1] / "protocol/0.1.0/fixtures/device-transcript.json"
@@ -51,7 +51,7 @@ def test_integers_are_type_strict():
     sid = g.register(hello())
     for value in (255.0, 0.0, True):
         args = {"r": value, "g": 0, "b": 0, "on": True}
-        fails("invalid_arguments", lambda: g.command("dev-1", "rgb.set", args, "float"))
+        fails("invalid_arguments", lambda args=args: g.command("dev-1", "rgb.set", args, "float"))
     fails(
         "invalid_request",
         lambda: g.handle(
@@ -91,7 +91,9 @@ async def test_simulation_and_idempotency():
         {"r": True, "g": 0, "b": 0, "on": True},
         {"r": 256},
     ):
-        fails("invalid_arguments", lambda: g.command(sim.device_id, "rgb.set", args, "bad"))
+        fails(
+            "invalid_arguments", lambda args=args: g.command(sim.device_id, "rgb.set", args, "bad")
+        )
     sim.control("button", True)
     sim.control("button", True)
     sim.control("button", False)
@@ -241,11 +243,13 @@ async def test_only_command_capabilities_are_callable_and_discovered():
     assert set(discovery["capability_contracts"]) == {"rgb.set"}
     args = {"r": 1, "g": 2, "b": 3, "on": True}
     for name in ("button", "state", "unknown"):
-        fails("unsupported_capability", lambda: g.command(sim.device_id, name, args, name))
+        fails(
+            "unsupported_capability", lambda name=name: g.command(sim.device_id, name, args, name)
+        )
     for malformed in ({}, {**args, "r": True}, {**args, "extra": 1}):
         fails(
             "invalid_arguments",
-            lambda: g.command(sim.device_id, "rgb.set", malformed, "malformed"),
+            lambda malformed=malformed: g.command(sim.device_id, "rgb.set", malformed, "malformed"),
         )
     await sim.execute()
     assert not g.commands
@@ -412,7 +416,10 @@ def test_command_ids_generated_window_conflict_and_type_strict_retries():
     assert generated["command_id"].startswith("gw-") and not generated["duplicate"]
     g.command("dev-1", "level.set", {"level": 1}, "retry")
     for changed in ({"level": 1.0}, {"level": True}, {"level": 2}):
-        fails("duplicate_conflict", lambda: g.command("dev-1", "level.set", changed, "retry"))
+        fails(
+            "duplicate_conflict",
+            lambda changed=changed: g.command("dev-1", "level.set", changed, "retry"),
+        )
     clock[0] = 599
     assert g.command("dev-1", "level.set", {"level": 1}, "retry")["duplicate"]
     clock[0] = 601
