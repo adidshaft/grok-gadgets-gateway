@@ -3,7 +3,7 @@
 Use this software device to test the MCP tools intended for Grok.
 You do not need hardware, an account, or an API key. Original code is Apache-2.0.
 Results include `simulated: true`. Command results and diagnostics include `physical_verified: false`.
-Actual Grok Bot calls, Grok Bot on mobile, and physical C124 operation remain unverified.
+Actual Grok Bot calls, Grok Bot on mobile, and physical ESP32-S3/OLED operation remain unverified.
 
 ## Install and start
 
@@ -97,3 +97,17 @@ loading, delayed-session retirement and the 2000 ms upper setting boundary.
 These checks verify software simulation and MCP protocol behavior.
 They do not verify a real Grok Bot connection or physical effects.
 `GW-004` tracks the remaining external checks.
+
+## First physical experiment: ESP32-S3 and OLED
+
+The ordered kit replaces the AtomS3 Lite as the first physical target.
+See [the exact kit and connection gates](experiment-kit.md).
+
+Keep the software-first stage. The released simulator still reports a legacy C124 model
+and uses `sim-c124` by default. These names identify its existing RGB/button fixture.
+They do not specify the new hardware or prove OLED support.
+
+Use it now to check discovery, commands, state, button events, and disconnect recovery.
+Do not interpret RGB values as OLED pixels or claim display verification from this simulator.
+The ESP32 SDK provides a separate controller-independent OLED rehearsal.
+A firmware display driver and the physical wiring require inspection of the delivered module.
