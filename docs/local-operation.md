@@ -33,7 +33,7 @@ Config lives in `$XDG_CONFIG_HOME/grok-gadgets` or `~/.config/grok-gadgets` when
 
 ```sh
 uv run grok-gadgets-gateway init
-uv run grok-gadgets-gateway enroll atoms3-lite-1
+uv run grok-gadgets-gateway enroll esp32s3-oled-1
 uv run grok-gadgets-gateway devices
 uv run grok-gadgets-gateway serve
 ```
@@ -54,7 +54,10 @@ give the Linux agent the same `--token-file`.
 
 ## USB bridge
 
-When hardware is available, use a USB-C data cable and verified C124 firmware.
+The first physical experiment now uses the ordered ESP32-S3 and breadboard OLED kit.
+Read [experiment setup](experiment-kit.md) before you connect hardware.
+Wait for inspection and matching firmware before flashing. Do not use C124 firmware on the new board.
+Use a USB-C data cable and confirm the board's data port and serial transport.
 Find the serial device in your operating system. Common paths are `/dev/cu.usbmodem…` on macOS and `/dev/ttyACM…` on Linux.
 Load the private token into the current shell environment without printing it:
 
