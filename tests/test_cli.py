@@ -33,6 +33,14 @@ def test_invalid_credentials_fail_at_startup_without_echo(tmp_path, text, mode, 
     assert "Traceback" not in result.stderr
 
 
+def test_version_prints_package_version_without_starting():
+    from importlib.metadata import version
+
+    result = gateway("--version")
+    assert result.returncode == 0 and result.stderr == ""
+    assert result.stdout == f"grok-gadgets-gateway {version('grok-gadgets-gateway')}\n"
+
+
 def test_missing_explicit_credentials_fail_at_startup(tmp_path):
     result = gateway("--credentials", str(tmp_path / "missing.json"))
     assert result.returncode == 2 and "does not exist" in result.stderr
