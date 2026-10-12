@@ -210,6 +210,8 @@ async def test_cli_serves_enrolled_device_and_revokes_live_access(tmp_path):
             "grok_gadgets_gateway.cli",
             "serve",
             "--simulator",
+            "--credentials",
+            str(tmp_path / "grok-gadgets" / "credentials.json"),
             "--port",
             str(port),
             "--device-port",

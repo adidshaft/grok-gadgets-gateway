@@ -253,14 +253,25 @@ def free_port():
         return probe.getsockname()[1]
 
 
-def test_taken_device_port_fails_clearly_in_stdio_and_serve():
+def test_taken_device_port_fails_clearly_in_stdio_and_serve(private_home):
     assert gateway("init").returncode == 0
     assert gateway("enroll", "desk-lamp").returncode == 0
+    registry = str(private_home / ".config" / "grok-gadgets" / "credentials.json")
     held, port = held_port()
     with held:
         for args in (
-            ["stdio", "--simulator", "--device-port", str(port)],
-            ["serve", "--simulator", "--device-port", str(port), "--port", str(free_port())],
+            ["stdio", "--device-port", str(port)],
+            ["serve", "--device-port", str(port), "--port", str(free_port())],
+            [
+                "serve",
+                "--simulator",
+                "--credentials",
+                registry,
+                "--device-port",
+                str(port),
+                "--port",
+                str(free_port()),
+            ],
         ):
             result = subprocess.run(
                 [sys.executable, "-m", "grok_gadgets_gateway.cli", *args],
@@ -296,3 +307,52 @@ def test_demo_ignores_operator_devices_and_a_running_gateway():
         )
     assert result.returncode == 0, result.stderr
     assert '"grok_verified": false' in result.stdout
+
+
+async def test_simulator_alone_reads_no_registry_and_opens_no_device_port(private_home):
+    from grok_gadgets_gateway.operator import OperatorError, mcp_token_path
+    from grok_gadgets_gateway.service import serve_gateway
+
+    assert gateway("init").returncode == 0
+    held, port = held_port()  # Stands in for a running gateway's device port.
+    with held:
+        async with serve_gateway(
+            None, str(mcp_token_path()), simulator=True, device_port=port, port=free_port()
+        ) as running:
+            assert running.device_port is None
+    with pytest.raises(OperatorError, match="--lan-listen needs device credentials"):
+        async with serve_gateway(
+            None, str(mcp_token_path()), simulator=True, lan_listen="192.168.1.20"
+        ):
+            pass
+
+
+def test_simulator_alone_never_loads_the_device_registry(private_home):
+    # A corrupt registry would fail at startup if --simulator read it.
+    assert gateway("init").returncode == 0
+    registry = private_home / ".config" / "grok-gadgets" / "credentials.json"
+    registry.write_text("not json")
+    registry.chmod(0o600)
+    held, port = held_port()
+    with held:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "grok_gadgets_gateway.cli",
+                "stdio",
+                "--simulator",
+                "--device-port",
+                str(port),
+            ],
+            input="",
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+    assert result.returncode == 0, result.stderr
+    assert "Traceback" not in result.stderr
+    assert (
+        gateway("stdio", "--device-port", str(port)).returncode == 2
+    )  # Without --simulator it reads it.
