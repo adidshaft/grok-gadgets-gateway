@@ -249,9 +249,12 @@ def build_parser():
     _request_log_option(serve)
 
     lan_cert = sub.add_parser(
-        "lan-cert", help="issue the LAN listener certificate for one private address"
+        "lan-cert", help="issue the LAN listener certificate for one private address or NAME.local"
     )
-    lan_cert.add_argument("address", help="this computer's LAN address, e.g. 192.168.1.20")
+    lan_cert.add_argument(
+        "address",
+        help="this computer's mDNS name or LAN address, e.g. my-mac.local or 192.168.1.20",
+    )
     lan_ca = sub.add_parser("lan-ca", help="show or replace the local CA that devices pin")
     lan_ca.add_argument("action", choices=["show", "rotate"])
 
@@ -262,7 +265,9 @@ def build_parser():
     provision.add_argument("serial_port")
     provision.add_argument("--device", required=True, help="enrolled device ID of this board")
     provision.add_argument(
-        "--lan", metavar="ADDRESS[:PORT]", help="the address given to serve --lan-listen"
+        "--lan",
+        metavar="ADDRESS[:PORT]",
+        help="the address or NAME.local given to serve --lan-listen",
     )
     provision.add_argument(
         "--factory-reset", action="store_true", help="erase the board's Wi-Fi settings instead"
@@ -604,12 +609,12 @@ def run_service(parser, args, service=None):
                 parser.error("the gateway is not set up. Run: grok-gadgets-gateway init")
             ports = [("127.0.0.1", args.port), ("127.0.0.1", args.device_port)]
             if args.lan_listen:
-                from .lan import lan_dir, parse_lan_address
+                from .lan import lan_dir, parse_lan_address, resolve_lan_host
 
                 host, lan_port = parse_lan_address(args.lan_listen)
                 if not (lan_dir() / "server.pem").is_file():
                     parser.error(f"no LAN certificate. Run: grok-gadgets-gateway lan-cert {host}")
-                ports.append((host, lan_port))
+                ports.append((resolve_lan_host(host), lan_port))
             program, prefix = executable()
             command_line = [
                 program,
