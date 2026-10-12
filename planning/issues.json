@@ -652,6 +652,49 @@
       ],
       "stage": "done",
       "evidence": "Documentation-only review. Dated receipts and checksum-pinned protocol copies remain historical evidence. See the accompanying PR for check results."
+    },
+    {
+      "id": "GW-GFI-001",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Add --version to grok-gadgets-gateway",
+      "acceptance": [
+        "Prints the package version from importlib.metadata and exits 0 without starting a server",
+        "Test in tests/test_cli.py"
+      ],
+      "labels": [
+        "good first issue"
+      ],
+      "stage": "done",
+      "evidence": "GitHub #17, PR #87; tests/test_cli.py::test_version_prints_package_version_without_starting."
+    },
+    {
+      "id": "GW-TEST-ISO-001",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Tests read the operator's real config and collided with a running gateway",
+      "acceptance": [
+        "Every test runs with a private HOME and XDG_CONFIG_HOME",
+        "uv run pytest passes beside a running gateway"
+      ],
+      "labels": [
+        "bug"
+      ],
+      "stage": "done",
+      "evidence": "GitHub #88, PR #89; tests/conftest.py. 194 tests passed while the owner's gateway held 127.0.0.1:8765 on 12 Oct 2026."
+    },
+    {
+      "id": "GW-PYPI-001",
+      "owner": "grok-gadgets-gateway",
+      "problem": "No release automation; SHA256SUMS listed dist/ paths; nothing could publish to PyPI",
+      "acceptance": [
+        "Hand-started workflow checks tag/version, builds once, writes and checks plain-name SHA256SUMS",
+        "Attaches files to the release without replacing assets",
+        "Opt-in PyPI upload through trusted publishing; no stored token"
+      ],
+      "labels": [
+        "enhancement"
+      ],
+      "stage": "review",
+      "evidence": "GitHub #90, PR #91; .github/workflows/release.yml and docs/release.md. actionlint clean; tag and checksum steps run locally. Not yet run on GitHub; the owner's PyPI setup is pending."
     }
   ]
 }
