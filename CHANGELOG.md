@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.0-alpha.9 — 12 October 2026
+
 - `serve --simulator` and `stdio --simulator` without `--credentials` serve only the simulated light: they never read the device registry and open no device port, so the beginner path never touches real device credentials and runs beside a running gateway. Add `--credentials` to serve enrolled devices too. `--lan-listen` with simulator-only mode stops with a clear message ([#96](https://github.com/adidshaft/grok-gadgets-gateway/issues/96)).
 
 ## 0.1.0-alpha.8 — 12 October 2026
