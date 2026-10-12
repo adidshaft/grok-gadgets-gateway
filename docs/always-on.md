@@ -4,6 +4,9 @@ A Wi-Fi gadget needs the gateway running on your computer. Run `serve` in a term
 test. When the setup works, install it as a background service. The service starts the gateway
 now and again at every login, so your gadget comes back without a terminal.
 
+On 12–13 October 2026 the owner's Mac and OLED kit passed name, address-change and restart
+checks ([record](verification/always-on-2026-10-13.md)).
+
 The design is hub [ADR 006](https://github.com/adidshaft/grok-gadgets/blob/main/docs/decisions/006-always-on-gateway.md).
 
 ## Install
