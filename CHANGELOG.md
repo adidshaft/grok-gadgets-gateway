@@ -2,11 +2,14 @@
 
 ## Unreleased
 
+## 0.1.0-alpha.6 — 12 October 2026
+
 - Add an opt-in LAN TLS device listener for Wi-Fi devices: `serve --lan-listen ADDRESS[:PORT]` (port 8767). It binds one private IPv4 address of this computer, refuses all, loopback, shared and public addresses, accepts private peers only and limits sessions, handshakes, new connections and frame rate. Same protocol 0.1.0 frames and device tokens; revocation ends a live session on its next frame ([#79](https://github.com/adidshaft/grok-gadgets-gateway/issues/79), hub ADR 005).
 - `init` creates a local CA (`lan/ca.pem`, `lan/ca.key`). New commands: `lan-cert ADDRESS`, `lan-ca show|rotate` and `wifi-provision PORT --device ID --lan ADDRESS` (prompts for the Wi-Fi password without echo; never prints or stores it or the token).
 - The request log records LAN connects, hellos, rejected tokens, TLS failures, rejected peers and rate limits, without tokens. Guide: `docs/wifi-devices.md`.
 - Closing a device connection never raises and waits at most 2 seconds. A Wi-Fi device that lost power or its network left a TLS socket whose shutdown timed out after 30 seconds with an unhandled traceback; the gateway now aborts it (found in the Phase 4 physical test).
 - `cryptography` 50.0.2 becomes a direct dependency (it was already installed through `mcp`).
+- The ESP32-S3 OLED kit passed physical acceptance over Wi-Fi through this listener on the owner's kit on 12 October 2026 ([ESP32 SDK record](https://github.com/adidshaft/grok-gadgets-esp32-sdk/blob/dev/docs/verification/oled-kit-wifi-2026-10-12.md)).
 
 ## 0.1.0-alpha.5 — 12 October 2026
 

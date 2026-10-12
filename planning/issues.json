@@ -634,9 +634,9 @@
         "protocol"
       ],
       "milestone": "M9",
-      "stage": "review",
+      "stage": "done",
       "commits": [],
-      "evidence": "tests/test_lan.py; docs/wifi-devices.md; hub ADR 005. Physical Wi-Fi acceptance is pending (ESP-005)."
+      "evidence": "tests/test_lan.py (33 tests) and docs/wifi-devices.md; fix #81. Owner's ESP32-S3 OLED kit passed all eight Wi-Fi acceptance items and one Grok Bot local-route rehearse through this listener on 12 Oct 2026 (esp32 docs/verification/oled-kit-wifi-2026-10-12.md)."
     }
   ]
 }

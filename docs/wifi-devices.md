@@ -8,6 +8,10 @@ The LAN listener is **off by default**. It starts only with `serve --lan-listen`
 the same protocol 0.1.0 frames and the same per-device tokens as the loopback listener, so
 USB devices keep working beside it.
 
+The ESP32-S3 OLED kit passed physical acceptance through this listener on 12 October 2026
+([record](https://github.com/adidshaft/grok-gadgets-esp32-sdk/blob/dev/docs/verification/oled-kit-wifi-2026-10-12.md)).
+That record covers one kit, one router and one Mac.
+
 ## What protects it
 
 | Control | Detail |
