@@ -1,7 +1,7 @@
 # Alpha release checks
 
 The gateway has public alpha releases on [GitHub](https://github.com/adidshaft/grok-gadgets-gateway/releases).
-The Python package is not on PyPI. Protocol version is `0.1.0`.
+The Python package is on [PyPI](https://pypi.org/project/grok-gadgets-gateway/) from v0.1.0-alpha.10. Protocol version is `0.1.0`.
 
 ## Prepare a release
 
