@@ -54,9 +54,9 @@ give the Linux agent the same `--token-file`.
 
 ## USB bridge
 
-The first physical experiment now uses the ordered ESP32-S3 and breadboard OLED kit.
+The first physical experiment uses the inspected YD-ESP32-23 v1.3 board and 1.3-inch SH1106 OLED.
 Read [experiment setup](experiment-kit.md) before you connect hardware.
-Wait for inspection and matching firmware before flashing. Do not use C124 firmware on the new board.
+Use the matching OLED-kit firmware. Do not use C124 firmware on this board.
 Use a USB-C data cable and confirm the board's data port and serial transport.
 Find the serial device in your operating system. Common paths are `/dev/cu.usbmodem…` on macOS and `/dev/ttyACM…` on Linux.
 Load the private token into the current shell environment without printing it:
@@ -78,7 +78,8 @@ Firmware controls the retry delay. It must discard pending acknowledgements from
 If USB disconnects, the bridge retries the same serial path automatically with a delay of up to 2 seconds. If the operating system assigns a different path, restart the bridge with that path.
 This procedure restores the session. It does not replay actions from durable storage.
 
-Physical USB operation remains unverified. Local software tests with a pseudo-terminal pass.
+The owner tested USB on 12 October 2026. See the [physical record](https://github.com/adidshaft/grok-gadgets-esp32-sdk/blob/dev/docs/verification/oled-kit-2026-10-12.md).
+Software tests with a pseudo-terminal remain a separate check.
 
 ## Request log
 
@@ -90,7 +91,7 @@ grok-gadgets-gateway serve --simulator --request-log ~/grok-gadgets-requests.jso
 
 `stdio --request-log PATH` writes the same lines with `transport` set to `stdio`; its run lines are `stdio_started` and `stdio_stopped`.
 
-The first line of each run is `serve_started`, with the gateway version and the loopback URL. Each `mcp_tool_call` line has the time, the client name and version the client sent in MCP `initialize`, the HTTP user agent, the tool, the device, the command capability, the outcome, the command status and the duration. `gadgets_command` lines include the arguments. `gadgets_get_state` lines include the reported state. The last line of a clean stop is `serve_stopped`.
+The first line of each run is `serve_started`, with the gateway version and the loopback URL. Each `mcp_tool_call` line records the time and the client name and version from MCP `initialize`. It also records the HTTP user agent, tool, device, command capability, outcome, command status and duration. `gadgets_command` lines include the arguments. `gadgets_get_state` lines include the reported state. The last line of a clean stop is `serve_stopped`.
 
 The log never contains the bearer token or a device token. Argument values are replaced with `[redacted]` when their capability contract marks them `writeOnly`, or when their key contains `token`, `secret`, `password`, `passwd`, `key` or `credential`. `rehearse` sends the client name `grok-gadgets-rehearse`.
 
@@ -108,7 +109,7 @@ The stderr log is unchanged: it never contains arguments or state.
 - Retry protection: use the same command ID and arguments within 10 minutes of the first request, in the same gateway process. An evicted receipt returns `stale_command_id` without dispatch. At 1024 recent IDs, new commands return `busy` until the oldest ID leaves the window. A restart or an older ID has no replay guarantee. Inspect state before acting again.
 - Cursor reset/history_lost: read with null cursor to establish retained baseline. Initial read reports dropped history honestly.
 - Port busy: choose a free --device-port and configure SDK/bridge to match.
-- USB failed: verify data cable, port permissions and firmware model. Unplug/reconnect is a pending physical test.
+- USB failed: verify data cable, port permissions and firmware model. See the physical record for the tested unplug/reconnect results.
 
 To roll back, select known compatible gateway and SDK commits. Start a new process.
 Protocol 0.1.0 rejects mismatched versions. There are no persistent database migrations.

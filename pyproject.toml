@@ -1,6 +1,6 @@
 [project]
 name = "grok-gadgets-gateway"
-version = "0.1.0a6"
+version = "0.1.0a7"
 description = "Local Grok Gadgets MCP gateway and device protocol"
 requires-python = ">=3.11"
 license = "Apache-2.0"
@@ -27,7 +27,7 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://grok-gadgets.pages.dev/"
+Homepage = "https://grokgadgets.org/"
 Source = "https://github.com/adidshaft/grok-gadgets-gateway"
 Issues = "https://github.com/adidshaft/grok-gadgets-gateway/issues"
 Changelog = "https://github.com/adidshaft/grok-gadgets-gateway/blob/main/CHANGELOG.md"

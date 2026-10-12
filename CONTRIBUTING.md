@@ -71,3 +71,11 @@ Keep reviewed sample configuration files and the hub's verified public simulator
 Check new patterns with `git check-ignore`. Review staged files before each commit.
 Ignore rules do not remove tracked files or Git history. Never merge private pre-publication history into a public branch.
 Use the sanitized public checkout. Use a public or GitHub noreply commit email.
+
+## Documentation style
+
+Use ASD-STE100-inspired English. This project does not claim certified compliance.
+Use active verbs, short sentences and one instruction per numbered step.
+Keep technical names, commands and quoted evidence exact. Explain each new technical term.
+Separate current instructions from dated test records. Link to evidence before you claim a test passed.
+Run the repository's plain-language check on each changed guide. It checks sentence length, not the full standard.

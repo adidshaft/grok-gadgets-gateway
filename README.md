@@ -1,9 +1,11 @@
 # Grok Gadgets gateway
 
 The connection point between your Grok Bot and your gadgets: a built-in simulated light,
-Linux gadgets and ESP32 devices. It is the custom MCP server Grok Bot will call. Experimental
-alpha: the Grok Bot connection and hardware are not verified yet ([project status](https://grok-gadgets.pages.dev/doc-docs-public-support-matrix)).
-Independent project, not affiliated with SpaceXAI or xAI.
+Linux gadgets and ESP32 devices. It serves six MCP tools. The owner tested USB and Wi-Fi hardware through the gateway.
+Grok Bot ran local `rehearse` commands; native MCP access remains unverified ([project status](https://grok-gadgets.pages.dev/doc-docs-public-support-matrix)).
+Independent project, not affiliated with SpaceXSI or xAI.
+
+> Writing style: ASD-STE100-inspired English. Use short sentences, active verbs and one instruction per step. This is not certified compliance.
 
 ## Quick start
 
@@ -22,12 +24,25 @@ Run `rehearse` in a second terminal while `serve` keeps running. It calls the si
 order Grok Bot will: list the gadgets, set the simulated light blue, read its state. See
 [first success in five minutes](docs/first-success.md).
 
+### Install with pip
+
+The package is not on PyPI yet. Each [GitHub release](https://github.com/adidshaft/grok-gadgets-gateway/releases)
+has a wheel and `SHA256SUMS`. Install the wheel into a virtual environment with Python 3.11+:
+
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install https://github.com/adidshaft/grok-gadgets-gateway/releases/download/v0.1.0-alpha.7/grok_gadgets_gateway-0.1.0a7-py3-none-any.whl
+.venv/bin/grok-gadgets-gateway --help
+```
+
+On an Intel Mac, `cryptography` has no prebuilt wheel and needs a Rust toolchain to build.
+
 ## How it works
 
 ```mermaid
 flowchart LR
-    B["Grok Bot<br>(connection in progress)"] -.-> G["Gateway<br>127.0.0.1"]
-    R["rehearse<br>(local check)"] --> G
+    B["Grok Bot"] -->|Local command| R["rehearse"]
+    R --> G["Gateway<br>Tested Mac setup"]
     G --> S["Simulated light"]
     G --> D["Linux / ESP32 gadgets"]
 ```
@@ -64,9 +79,10 @@ address, `serve --lan-listen`; see [Wi-Fi devices](docs/wifi-devices.md).
 
 ## Grok Bot today
 
-A cloud Grok Bot cannot open `127.0.0.1` on your computer yet, so today you check the gateway
-locally with `rehearse`. The Grok Bot route is the next milestone
-([HARD-GROK-REMOTE-001](https://github.com/adidshaft/grok-gadgets/issues/4)). `serve` is not an
+The owner tested Grok Bot local commands on 12 October 2026. Grok Bot ran `rehearse` on the Mac.
+Read the [connection evidence](https://github.com/adidshaft/grok-gadgets/blob/dev/docs/verification/grok-local-execution-2026-10-12.md).
+Native MCP calls and the public tunnel test remain open ([tracking issue](https://github.com/adidshaft/grok-gadgets/issues/4)).
+The Mac must keep the gateway running, including for Wi-Fi devices. `serve` is not an
 OAuth server, and a tunnel does not replace the bearer token. Never expose port 8765. Read
 [remote access](docs/remote-access.md) and [security](SECURITY.md) first.
 
@@ -99,6 +115,6 @@ Contribute on the `dev` branch; `main` holds tagged stable releases ([branches](
 ## License and affiliation
 
 Apache-2.0; see [LICENSE](LICENSE) and [NOTICE](NOTICE). Grok Gadgets is an independent
-open-source project. It is **not affiliated with, endorsed by or sponsored by SpaceXAI or
+open-source project. It is **not affiliated with, endorsed by or sponsored by SpaceXSI or
 xAI**, which make Grok and Grok Bot. We reconstructed the pre-publication commit dates; see the
 [history record](https://github.com/adidshaft/grok-gadgets/blob/main/docs/verification/publication-sanitization.md).

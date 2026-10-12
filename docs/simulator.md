@@ -1,9 +1,10 @@
 # Configurable Grok Gadgets simulator
 
-Use this software device to test the MCP tools intended for Grok.
+Use this software device to test the MCP tools intended for Grok Bot.
 You do not need hardware, an account, or an API key. Original code is Apache-2.0.
 Results include `simulated: true`. Command results and diagnostics include `physical_verified: false`.
-Actual Grok Bot calls, Grok Bot on mobile, and physical ESP32-S3/OLED operation remain unverified.
+The owner tested the ESP32-S3 OLED kit and Grok Bot local commands on 12 October 2026.
+Native MCP access and mobile operation remain unverified. Simulation does not prove a physical effect.
 
 ## Install and start
 
@@ -29,7 +30,7 @@ The simulator runs wherever its connector starts the process. A cloud Grok Bot's
 and configuration paths must exist in that cloud environment; they cannot refer to files only on your computer.
 This gateway does not provide a remote HTTPS/OAuth endpoint. Read the
 [hosting FAQ](https://github.com/adidshaft/grok-gadgets/blob/main/docs/getting-started/hosting.md)
-before choosing a host or connection method. Actual Grok execution remains unverified.
+before choosing a host or connection method. Native Grok Bot MCP execution remains unverified. The tested local route uses `rehearse` on the Mac.
 
 The default and schema are included in the installed package. To inspect the schema,
 run `.venv/bin/python -m grok_gadgets_gateway.simulator_config --schema`.
@@ -88,11 +89,10 @@ Edit settings before you start the process. There is no automatic reload.
 
 ## Local evidence
 
-`uv run pytest` covers a real MCP stdio session and subprocess gateway with
-custom identity, display name, initial RGB, configured acknowledgement delay, offline
-startup, reconnect, simulated button events and retry results. It also verifies controls
-remain absent unless explicitly enabled, strict config and CLI rejection, packaged resource
-loading, delayed-session retirement and the 2000 ms upper setting boundary.
+`uv run pytest` covers a real MCP stdio session and subprocess gateway.
+Checks include identity, display name, initial RGB, acknowledgement delay, offline startup, reconnect, simulated button events and retry results.
+It checks that controls remain absent unless explicitly enabled.
+Other checks cover config rejection, CLI rejection, packaged resources, delayed-session retirement and the 2000 ms setting limit.
 
 These checks verify software simulation and MCP protocol behavior.
 They do not verify a real Grok Bot connection or physical effects.
@@ -100,7 +100,7 @@ They do not verify a real Grok Bot connection or physical effects.
 
 ## First physical experiment: ESP32-S3 and OLED
 
-The ordered kit replaces the AtomS3 Lite as the first physical target.
+The inspected kit replaces the AtomS3 Lite as the first physical target.
 See [the exact kit and connection gates](experiment-kit.md).
 
 Keep the software-first stage. The released simulator still reports a legacy C124 model
@@ -110,4 +110,4 @@ They do not specify the new hardware or prove OLED support.
 Use it now to check discovery, commands, state, button events, and disconnect recovery.
 Do not interpret RGB values as OLED pixels or claim display verification from this simulator.
 The ESP32 SDK provides a separate controller-independent OLED rehearsal.
-A firmware display driver and the physical wiring require inspection of the delivered module.
+The physical kit has separate acceptance records. Inspect your own module before you select a driver or wire it.

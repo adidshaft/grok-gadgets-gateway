@@ -1,9 +1,60 @@
-# Alpha release preparation
+# Alpha release checks
 
-Proposed package: grok-gadgets-gateway 0.1.0a1; protocol 0.1.0. No release tag, package publication, remote push or deployment is authorized. Build locally with `uv build`; preserve wheel/sdist checksums and test against the exact component commits in the hub compatibility manifest before tagging an approved prerelease.
+The gateway has public alpha releases on [GitHub](https://github.com/adidshaft/grok-gadgets-gateway/releases).
+The Python package is not on PyPI. Protocol version is `0.1.0`.
 
-Original source is Apache-2.0; dependency licenses are recorded in NOTICE and installed distributions. No vendor logo/avatar assets are included. Prepared owner: `adidshaft`; private fallback contact: `adidshaft@kyokasuigetsu.xyz`. GitHub private reporting must be enabled after activation; see [SECURITY](../SECURITY.md).
+## Prepare a release
 
-Prepared CI workflow runs locked installation, named gateway-checks job, lint, tests and package build. Proposed GitHub main protections: PR required; gateway-checks passing; conversation resolution; no force push/deletion; zero mandatory second-human reviews until another real maintainer exists. These settings are not active locally. Local planning/issues.json becomes a migration input, with stable GW IDs mapped to GitHub issues after authorization; GitHub then owns status.
+1. Run the repository checks and `uv build`.
+2. Review the source, dependency notices and package contents. Keep secrets and local logs out of the release.
+3. Let the release workflow write and check `SHA256SUMS` (below).
+4. Test the exact component commits in the hub compatibility manifest.
+5. Update the release notes and evidence links. Separate simulation, physical tests and Grok Bot results.
+6. Obtain the owner's approval for publication. Use `dev` for integration and `main` for releases.
+7. Pin hub documentation snapshots to released component commits before a hub release.
 
-Before publication: approve the exact remote and release payload, review current files and reachable history, create issues/milestones, select tested commits and compatibility map, activate private reporting, and verify hosted checks. Hardware, native Grok invocation/mobile and independent human reproduction remain open gates. Prepared destination: https://github.com/adidshaft/grok-gadgets-gateway; it is not yet an active release/support endpoint.
+## Publish a release
+
+1. Run the repository checks and `uv build`.
+2. Merge the release PR into `main`. Tag it, for example `v0.1.0-alpha.7`, and publish the
+   GitHub release. The owner approves each step.
+3. In **Actions → release packages → Run workflow**, choose `main` and enter the tag. The
+   workflow checks that the tag matches the package version. It builds the wheel and the
+   source archive and writes `SHA256SUMS` with plain file names. It checks that file in a
+   fresh folder and attaches all three files to the release. It never replaces an asset.
+4. To upload to PyPI, run it again with **Also upload to PyPI**. The upload uses trusted
+   publishing: GitHub gives the job a short-lived identity, and no PyPI token is stored.
+   The `pypi` environment waits for the owner's approval.
+
+## Check a download
+
+```sh
+mkdir release-check
+cd release-check
+gh release download v0.1.0-alpha.7 --repo adidshaft/grok-gadgets-gateway
+shasum -a 256 -c SHA256SUMS
+```
+
+Releases made before this workflow may list `dist/` paths in `SHA256SUMS`
+([hub #151](https://github.com/adidshaft/grok-gadgets/issues/151)).
+
+## One-time PyPI setup (owner)
+
+1. Sign in to [pypi.org](https://pypi.org) with two-factor authentication on.
+2. Open **Your projects → Publishing → Add a new pending publisher → GitHub**. Enter
+   PyPI project `grok-gadgets-gateway`, owner `adidshaft`, repository `grok-gadgets-gateway`, workflow
+   `release.yml` and environment `pypi`.
+3. In GitHub, open **Settings → Environments → New environment**, name it `pypi`. Add
+   `adidshaft` as a required reviewer. Under deployment branches, allow only `main`.
+
+The first approved upload creates the PyPI project. After that, the pending publisher
+becomes a normal trusted publisher for `grok-gadgets-gateway`.
+
+Original source uses Apache-2.0. See [NOTICE](../NOTICE) for dependencies and [SECURITY](../SECURITY.md) for private reports.
+GitHub issues track current work. Keep local issue IDs in commits so contributors can follow the evidence.
+
+## Evidence limits
+
+The owner tested one ESP32-S3 OLED kit over USB and Wi-Fi on 12 October 2026.
+Grok Bot ran local shell commands through `rehearse`. Native MCP access, mobile operation and an independent second installation remain unverified.
+The Wi-Fi kit still needs a running gateway computer.

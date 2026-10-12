@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.1.0-alpha.7 — 12 October 2026
+
+- `grok-gadgets-gateway --version` prints the package version and exits without starting a server ([#17](https://github.com/adidshaft/grok-gadgets-gateway/issues/17)).
+- A hand-started **release packages** workflow builds a tag, writes `SHA256SUMS` with plain file names, checks it in a fresh folder and attaches the files to the release. PyPI upload is a separate opt-in through trusted publishing; no token is stored ([#90](https://github.com/adidshaft/grok-gadgets-gateway/issues/90), hub [#151](https://github.com/adidshaft/grok-gadgets/issues/151)). The package is not on PyPI yet.
+- Tests run with a private home and config directory, so they pass beside a running gateway and never read the operator's credentials ([#88](https://github.com/adidshaft/grok-gadgets-gateway/issues/88)).
+- Docs match the 12 October evidence: one owner ESP32-S3 kit passed over USB and Wi-Fi; Grok Bot ran approved `rehearse` commands; native MCP calls are unverified. README adds pip install from the release wheel. Homepage is https://grokgadgets.org/.
+
 ## 0.1.0-alpha.6 — 12 October 2026
 
 - Add an opt-in LAN TLS device listener for Wi-Fi devices: `serve --lan-listen ADDRESS[:PORT]` (port 8767). It binds one private IPv4 address of this computer, refuses all, loopback, shared and public addresses, accepts private peers only and limits sessions, handshakes, new connections and frame rate. Same protocol 0.1.0 frames and device tokens; revocation ends a live session on its next frame ([#79](https://github.com/adidshaft/grok-gadgets-gateway/issues/79), hub ADR 005).
