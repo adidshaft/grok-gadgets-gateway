@@ -1,6 +1,7 @@
 import asyncio
 import json
 import sys
+import tempfile
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -10,7 +11,16 @@ async def acceptance(test_controls=True):
     args = ["-m", "grok_gadgets_gateway.cli", "--simulator"]
     if test_controls:
         args.append("--test-controls")
-    params = StdioServerParameters(command=sys.executable, args=args)
+    # The simulator never needs the operator's devices: give the child an empty config
+    # directory, so it neither reads real credentials nor opens the device port.
+    with tempfile.TemporaryDirectory(prefix="grok-gadgets-demo-") as config:
+        return await _acceptance(args, test_controls, config)
+
+
+async def _acceptance(args, test_controls, config):
+    params = StdioServerParameters(
+        command=sys.executable, args=args, env={"XDG_CONFIG_HOME": config}
+    )
     async with stdio_client(params) as (read, write), ClientSession(read, write) as client:
         await client.initialize()
         tools = (await client.list_tools()).tools
