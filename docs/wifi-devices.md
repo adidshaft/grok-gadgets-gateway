@@ -41,6 +41,9 @@ uv run grok-gadgets-gateway serve --lan-listen 192.168.1.20 --request-log ~/grok
 macOS may ask whether Python may accept incoming network connections. Allow it, or the
 device cannot connect.
 
+When the board shows **Online**, you can [run the gateway as a background service](always-on.md)
+so it comes back after a reboot.
+
 ## Provision a device over USB
 
 Provisioning needs the USB data cable once. Stop any `usb-bridge` for the board first.
