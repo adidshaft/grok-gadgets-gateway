@@ -4,11 +4,13 @@ import asyncio
 import hashlib
 import inspect
 import json
+import math
 import os
 import re
 import sys
 import time
 import uuid
+from collections import deque
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
@@ -134,6 +136,37 @@ def redact(value, contract=None):
     return value
 
 
+class RateLimiter:
+    """Per-token one-minute sliding windows: every tool call, and gadgets_command calls."""
+
+    WINDOW = 60.0
+
+    def __init__(self, calls_per_minute=60, commands_per_minute=10, clock=time.monotonic):
+        self.limits = {"calls": calls_per_minute, "commands": commands_per_minute}
+        self.clock = clock
+        self.windows = {}
+
+    def check(self, token, tool):
+        """Count one call, or raise rate_limited without counting it. stdio has no token."""
+        if token is None:
+            return
+        now = self.clock()
+        kinds = ["calls"] + (["commands"] if tool == "gadgets_command" else [])
+        for kind in kinds:
+            window = self.windows.setdefault((kind, token), deque())
+            while window and now - window[0] >= self.WINDOW:
+                window.popleft()
+            if len(window) >= self.limits[kind]:
+                wait = max(1, math.ceil(self.WINDOW - (now - window[0])))
+                noun = "commands" if kind == "commands" else "tool calls"
+                raise GatewayError(
+                    "rate_limited",
+                    f"Too many {noun} for this token; try again in {wait} s",
+                )
+        for kind in kinds:
+            self.windows[(kind, token)].append(now)
+
+
 def argument_hash(arguments):
     data = json.dumps(arguments, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(data.encode()).hexdigest()[:16]
@@ -146,6 +179,7 @@ def make_server(
     test_controls=False,
     *,
     request_log=None,
+    rate_limiter=None,
     listener_status=None,
     http=False,
     command_wait=COMMAND_WAIT_SECONDS,
@@ -231,9 +265,14 @@ def make_server(
             request_log.write(record, detail)
         return response
 
+    def limit(tool, ctx):
+        if rate_limiter is not None:
+            rate_limiter.check(token_name(ctx), tool)
+
     def run(tool, arguments, action, ctx=None):
         started = time.monotonic()
         try:
+            limit(tool, ctx)
             response = {"ok": True, **action()}
         except GatewayError as exc:
             response = exc.response()
@@ -274,6 +313,7 @@ def make_server(
             "command_id": command_id,
         }
         try:
+            limit("gadgets_command", ctx)
             value = gateway.command(device_id, capability, arguments, command_id)
         except GatewayError as exc:
             return finish("gadgets_command", request, started, exc.response(), ctx)

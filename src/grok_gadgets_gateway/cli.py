@@ -8,7 +8,7 @@ import signal
 import sys
 
 from .domain import Gateway
-from .mcp_server import RequestLog, make_server
+from .mcp_server import RateLimiter, RequestLog, make_server
 from .operator import (
     OperatorError,
     config_dir,
@@ -26,7 +26,7 @@ from .operator import (
     rotate_mcp_token,
     write_token_file,
 )
-from .service import MCP_PATH, gateway_version, serve_gateway
+from .service import MCP_PATH, Limits, gateway_version, serve_gateway
 from .simulator import Simulator
 from .simulator_config import SimulatorConfigError, load_config
 from .transport import CredentialError, Credentials, DeviceServer
@@ -112,6 +112,16 @@ def _credentials_option(parser):
     )
 
 
+def _positive_int(text):
+    try:
+        value = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError("must be a whole number") from None
+    if value < 1:
+        raise argparse.ArgumentTypeError("must be at least 1")
+    return value
+
+
 def _request_log_option(parser):
     parser.add_argument(
         "--request-log",
@@ -193,6 +203,24 @@ def build_parser():
     serve.add_argument("--mcp-token", help=f"bearer token file (default {mcp_token_path()})")
     serve.add_argument(
         "--mcp-tokens", help=f"named token list, read per request (default {mcp_tokens_path()})"
+    )
+    limits = serve.add_argument_group("per-token limits")
+    limits.add_argument("--calls-per-minute", type=_positive_int, default=60, metavar="N")
+    limits.add_argument("--commands-per-minute", type=_positive_int, default=10, metavar="N")
+    limits.add_argument(
+        "--max-concurrent",
+        type=_positive_int,
+        default=8,
+        metavar="N",
+        help="open HTTP requests per token, event streams included (default 8)",
+    )
+    limits.add_argument("--max-body-bytes", type=_positive_int, default=65536, metavar="N")
+    limits.add_argument(
+        "--request-timeout",
+        type=_positive_int,
+        default=30,
+        metavar="SECONDS",
+        help="limit for one POST request (default 30)",
     )
     serve.add_argument(
         "--allowed-host",
@@ -357,6 +385,8 @@ def run(parser, args):
                     port=args.port,
                     allowed_hosts=args.allowed_host,
                     mcp_tokens=args.mcp_tokens or str(mcp_tokens_path()),
+                    limits=Limits(args.max_concurrent, args.max_body_bytes, args.request_timeout),
+                    rate_limiter=RateLimiter(args.calls_per_minute, args.commands_per_minute),
                     request_log=args.request_log,
                 )
             )
