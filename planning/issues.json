@@ -637,6 +637,21 @@
       "stage": "done",
       "commits": [],
       "evidence": "tests/test_lan.py (33 tests) and docs/wifi-devices.md; fix #81. Owner's ESP32-S3 OLED kit passed all eight Wi-Fi acceptance items and one Grok Bot local-route rehearse through this listener on 12 Oct 2026 (esp32 docs/verification/oled-kit-wifi-2026-10-12.md)."
+    },
+    {
+      "id": "DOC-STE-001",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Align current documentation with 12 October evidence and plain-language style",
+      "acceptance": [
+        "Use SpaceXSI in current tracked text",
+        "Separate physical kit evidence from native Grok Bot MCP verification",
+        "Use short instructions and link to current evidence"
+      ],
+      "labels": [
+        "documentation"
+      ],
+      "stage": "done",
+      "evidence": "Documentation-only review. Dated receipts and checksum-pinned protocol copies remain historical evidence. See the accompanying PR for check results."
     }
   ]
 }

@@ -8,7 +8,7 @@ Use bounded subagents with explicit file ownership when helpful. Research tasks 
 strongest available reasoning and cite primary sources. Report any gap before substituting.
 
 **Grok Bot only.** The product, its docs, website, examples, tests, commits and branch names
-describe Grok Bot and SpaceXAI technology as the only assistant platform. Do not name,
+describe Grok Bot and SpaceXSI technology as the only assistant platform. Do not name,
 recommend or credit other AI assistants, models, chat products, coding agents or editors
 anywhere in the repository. Development tooling stays out of the record.
 

@@ -1,9 +1,23 @@
-# Alpha release preparation
+# Alpha release checks
 
-Proposed package: grok-gadgets-gateway 0.1.0a1; protocol 0.1.0. No release tag, package publication, remote push or deployment is authorized. Build locally with `uv build`; preserve wheel/sdist checksums and test against the exact component commits in the hub compatibility manifest before tagging an approved prerelease.
+The gateway has public alpha releases on [GitHub](https://github.com/adidshaft/grok-gadgets-gateway/releases).
+The Python package is not on PyPI. Protocol version is `0.1.0`.
 
-Original source is Apache-2.0; dependency licenses are recorded in NOTICE and installed distributions. No vendor logo/avatar assets are included. Prepared owner: `adidshaft`; private fallback contact: `adidshaft@kyokasuigetsu.xyz`. GitHub private reporting must be enabled after activation; see [SECURITY](../SECURITY.md).
+## Prepare a release
 
-Prepared CI workflow runs locked installation, named gateway-checks job, lint, tests and package build. Proposed GitHub main protections: PR required; gateway-checks passing; conversation resolution; no force push/deletion; zero mandatory second-human reviews until another real maintainer exists. These settings are not active locally. Local planning/issues.json becomes a migration input, with stable GW IDs mapped to GitHub issues after authorization; GitHub then owns status.
+1. Run the repository checks and `uv build`.
+2. Review the source, dependency notices and package contents. Keep secrets and local logs out of the release.
+3. Record wheel and source-archive checksums.
+4. Test the exact component commits in the hub compatibility manifest.
+5. Update the release notes and evidence links. Separate simulation, physical tests and Grok Bot results.
+6. Obtain the owner's approval for publication. Use `dev` for integration and `main` for releases.
+7. Pin hub documentation snapshots to released component commits before a hub release.
 
-Before publication: approve the exact remote and release payload, review current files and reachable history, create issues/milestones, select tested commits and compatibility map, activate private reporting, and verify hosted checks. Hardware, native Grok invocation/mobile and independent human reproduction remain open gates. Prepared destination: https://github.com/adidshaft/grok-gadgets-gateway; it is not yet an active release/support endpoint.
+Original source uses Apache-2.0. See [NOTICE](../NOTICE) for dependencies and [SECURITY](../SECURITY.md) for private reports.
+GitHub issues track current work. Keep local issue IDs in commits so contributors can follow the evidence.
+
+## Evidence limits
+
+The owner tested one ESP32-S3 OLED kit over USB and Wi-Fi on 12 October 2026.
+Grok Bot ran local shell commands through `rehearse`. Native MCP access, mobile operation and an independent second installation remain unverified.
+The Wi-Fi kit still needs a running gateway computer.
