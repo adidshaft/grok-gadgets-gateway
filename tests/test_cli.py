@@ -234,3 +234,65 @@ def test_tests_use_a_private_config_directory(private_home):
     from grok_gadgets_gateway.operator import config_dir
 
     assert config_dir() == private_home / ".config" / "grok-gadgets"
+
+
+def held_port():
+    import socket
+
+    held = socket.socket()
+    held.bind(("127.0.0.1", 0))
+    held.listen()
+    return held, held.getsockname()[1]
+
+
+def free_port():
+    import socket
+
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
+def test_taken_device_port_fails_clearly_in_stdio_and_serve():
+    assert gateway("init").returncode == 0
+    assert gateway("enroll", "desk-lamp").returncode == 0
+    held, port = held_port()
+    with held:
+        for args in (
+            ["stdio", "--simulator", "--device-port", str(port)],
+            ["serve", "--simulator", "--device-port", str(port), "--port", str(free_port())],
+        ):
+            result = subprocess.run(
+                [sys.executable, "-m", "grok_gadgets_gateway.cli", *args],
+                input="",
+                capture_output=True,
+                text=True,
+                timeout=20,
+                check=False,
+            )
+            assert result.returncode == 2, (args, result.stderr)
+            assert f"cannot listen on 127.0.0.1:{port}" in result.stderr
+            assert "Another gateway may be running" in result.stderr
+            assert "Traceback" not in result.stderr
+
+
+def test_demo_ignores_operator_devices_and_a_running_gateway():
+    import socket
+
+    assert gateway("enroll", "desk-lamp").returncode == 0  # Real credentials now exist.
+    held = socket.socket()
+    try:
+        held.bind(("127.0.0.1", 8765))  # Stand in for the operator's running gateway.
+        held.listen()
+    except OSError:
+        pass  # Another gateway already holds it, which is the case under test.
+    with held:
+        result = subprocess.run(
+            [sys.executable, "-m", "grok_gadgets_gateway.demo"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+    assert result.returncode == 0, result.stderr
+    assert '"grok_verified": false' in result.stdout

@@ -30,7 +30,7 @@ from .operator import (
 from .service import MCP_PATH, Limits, gateway_version, serve_gateway
 from .simulator import Simulator
 from .simulator_config import SimulatorConfigError, load_config
-from .transport import CredentialError, Credentials, DeviceServer
+from .transport import CredentialError, Credentials, DevicePortInUse, DeviceServer
 
 COMMANDS = (
     "init",
@@ -336,6 +336,13 @@ def run_stdio(parser, args):
     )
     try:
         asyncio.run(server.run_stdio_async())
+    except BaseExceptionGroup as group:
+        in_use = group.subgroup(DevicePortInUse)
+        if in_use is None:
+            raise
+        while isinstance(in_use, BaseExceptionGroup):
+            in_use = in_use.exceptions[0]
+        parser.error(str(in_use))
     finally:
         if request_log is not None:
             request_log.append({"event": "stdio_stopped"})
