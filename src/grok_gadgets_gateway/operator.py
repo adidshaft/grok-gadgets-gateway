@@ -1,10 +1,14 @@
 """Private local config for device credentials and the MCP bearer token."""
 
+import hashlib
+import hmac
 import json
 import os
+import re
 import secrets
 import stat
 import tempfile
+from datetime import UTC, datetime
 from pathlib import Path
 
 from .transport import DEVICE_ID, CredentialError, read_registry
@@ -26,6 +30,15 @@ def credentials_path():
 
 def mcp_token_path():
     return config_dir() / "mcp-token"
+
+
+def mcp_tokens_path():
+    return config_dir() / "mcp-tokens.json"
+
+
+TOKEN_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
+# The single mcp-token file answers to this name in logs and limits.
+DEFAULT_TOKEN_NAME = "default"
 
 
 def atomic_write(path, data):
@@ -150,3 +163,90 @@ def read_mcp_token(path):
     if not 16 <= len(token) <= 256 or any(char.isspace() for char in token):
         raise CredentialError("invalid", "MCP token file must contain one 16-256 character token")
     return token
+
+
+def token_hash(token):
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def _check_name(name):
+    if not isinstance(name, str) or not TOKEN_NAME.fullmatch(name):
+        raise OperatorError("Token name must match [A-Za-z0-9][A-Za-z0-9._-]{0,63}")
+    if name == DEFAULT_TOKEN_NAME:
+        raise OperatorError("'default' is the mcp-token file; use rotate-mcp-token for it")
+
+
+def read_named_tokens(path):
+    """Named MCP tokens as {name: record}. A missing file means none; records hold hashes."""
+    path = Path(path)
+    try:
+        mode = path.stat().st_mode
+    except FileNotFoundError:
+        return {}
+    if mode & (stat.S_IRWXG | stat.S_IRWXO):
+        raise CredentialError("insecure", "MCP token list must have mode 0600")
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise CredentialError("unreadable", "MCP token list cannot be read") from None
+    tokens = value.get("tokens") if isinstance(value, dict) else None
+    if not isinstance(tokens, dict) or not all(
+        isinstance(name, str)
+        and TOKEN_NAME.fullmatch(name)
+        and isinstance(record, dict)
+        and isinstance(record.get("sha256"), str)
+        and len(record["sha256"]) == 64
+        and isinstance(record.get("revoked"), bool)
+        for name, record in tokens.items()
+    ):
+        raise CredentialError("invalid", "MCP token list has an invalid format")
+    return tokens
+
+
+def _write_named_tokens(path, tokens):
+    payload = {"tokens": {name: tokens[name] for name in sorted(tokens)}}
+    atomic_write(path, (json.dumps(payload, indent=2) + "\n").encode())
+
+
+def issue_mcp_token(name, path=None):
+    """Create a named MCP token. Only its hash is stored; the token is returned once."""
+    _check_name(name)
+    path = Path(path) if path else mcp_tokens_path()
+    tokens = read_named_tokens(path)
+    if name in tokens and not tokens[name]["revoked"]:
+        raise OperatorError(f"{name} is already active. Revoke it first: mcp-token revoke {name}")
+    token = secrets.token_urlsafe(32)
+    tokens[name] = {
+        "sha256": token_hash(token),
+        "created": datetime.now(UTC).isoformat(timespec="seconds"),
+        "revoked": False,
+    }
+    _write_named_tokens(path, tokens)
+    return token
+
+
+def revoke_mcp_token(name, path=None):
+    _check_name(name)
+    path = Path(path) if path else mcp_tokens_path()
+    tokens = read_named_tokens(path)
+    if name not in tokens:
+        raise OperatorError(f"{name} is not a named MCP token")
+    tokens[name]["revoked"] = True
+    _write_named_tokens(path, tokens)
+
+
+def list_mcp_tokens(path=None):
+    """(name, created, revoked) for each named token; never the token or its hash."""
+    path = Path(path) if path else mcp_tokens_path()
+    tokens = read_named_tokens(path)
+    return [(name, tokens[name].get("created"), tokens[name]["revoked"]) for name in sorted(tokens)]
+
+
+def match_named_token(token, tokens):
+    """Name of the active token whose hash matches, compared in constant time per entry."""
+    digest = token_hash(token)
+    found = None
+    for name, record in tokens.items():
+        if hmac.compare_digest(digest, record["sha256"]) and not record["revoked"]:
+            found = name
+    return found

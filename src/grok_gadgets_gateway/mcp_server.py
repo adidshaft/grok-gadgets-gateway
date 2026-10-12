@@ -99,6 +99,15 @@ def client_name(ctx):
     return f"{info.name}/{info.version}" if info.version else info.name
 
 
+def token_name(ctx):
+    """Name of the bearer token that authenticated this HTTP request; None on stdio."""
+    try:
+        headers = ctx.headers
+    except (AttributeError, ValueError):
+        return None
+    return headers.get("x-grok-gadgets-token") if headers else None
+
+
 def user_agent(ctx):
     try:
         headers = ctx.headers
@@ -184,6 +193,7 @@ def make_server(
                 "request_id": request_id,
                 "transport": request_log.transport,
                 "client": client_name(ctx),
+                "token": token_name(ctx),
                 "tool": tool,
                 "args_sha256": argument_hash(arguments),
                 "outcome": "ok" if response["ok"] else response["error"]["code"],

@@ -12,32 +12,55 @@ from mcp.server.transport_security import TransportSecuritySettings
 
 from .domain import Gateway
 from .mcp_server import RequestLog, make_server
-from .operator import OperatorError, read_mcp_token
+from .operator import (
+    DEFAULT_TOKEN_NAME,
+    OperatorError,
+    match_named_token,
+    read_mcp_token,
+    read_named_tokens,
+)
 from .simulator import Simulator
 from .simulator_config import SimulatorConfigError, load_config
 from .transport import CredentialError, Credentials, DeviceServer
 
 _HOST = re.compile(r"[A-Za-z0-9][A-Za-z0-9.-]*(?::[0-9]{1,5})?$")
 MCP_PATH = "/mcp"
+# Set by BearerAuth after a token matches; any client-sent copy is removed first.
+TOKEN_HEADER = b"x-grok-gadgets-token"
 
 
 class FileTokenVerifier:
-    """Bearer check against the mode-0600 mcp-token file. The token is never logged."""
+    """Bearer check against the mcp-token file and the named token list.
 
-    def __init__(self, path):
+    Both files are read on every request, so `mcp-token issue`, `mcp-token revoke` and
+    `rotate-mcp-token` take effect without a restart. Returns the token's name or None.
+    The token is never logged.
+    """
+
+    def __init__(self, path, named_path=None):
         self.path = path
+        self.named_path = named_path
 
     async def verify_token(self, token):
+        if not isinstance(token, str) or not token:
+            return None
+        if self.named_path is not None:
+            try:
+                name = match_named_token(token, read_named_tokens(self.named_path))
+            except CredentialError:
+                name = None  # A damaged list grants nothing; the default token still works.
+            if name is not None:
+                return name
         try:
             expected = read_mcp_token(self.path)
         except CredentialError:
-            return False
-        if not isinstance(token, str):
-            return False
-        return hmac.compare_digest(
+            return None
+        if hmac.compare_digest(
             hashlib.sha256(expected.encode()).digest(),
             hashlib.sha256(token.encode()).digest(),
-        )
+        ):
+            return DEFAULT_TOKEN_NAME
+        return None
 
 
 class BearerAuth:
@@ -54,9 +77,11 @@ class BearerAuth:
 
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http":
-            header = dict(scope.get("headers") or []).get(b"authorization", b"")
+            headers = [(k, v) for k, v in scope.get("headers") or [] if k != TOKEN_HEADER]
+            header = dict(headers).get(b"authorization", b"")
             scheme, _, token = header.decode("latin-1").partition(" ")
-            if scheme.lower() != "bearer" or not await self.verifier.verify_token(token):
+            name = await self.verifier.verify_token(token) if scheme.lower() == "bearer" else None
+            if name is None:
                 body = b'{"error":"invalid_token","error_description":"Bearer token required"}'
                 await send(
                     {
@@ -71,6 +96,7 @@ class BearerAuth:
                 )
                 await send({"type": "http.response.body", "body": body})
                 return
+            scope = {**scope, "headers": [*headers, (TOKEN_HEADER, name.encode())]}
         await self.app(scope, receive, send)
 
 
@@ -131,6 +157,7 @@ async def serve_gateway(
     device_port=8765,
     port=8766,
     allowed_hosts=(),
+    mcp_tokens=None,
     log_stream=None,
     request_log=None,
     host="127.0.0.1",
@@ -146,6 +173,8 @@ async def serve_gateway(
         registry = Credentials(credentials)
         registry.validate()
         read_mcp_token(mcp_token)
+        if mcp_tokens is not None:
+            read_named_tokens(mcp_tokens)
     except (CredentialError, SimulatorConfigError, ValueError) as exc:
         raise OperatorError(str(exc)) from None
     try:
@@ -165,7 +194,14 @@ async def serve_gateway(
     try:
         await device_server.start()
         async with _serve_http(
-            gateway, sim, device_server, mcp_token, port=port, security=security, log=log
+            gateway,
+            sim,
+            device_server,
+            mcp_token,
+            port=port,
+            security=security,
+            log=log,
+            mcp_tokens=mcp_tokens,
         ) as running:
             log.append(
                 {
@@ -191,7 +227,9 @@ def gateway_version():
 
 
 @asynccontextmanager
-async def _serve_http(gateway, sim, device_server, mcp_token, *, port, security, log):
+async def _serve_http(
+    gateway, sim, device_server, mcp_token, *, port, security, log, mcp_tokens=None
+):
     mcp = make_server(
         gateway,
         sim,
@@ -209,7 +247,7 @@ async def _serve_http(gateway, sim, device_server, mcp_token, *, port, security,
         host="127.0.0.1",
     )
     config = uvicorn.Config(
-        BearerAuth(app, FileTokenVerifier(mcp_token)),
+        BearerAuth(app, FileTokenVerifier(mcp_token, mcp_tokens)),
         host="127.0.0.1",
         port=port,
         log_level="warning",
