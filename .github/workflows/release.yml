@@ -78,12 +78,21 @@ jobs:
         with:
           path: assets
           merge-multiple: true
-      - name: Attach to the existing release (never replaces an asset)
+      - name: Attach to the release, or confirm the attached files are the same build
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ inputs.tag }}
-        run: gh release upload "$TAG" assets/*
+        run: |
+          if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -qx SHA256SUMS; then
+            # Already attached (for example, a later PyPI-only run): never replace an asset.
+            # Upload only if this build is byte-identical to the published files.
+            gh release download "$TAG" --pattern SHA256SUMS --output published.sums
+            cmp published.sums assets/SHA256SUMS
+            echo "The release already has these exact files."
+          else
+            gh release upload "$TAG" assets/*
+          fi
   pypi:
     if: inputs.publish_pypi
     needs: [build, github-release]
