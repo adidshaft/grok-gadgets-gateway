@@ -699,17 +699,17 @@
     {
       "id": "GW-SIM-ISO-001",
       "owner": "grok-gadgets-gateway",
-      "problem": "The simulator demo and stdio --simulator loaded the operator's credentials and crashed beside a running gateway",
+      "problem": "The simulator path read the operator's device credentials and crashed beside a running gateway",
       "acceptance": [
+        "--simulator without --credentials reads no device registry and opens no device port",
         "Clear exit-2 message when the device port is taken",
-        "The demo never loads the operator's devices",
-        "A test runs the demo while the default device port is held"
+        "The demo never loads the operator's devices"
       ],
       "labels": [
         "bug"
       ],
       "stage": "done",
-      "evidence": "GitHub #96, PR #97; tests/test_cli.py. The demo passed on the owner's Mac beside the running Wi-Fi gateway on 12 Oct 2026."
+      "evidence": "GitHub #96, PRs #97 and #104; tests/test_cli.py. On 12 Oct 2026 serve --simulator + rehearse passed from a fresh clone on the owner's Mac beside the running Wi-Fi gateway."
     },
     {
       "id": "GW-PROV-UX-001",

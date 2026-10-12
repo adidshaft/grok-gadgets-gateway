@@ -29,6 +29,10 @@ Local simulation needs no public endpoint, domain, or hosted service.
 For an installable configurable software device instead, see [simulator settings](simulator.md).
 `--simulator-config` only works with `--simulator` and never enables test controls implicitly.
 
+`--simulator` on its own serves only the simulated light. It never reads your device registry
+and opens no device port, so it runs beside a gateway you already use. To serve enrolled
+devices as well, add `--credentials ~/.config/grok-gadgets/credentials.json`.
+
 Config lives in `$XDG_CONFIG_HOME/grok-gadgets` or `~/.config/grok-gadgets` when `XDG_CONFIG_HOME` is unset.
 
 ```sh
