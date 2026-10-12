@@ -73,10 +73,11 @@
     {
       "id": "GW-004",
       "owner": "grok-gadgets-gateway",
-      "problem": "Real Grok Bot and physical C124 acceptance",
+      "problem": "Real Grok Bot and physical ESP32-S3/OLED acceptance",
       "acceptance": [
-        "real Bot tool call",
-        "physical LED and button observations"
+        "Inspect native Grok Bot invocation evidence separately from software rehearsal",
+        "Observe OLED text/clear, confirmed LED/button behavior, and USB recovery on the inspected kit",
+        "Record exact board, OLED controller/interface, wiring, firmware hash, and observations"
       ],
       "dependencies": [
         "GW-003"
@@ -90,11 +91,11 @@
       "milestone": "M5",
       "stage": "blocked",
       "commits": [],
-      "blocker": "Inspectable native Grok invocation evidence and physical C124 observations remain unavailable for this component.",
+      "blocker": "Ordered ESP32-S3/OLED kit awaits delivery and inspection. Pin map, display driver, matching firmware, and native Grok Bot invocation evidence remain unverified.",
       "related_milestones": [
         "M8"
       ],
-      "evidence": "Primary M5: native Grok invocation evidence; physical C124 observations remain a separate linked M8 gate. Local simulator acceptance does not close either gate."
+      "evidence": "Simulator results remain software evidence. See docs/experiment-kit.md for the 9 October 2026 first-hardware target; historical C124 checks do not verify it."
     },
     {
       "id": "HARD-GW-001",

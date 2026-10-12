@@ -2,10 +2,12 @@
 
 import asyncio
 import json
+from importlib.metadata import PackageNotFoundError, version
 
 import httpx2
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
+from mcp.types import Implementation
 
 from .service import MCP_PATH
 
@@ -18,6 +20,16 @@ TOOLS = {
     "gadgets_diagnostics",
 }
 BLUE = {"r": 0, "g": 120, "b": 255, "on": True}
+CLIENT_NAME = "grok-gadgets-rehearse"
+
+
+def _client_info():
+    """Name rehearsal calls so a request log can tell them from another client."""
+    try:
+        release = version("grok-gadgets-gateway")
+    except PackageNotFoundError:
+        release = "unknown"
+    return Implementation(name=CLIENT_NAME, version=release)
 
 
 class RehearsalError(Exception):
@@ -73,7 +85,7 @@ async def _rehearse(port, token, device_id, out, capability, arguments):
     async with (
         httpx2.AsyncClient(headers=headers, timeout=timeout) as http,
         streamable_http_client(url, http_client=http) as (read, write),
-        ClientSession(read, write) as session,
+        ClientSession(read, write, client_info=_client_info()) as session,
     ):
         await session.initialize()
         names = {tool.name for tool in (await session.list_tools()).tools}

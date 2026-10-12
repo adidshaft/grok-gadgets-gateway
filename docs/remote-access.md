@@ -7,6 +7,34 @@
 
 Grok Bot's connector (and `rehearse`) sends `Authorization: Bearer <token>`. The token is the single line in `~/.config/grok-gadgets/mcp-token` (or `$XDG_CONFIG_HOME/grok-gadgets/mcp-token`), mode 0600. `rotate-mcp-token` replaces it and prints `GROK_GADGETS_MCP_TOKEN=...` once on stdout. Update the connector's saved token and reconnect. The server reads the file on each request; no gateway restart is needed.
 
+For an HTTPS name in front of `serve`, follow the [owner-run TLS tunnel guide](tunnel.md). It is untested with Grok Bot.
+
+## Named tokens
+
+Give each client its own token, so you can revoke one without changing the others:
+
+```sh
+grok-gadgets-gateway mcp-token issue grok-bot
+grok-gadgets-gateway mcp-token list
+grok-gadgets-gateway mcp-token revoke grok-bot
+```
+
+`issue` prints `GROK_GADGETS_MCP_TOKEN=...` once, or writes it to a mode-0600 file with `--token-file`. The list in `mcp-tokens.json` (mode 0600, next to `mcp-token`) stores only a SHA-256 hash. `serve` reads the list on every request. A new token works at once. A revoked token fails on its next request, also inside an open session. The `mcp-token` file still works and is named `default`. The request log records the token name, never the token. A damaged list grants nothing, and `serve` refuses to start if the list is readable by other users.
+
+## Limits
+
+`serve` limits each token separately. The defaults suit one person and one Grok Bot:
+
+| Option | Default | Over the limit |
+| --- | --- | --- |
+| `--calls-per-minute` | 60 tool calls | Tool error `rate_limited`, with the wait in seconds |
+| `--commands-per-minute` | 10 `gadgets_command` calls | Tool error `rate_limited` |
+| `--max-concurrent` | 8 open HTTP requests, event streams included | HTTP 429 with `Retry-After: 1` |
+| `--max-body-bytes` | 65536 | HTTP 413 |
+| `--request-timeout` | 30 seconds for one POST | HTTP 504 |
+
+A rejected call does not count toward the limit. The windows reset when `serve` restarts. HTTP rejections are written to the logs as `http_rejected` lines with the status, the reason and the token name. They never contain the token or the body. `stdio` has no token and no limits.
+
 This package does not terminate public TLS and it does not speak OAuth. It has not been verified with Grok Bot. A cloud Bot cannot open `127.0.0.1` on your computer. If you want a Bot to reach the gateway, you run `serve` on the gadget host and you publish HTTPS yourself.
 
 ## What you may publish

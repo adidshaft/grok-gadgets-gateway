@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.1.0-alpha.5 — 12 October 2026
+
+- Add `docs/tunnel.md`: an owner-run TLS tunnel guide in front of `127.0.0.1:8766`, with a named token, limits, the request log and revocation. Untested with Grok Bot ([#70](https://github.com/adidshaft/grok-gadgets-gateway/issues/70)).
+- Add per-token limits to `serve`: tool calls and `gadgets_command` calls per minute (`rate_limited`), open requests (429), body size (413) and POST time (504). Rejections are logged without tokens or bodies ([#69](https://github.com/adidshaft/grok-gadgets-gateway/issues/69)).
+- Add named MCP tokens: `mcp-token issue|list|revoke`. `serve` accepts each active named token and the `mcp-token` file, reads the list per request, and logs the token name ([#68](https://github.com/adidshaft/grok-gadgets-gateway/issues/68)).
+- Add `serve --request-log PATH` (and the same option for `stdio`): an opt-in, mode-0600 JSONL file with one line per tool call (time, client name, tool, device, command, non-secret arguments, result). Secret-looking and `writeOnly` argument values are redacted; tokens are never written ([#65](https://github.com/adidshaft/grok-gadgets-gateway/issues/65)).
+- `rehearse` identifies itself to the gateway as `grok-gadgets-rehearse`.
+
 ## 0.1.0-alpha.4 — 8 October 2026
 
 - Update to `mcp` 2.3.0. The server uses `MCPServer`, and its HTTP settings move to `streamable_http_app()`. The six Grok Bot tools, their annotations, `serve` authentication and transport security are unchanged. The server still accepts MCP protocol versions 2024-11-05 to 2025-11-25 and adds 2026-07-28.

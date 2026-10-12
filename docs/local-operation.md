@@ -33,7 +33,7 @@ Config lives in `$XDG_CONFIG_HOME/grok-gadgets` or `~/.config/grok-gadgets` when
 
 ```sh
 uv run grok-gadgets-gateway init
-uv run grok-gadgets-gateway enroll atoms3-lite-1
+uv run grok-gadgets-gateway enroll esp32s3-oled-1
 uv run grok-gadgets-gateway devices
 uv run grok-gadgets-gateway serve
 ```
@@ -54,7 +54,10 @@ give the Linux agent the same `--token-file`.
 
 ## USB bridge
 
-When hardware is available, use a USB-C data cable and verified C124 firmware.
+The first physical experiment now uses the ordered ESP32-S3 and breadboard OLED kit.
+Read [experiment setup](experiment-kit.md) before you connect hardware.
+Wait for inspection and matching firmware before flashing. Do not use C124 firmware on the new board.
+Use a USB-C data cable and confirm the board's data port and serial transport.
 Find the serial device in your operating system. Common paths are `/dev/cu.usbmodem…` on macOS and `/dev/ttyACM…` on Linux.
 Load the private token into the current shell environment without printing it:
 
@@ -76,6 +79,24 @@ If USB disconnects, the bridge retries the same serial path automatically with a
 This procedure restores the session. It does not replay actions from durable storage.
 
 Physical USB operation remains unverified. Local software tests with a pseudo-terminal pass.
+
+## Request log
+
+`serve --request-log PATH` appends one JSON line per MCP tool call to `PATH`. It is off by default. The file is created with mode 0600 and kept between runs.
+
+```sh
+grok-gadgets-gateway serve --simulator --request-log ~/grok-gadgets-requests.jsonl
+```
+
+`stdio --request-log PATH` writes the same lines with `transport` set to `stdio`; its run lines are `stdio_started` and `stdio_stopped`.
+
+The first line of each run is `serve_started`, with the gateway version and the loopback URL. Each `mcp_tool_call` line has the time, the client name and version the client sent in MCP `initialize`, the HTTP user agent, the tool, the device, the command capability, the outcome, the command status and the duration. `gadgets_command` lines include the arguments. `gadgets_get_state` lines include the reported state. The last line of a clean stop is `serve_stopped`.
+
+The log never contains the bearer token or a device token. Argument values are replaced with `[redacted]` when their capability contract marks them `writeOnly`, or when their key contains `token`, `secret`, `password`, `passwd`, `key` or `credential`. `rehearse` sends the client name `grok-gadgets-rehearse`.
+
+The log records what this gateway received. A client name is self-reported, so it does not prove which product sent a request. Reported state is the device's report, not a physical observation. Delete the file when you no longer need it.
+
+The stderr log is unchanged: it never contains arguments or state.
 
 ## Troubleshooting and recovery
 
