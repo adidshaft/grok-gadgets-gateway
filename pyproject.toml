@@ -27,7 +27,7 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://grok-gadgets.pages.dev/"
+Homepage = "https://grokgadgets.org/"
 Source = "https://github.com/adidshaft/grok-gadgets-gateway"
 Issues = "https://github.com/adidshaft/grok-gadgets-gateway/issues"
 Changelog = "https://github.com/adidshaft/grok-gadgets-gateway/blob/main/CHANGELOG.md"

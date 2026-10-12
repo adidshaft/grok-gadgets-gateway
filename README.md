@@ -24,6 +24,19 @@ Run `rehearse` in a second terminal while `serve` keeps running. It calls the si
 order Grok Bot will: list the gadgets, set the simulated light blue, read its state. See
 [first success in five minutes](docs/first-success.md).
 
+### Install with pip
+
+The package is not on PyPI yet. Each [GitHub release](https://github.com/adidshaft/grok-gadgets-gateway/releases)
+has a wheel and `SHA256SUMS`. Install the wheel into a virtual environment with Python 3.11+:
+
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install https://github.com/adidshaft/grok-gadgets-gateway/releases/download/v0.1.0-alpha.6/grok_gadgets_gateway-0.1.0a6-py3-none-any.whl
+.venv/bin/grok-gadgets-gateway --help
+```
+
+On an Intel Mac, `cryptography` has no prebuilt wheel and needs a Rust toolchain to build.
+
 ## How it works
 
 ```mermaid
