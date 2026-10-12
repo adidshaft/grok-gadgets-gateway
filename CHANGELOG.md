@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `lan-cert`, `serve --lan-listen` and `wifi-provision --lan` accept an mDNS name such as `my-mac.local`. A name certificate holds only the name. `serve` binds the name's current private address, checks it every 30 seconds and moves the Wi-Fi listener when it changes (`lan_rebound`). The board needs name support from ESP32 SDK #99 ([#110](https://github.com/adidshaft/grok-gadgets-gateway/issues/110), hub ADR 006).
+
 ## 0.1.0-alpha.9 — 12 October 2026
 
 - `serve --simulator` and `stdio --simulator` without `--credentials` serve only the simulated light: they never read the device registry and open no device port, so the beginner path never touches real device credentials and runs beside a running gateway. Add `--credentials` to serve enrolled devices too. `--lan-listen` with simulator-only mode stops with a clear message ([#96](https://github.com/adidshaft/grok-gadgets-gateway/issues/96)).

@@ -218,6 +218,8 @@ LAN_PENDING = 4
 LAN_CONNECTS_PER_MINUTE = 20
 LAN_FRAMES_PER_SECOND = 30
 LAN_HANDSHAKE_TIMEOUT = 5
+# How often a --lan-listen NAME.local is resolved again, to follow an address change.
+LAN_RECHECK_SECONDS = 30
 
 
 class Running:
@@ -261,6 +263,8 @@ async def serve_gateway(
     host="127.0.0.1",
     lan_listen=None,
     lan_directory=None,
+    lan_recheck=None,
+    resolver=None,
 ):
     """Run until the context exits. HTTP and the device listener bind 127.0.0.1.
 
@@ -288,10 +292,11 @@ async def serve_gateway(
             read_named_tokens(mcp_tokens)
         lan = None
         if lan_listen is not None:
-            from .lan import parse_lan_address, server_context
+            from .lan import is_local_name, parse_lan_address, resolve_lan_host, server_context
 
             lan_host, lan_port = parse_lan_address(lan_listen)
             lan = (lan_host, lan_port, server_context(lan_host, lan_directory))
+            lan_bind = resolve_lan_host(lan_host, resolver)
     except (CredentialError, SimulatorConfigError, ValueError) as exc:
         raise OperatorError(str(exc)) from None
     try:
@@ -310,12 +315,12 @@ async def serve_gateway(
             port=device_port,
             reserved_ids=[sim.device_id] if sim else [],
         )
-    lan_server = None
-    if lan is not None:
-        lan_server = DeviceServer(
+
+    def make_lan_server(address):
+        return DeviceServer(
             gateway,
             registry,
-            host=lan[0],
+            host=address,
             port=lan[1],
             reserved_ids=[sim.device_id] if sim else [],
             max_sessions=LAN_SESSIONS,
@@ -326,6 +331,41 @@ async def serve_gateway(
             connects_per_minute=LAN_CONNECTS_PER_MINUTE,
             frames_per_second=LAN_FRAMES_PER_SECOND,
         )
+
+    lan_server = make_lan_server(lan_bind) if lan is not None else None
+
+    def lan_label():
+        bound = f"{lan_server.host}:{lan_server.port}"
+        return f"{lan[0]} ({bound})" if lan[0] != lan_server.host else bound
+
+    async def follow_address(running):
+        # The name keeps the certificate and the boards valid; only the bound address moves.
+        # These events go to stderr too, so `service logs` shows them.
+        nonlocal lan_server
+        while True:
+            await asyncio.sleep(LAN_RECHECK_SECONDS if lan_recheck is None else lan_recheck)
+            try:
+                current = await asyncio.to_thread(resolve_lan_host, lan[0], resolver)
+            except OperatorError as exc:
+                log.write({"event": "lan_resolve_failed", "name": lan[0], "reason": str(exc)})
+                continue
+            if current == lan_server.host:
+                continue
+            moved = make_lan_server(current)
+            try:
+                await moved.start()
+            except OSError as exc:
+                log.write(
+                    {"event": "lan_rebind_failed", "address": current, "reason": exc.strerror}
+                )
+                continue
+            previous, lan_server = lan_server, moved
+            running.lan = lan_label()
+            log.write(
+                {"event": "lan_rebound", "name": lan[0], "from": previous.host, "to": current}
+            )
+            await previous.close()
+
     try:
         try:
             if device_server is not None:
@@ -337,8 +377,8 @@ async def serve_gateway(
                 await lan_server.start()
             except OSError as exc:
                 raise OperatorError(
-                    f"cannot listen on {lan[0]}:{lan[1]}: {exc.strerror}. "
-                    "Use an address of this computer."
+                    f"cannot listen on {lan_server.host}:{lan[1]}: {exc.strerror}. "
+                    "Use an address or mDNS name of this computer."
                 ) from None
         async with _serve_http(
             gateway,
@@ -352,8 +392,11 @@ async def serve_gateway(
             limits=limits,
             rate_limiter=rate_limiter if rate_limiter is not None else RateLimiter(),
         ) as running:
+            follower = None
             if lan_server is not None:
-                running.lan = f"{lan_server.host}:{lan_server.port}"
+                running.lan = lan_label()
+                if is_local_name(lan[0]):
+                    follower = asyncio.create_task(follow_address(running))
             log.append(
                 {
                     "event": "serve_started",
@@ -366,7 +409,11 @@ async def serve_gateway(
                     "simulator": sim.device_id if sim else None,
                 }
             )
-            yield running
+            try:
+                yield running
+            finally:
+                if follower is not None:
+                    follower.cancel()
     finally:
         if lan_server is not None:
             await lan_server.close()

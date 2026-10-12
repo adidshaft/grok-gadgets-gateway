@@ -7,6 +7,7 @@ host may have no private address. The address and peer rules have their own test
 import asyncio
 import io
 import json
+import socket
 import ssl
 import stat
 
@@ -115,7 +116,8 @@ async def closed(reader):
         "8.8.8.8",
         "100.64.1.1",
         "169.254.1.1",
-        "gateway.local",
+        "gateway.lan",
+        "bad_name.local",
         "fd00::1",
         "192.168.1.20:0",
         "192.168.1.20:70000",
@@ -552,3 +554,105 @@ def test_wifi_provision_cancel_sends_nothing(tmp_path, monkeypatch, capsys):
         assert code == 2 and board.written == [b'{"type":"status"}\n']
         err = capsys.readouterr().err
         assert "Cancelled; nothing was sent to the board." in err and "Traceback" not in err
+
+
+# mDNS names (hub ADR 006)
+
+NAME = "test-mac.local"
+
+
+def test_lan_address_accepts_an_mdns_name():
+    assert lan.parse_lan_address("Test-Mac.local:9000") == (NAME, 9000)
+    assert lan.parse_lan_address(NAME) == (NAME, lan.DEFAULT_LAN_PORT)
+
+
+def test_resolving_a_name_picks_a_private_address():
+    assert lan.resolve_lan_host(ADDRESS) == ADDRESS
+    assert lan.resolve_lan_host(NAME, lambda host: ["127.0.0.1", "8.8.8.8", ADDRESS]) == ADDRESS
+    with pytest.raises(OperatorError, match="no private home-network address"):
+        lan.resolve_lan_host(NAME, lambda host: ["127.0.0.1"])
+
+    def unknown(host):
+        raise socket.gaierror("not found")
+
+    with pytest.raises(OperatorError, match="scutil --get LocalHostName"):
+        lan.resolve_lan_host(NAME, unknown)
+
+
+def test_a_name_certificate_names_only_the_name(tmp_path):
+    directory = tmp_path / "lan"
+    lan.create_ca(directory)
+    cert = x509.load_pem_x509_certificate(lan.issue_server_cert(NAME, directory).read_bytes())
+    names = cert.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
+    assert names.get_values_for_type(x509.DNSName) == [NAME]
+    assert names.get_values_for_type(x509.IPAddress) == []
+    assert lan.server_context(NAME, directory)
+    with pytest.raises(OperatorError, match="lan-cert other-mac.local"):
+        lan.server_context("other-mac.local", directory)
+    with pytest.raises(OperatorError, match=f"lan-cert {ADDRESS}"):
+        lan.server_context(ADDRESS, directory)
+
+
+def this_computers_private_address():
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+        try:
+            probe.connect(("192.0.2.1", 9))  # No packet is sent for UDP connect.
+            address = probe.getsockname()[0]
+        except OSError:
+            return None
+    return address if lan.is_private(address) else None
+
+
+async def test_a_named_listener_follows_an_address_change(tmp_path, monkeypatch):
+    moved_to = this_computers_private_address()
+    if moved_to is None:
+        pytest.skip("needs a private network address on this computer")
+    real = lan.is_private
+    monkeypatch.setattr(lan, "is_private", lambda a: a == "127.0.0.1" or real(a))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    directory = tmp_path / "grok-gadgets" / "lan"
+    lan.create_ca(directory)
+    lan.issue_server_cert(NAME, directory)
+    path = tmp_path / "auth.json"
+    write_credentials(path)
+    token = tmp_path / "mcp-token"
+    token.write_text("t" * 32)
+    token.chmod(0o600)
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        lan_port = probe.getsockname()[1]
+    answers = iter([["127.0.0.1"], OSError("mDNS paused"), [moved_to]])
+
+    def resolver(host):
+        assert host == NAME
+        answer = next(answers, [moved_to])
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    stream = io.StringIO()
+    async with serve_gateway(
+        str(path),
+        str(token),
+        device_port=0,
+        port=0,
+        lan_listen=f"{NAME}:{lan_port}",
+        lan_recheck=0.05,
+        resolver=resolver,
+        log_stream=stream,
+    ) as running:
+        assert running.lan == f"{NAME} (127.0.0.1:{lan_port})"
+        for _ in range(100):
+            if moved_to in running.lan:
+                break
+            await asyncio.sleep(0.02)
+        assert running.lan == f"{NAME} ({moved_to}:{lan_port})"
+        reader, writer = await asyncio.open_connection(
+            moved_to, lan_port, ssl=client_context(directory), server_hostname=NAME
+        )
+        message = hello("dev-1")
+        message["token"] = TOKEN
+        assert (await exchange(reader, writer, message))["ok"]
+        writer.close()
+    events = [json.loads(line)["event"] for line in stream.getvalue().splitlines()]
+    assert "lan_resolve_failed" in events and "lan_rebound" in events

@@ -7,6 +7,8 @@ import datetime
 import hashlib
 import ipaddress
 import os
+import re
+import socket
 import ssl
 from pathlib import Path
 
@@ -25,6 +27,34 @@ PRIVATE_NETWORKS = tuple(
 CA_DAYS = 3650
 SERVER_DAYS = 825
 CIPHERS = "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384"
+# An mDNS name such as my-mac.local (hub ADR 006): DNS labels, ending in .local.
+LOCAL_NAME = re.compile(r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+local$")
+
+
+def is_local_name(host):
+    return bool(LOCAL_NAME.match(str(host)))
+
+
+def _resolve(host):
+    infos = socket.getaddrinfo(host, None, socket.AF_INET, socket.SOCK_STREAM)
+    return list(dict.fromkeys(info[4][0] for info in infos))
+
+
+def resolve_lan_host(host, resolver=None):
+    """An mDNS name -> this computer's current private IPv4 address; an address -> itself."""
+    if not is_local_name(host):
+        return host
+    try:
+        addresses = (resolver or _resolve)(host)
+    except OSError:
+        raise OperatorError(
+            f"cannot resolve {host}. Use this computer's mDNS name (macOS: scutil --get "
+            "LocalHostName, then add .local), or an IPv4 address"
+        ) from None
+    private = [address for address in addresses if is_private(address)]
+    if not private:
+        raise OperatorError(f"{host} has no private home-network address right now")
+    return private[0]
 
 
 def lan_dir():
@@ -43,24 +73,27 @@ def is_private(address):
 
 
 def parse_lan_address(text, default_port=DEFAULT_LAN_PORT):
-    """`ADDRESS[:PORT]` -> (address, port). Only one private IPv4 address is accepted."""
+    """`ADDRESS[:PORT]` -> (address, port): one private IPv4 address, or an mDNS NAME.local."""
     host, sep, port_text = str(text).partition(":")
+    port = default_port
+    if sep:
+        if not port_text.isdigit() or not 1 <= int(port_text) <= 65535:
+            raise OperatorError("LAN port must be a number from 1 to 65535")
+        port = int(port_text)
+    if is_local_name(host.lower()):
+        return host.lower(), port
     try:
         ip = ipaddress.IPv4Address(host)
     except ValueError:
         raise OperatorError(
-            "LAN address must be one IPv4 address of this computer, for example 192.168.1.20"
+            "LAN address must be this computer's mDNS name (for example my-mac.local) or one "
+            "IPv4 address of this computer (for example 192.168.1.20)"
         ) from None
     if not any(ip in n for n in PRIVATE_NETWORKS):
         raise OperatorError(
             f"{ip} is not a private home-network address (10/8, 172.16/12 or 192.168/16); "
             "the device listener never binds all, loopback, shared or public addresses"
         )
-    port = default_port
-    if sep:
-        if not port_text.isdigit() or not 1 <= int(port_text) <= 65535:
-            raise OperatorError("LAN port must be a number from 1 to 65535")
-        port = int(port_text)
     return str(ip), port
 
 
@@ -144,13 +177,20 @@ def create_ca(directory=None, *, rotate=False, now=None):
 
 
 def issue_server_cert(address, directory=None, *, now=None):
-    """Issue the listener certificate for one private address, signed by the local CA."""
+    """Issue the listener certificate for one private address or mDNS name, signed by the CA.
+
+    A name certificate holds only the name, so it stays valid when the address changes.
+    """
     address, _ = parse_lan_address(address)
     directory, _, _, server_pem, server_key = _paths(directory)
     ca_cert, ca_key = _load_ca(directory)
     now = now or datetime.datetime.now(datetime.UTC)
     key = ec.generate_private_key(ec.SECP256R1())
-    ip = ipaddress.IPv4Address(address)
+    names = (
+        [x509.DNSName(address)]
+        if is_local_name(address)
+        else [x509.IPAddress(ipaddress.IPv4Address(address)), x509.DNSName(address)]
+    )
     cert = (
         x509.CertificateBuilder()
         # mbedTLS 2.28 on the device matches the host string against CN and DNS names only.
@@ -161,7 +201,7 @@ def issue_server_cert(address, directory=None, *, now=None):
         .not_valid_before(now - datetime.timedelta(minutes=5))
         .not_valid_after(now + datetime.timedelta(days=SERVER_DAYS))
         .add_extension(
-            x509.SubjectAlternativeName([x509.IPAddress(ip), x509.DNSName(address)]),
+            x509.SubjectAlternativeName(names),
             critical=False,
         )
         .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
@@ -205,10 +245,12 @@ def server_context(address, directory=None):
         raise OperatorError(f"LAN certificate in {directory} cannot be read") from None
     try:
         names = cert.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
-        ips = [str(ip) for ip in names.get_values_for_type(x509.IPAddress)]
+        named = [str(ip) for ip in names.get_values_for_type(x509.IPAddress)]
+        if is_local_name(address):
+            named = names.get_values_for_type(x509.DNSName)
     except x509.ExtensionNotFound:
-        ips = []
-    if address not in ips:
+        named = []
+    if address not in named:
         raise OperatorError(
             f"The LAN certificate does not name {address}. "
             f"Run: grok-gadgets-gateway lan-cert {address}"
