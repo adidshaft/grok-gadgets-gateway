@@ -59,6 +59,8 @@ uv run grok-gadgets-gateway enroll desk-lamp --token-file desk-lamp.token
 [Linux SDK](https://github.com/adidshaft/grok-gadgets-linux-sdk) or the
 [ESP32 SDK](https://github.com/adidshaft/grok-gadgets-esp32-sdk); the Linux SDK's `dev`
 command needs no token at all. Both ports are loopback only.
+A Wi-Fi gadget on your home network can use the opt-in TLS listener on one private
+address, `serve --lan-listen`; see [Wi-Fi devices](docs/wifi-devices.md).
 
 ## Grok Bot today
 

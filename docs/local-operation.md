@@ -16,7 +16,7 @@ State and history are stored in memory. Event cursors reset when the process res
 ## Where to run it
 
 Keep the gateway and the device agent or USB bridge on the same host.
-The device listener accepts only `127.0.0.1` or `::1`; another computer cannot use this local transport.
+The device listener accepts only `127.0.0.1` or `::1`; another computer cannot use this local transport. Wi-Fi devices on your home network use the opt-in LAN TLS listener instead: see [Wi-Fi devices](wifi-devices.md).
 The public website provides documentation and downloads. It does not keep your gateway running.
 Local simulation needs no public endpoint, domain, or hosted service.
 

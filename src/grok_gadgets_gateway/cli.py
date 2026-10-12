@@ -42,6 +42,9 @@ COMMANDS = (
     "stdio",
     "usb-bridge",
     "rehearse",
+    "lan-cert",
+    "lan-ca",
+    "wifi-provision",
 )
 DESCRIPTION = """Grok Gadgets gateway: the MCP server your Grok Bot will use to reach your gadgets.
 
@@ -228,7 +231,34 @@ def build_parser():
         default=[],
         help="extra Host header allowed for a tunnel in front of 127.0.0.1",
     )
+    serve.add_argument(
+        "--lan-listen",
+        metavar="ADDRESS[:PORT]",
+        help="also run the TLS device listener on this private LAN address of this computer "
+        "(port 8767 by default; off unless set; run lan-cert first)",
+    )
     _request_log_option(serve)
+
+    lan_cert = sub.add_parser(
+        "lan-cert", help="issue the LAN listener certificate for one private address"
+    )
+    lan_cert.add_argument("address", help="this computer's LAN address, e.g. 192.168.1.20")
+    lan_ca = sub.add_parser("lan-ca", help="show or replace the local CA that devices pin")
+    lan_ca.add_argument("action", choices=["show", "rotate"])
+
+    provision = sub.add_parser(
+        "wifi-provision",
+        help="send Wi-Fi settings, the device token and the CA to a Wi-Fi build over USB",
+    )
+    provision.add_argument("serial_port")
+    provision.add_argument("--device", required=True, help="enrolled device ID of this board")
+    provision.add_argument(
+        "--lan", metavar="ADDRESS[:PORT]", help="the address given to serve --lan-listen"
+    )
+    provision.add_argument(
+        "--factory-reset", action="store_true", help="erase the board's Wi-Fi settings instead"
+    )
+    _credentials_option(provision)
 
     stdio = sub.add_parser("stdio", help="run MCP over stdin/stdout for a connector that starts it")
     _simulator_options(stdio)
@@ -310,7 +340,12 @@ def run_stdio(parser, args):
 def run(parser, args):
     command = args.command
     if command == "init":
+        from .lan import create_ca
+
         created = init_config()
+        ca = create_ca()
+        if ca:
+            created.append(ca)
         print(f"Config directory {config_dir()}", file=sys.stderr)
         if created:
             print("Created " + ", ".join(str(path) for path in created), file=sys.stderr)
@@ -388,6 +423,7 @@ def run(parser, args):
                     limits=Limits(args.max_concurrent, args.max_body_bytes, args.request_timeout),
                     rate_limiter=RateLimiter(args.calls_per_minute, args.commands_per_minute),
                     request_log=args.request_log,
+                    lan_listen=args.lan_listen,
                 )
             )
         except OperatorError as exc:
@@ -403,6 +439,10 @@ def run(parser, args):
             parser.error("Set GROK_GADGETS_DEVICE_TOKEN (from enroll) in the environment")
         asyncio.run(bridge(args.serial_port, token, port=args.port))
         return 0
+    if command in ("lan-cert", "lan-ca"):
+        return run_lan(parser, args)
+    if command == "wifi-provision":
+        return run_wifi_provision(parser, args)
     if command == "rehearse":
         from .rehearse import main as rehearse_main
 
@@ -427,6 +467,81 @@ def run(parser, args):
             arguments,
         )
     return run_stdio(parser, args)
+
+
+def run_lan(parser, args):
+    from .lan import ca_fingerprint, create_ca, issue_server_cert, lan_dir, parse_lan_address
+
+    try:
+        if args.command == "lan-cert":
+            address, _ = parse_lan_address(args.address)
+            path = issue_server_cert(address)
+            print(
+                f"Wrote {path} for {address}. Start: serve --lan-listen {address}", file=sys.stderr
+            )
+            return 0
+        if args.action == "rotate":
+            create_ca(rotate=True)
+            print(
+                "Replaced the local CA and removed the old LAN certificate. Run lan-cert, "
+                "restart serve and provision every Wi-Fi device again.",
+                file=sys.stderr,
+            )
+        print(f"{lan_dir() / 'ca.pem'}\nSHA-256 {ca_fingerprint()}")
+    except OSError as exc:
+        parser.error(f"cannot write the LAN files: {exc.strerror}")
+    except OperatorError as exc:
+        parser.error(str(exc))
+    return 0
+
+
+def run_wifi_provision(parser, args):
+    import getpass
+
+    import serial
+
+    from .lan import ca_pem_text, parse_lan_address
+    from .transport import read_registry
+    from .wifi_provision import ProvisionError, factory_reset, provision, provision_frame
+
+    try:
+        if args.factory_reset:
+            frame = None
+        else:
+            if not args.lan:
+                parser.error("--lan ADDRESS[:PORT] is required to provision")
+            host, port = parse_lan_address(args.lan)
+            path = args.credentials or credentials_path()
+            record = read_registry(path).get(args.device)
+            if record is None:
+                parser.error(f"{args.device} is not enrolled. Run: enroll {args.device}")
+            if record.get("revoked"):
+                parser.error(f"{args.device} is revoked. Run: enroll {args.device} --rotate")
+            ca = ca_pem_text()
+            ssid = input("Wi-Fi name (2.4 GHz): ")
+            password = getpass.getpass("Wi-Fi password (not shown): ")
+            frame = provision_frame(ssid, password, record["token"], host, port, ca)
+            del password
+    except (OperatorError, CredentialError, ProvisionError) as exc:
+        parser.error(str(exc))
+    try:
+        with serial.Serial(args.serial_port, 115200, timeout=0.1, write_timeout=2) as device:
+            if frame is None:
+                factory_reset(device)
+                print("Factory reset done; the board restarts unprovisioned.", file=sys.stderr)
+                print(f"Also run: grok-gadgets-gateway revoke {args.device}", file=sys.stderr)
+                return 0
+            provision(device, args.device, frame)
+    except (serial.SerialException, OSError) as exc:
+        parser.error(f"cannot use {args.serial_port}: {exc}")
+    except ProvisionError as exc:
+        parser.error(str(exc))
+    print(
+        f"Provisioned {args.device} for {host}:{port}. The board restarts and joins Wi-Fi; "
+        "you can now power it from a USB charger.",
+        file=sys.stderr,
+    )
+    return 0
 
 
 def run_mcp_token(parser, args):
@@ -472,6 +587,8 @@ async def _serve(credentials, mcp_token, **kwargs):
             "Bearer token is the mcp-token file. This process does not prove Grok or hardware.",
             file=sys.stderr,
         )
+        if running.lan:
+            print(f"LAN TLS device listener {running.lan} (private peers only).", file=sys.stderr)
         stopping = asyncio.create_task(stop.wait())
         await asyncio.wait({running.task, stopping}, return_when=asyncio.FIRST_COMPLETED)
         stopping.cancel()

@@ -6,9 +6,10 @@ import hmac
 import json
 import logging
 import re
+import ssl
 import stat
 import time
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from pathlib import Path
 
 from .protocol import MAX_TCP_FRAME, VERSION, GatewayError, validate_request
@@ -23,12 +24,21 @@ INTERNAL_ERROR = (
 ).encode()
 
 
+CLOSE_TIMEOUT = 2
+
+
 async def _close_writer(writer):
     writer.close()
     try:
-        await writer.wait_closed()
-    except (ConnectionResetError, BrokenPipeError):
-        pass  # The peer has already gone; cleanup must not report another failure.
+        # A TLS peer that vanished (Wi-Fi loss, power cut) never answers close_notify,
+        # and Python's 30 s SSL shutdown wait would then raise into the server callback.
+        async with asyncio.timeout(CLOSE_TIMEOUT):
+            await writer.wait_closed()
+    except (OSError, TimeoutError):
+        # The peer has already gone; cleanup must not report another failure.
+        transport = getattr(writer, "transport", None)
+        if transport is not None:
+            transport.abort()
 
 
 class CredentialError(ValueError):
@@ -161,9 +171,27 @@ class DeviceServer:
         reserved_ids=(),
         max_sessions=64,
         max_pending=16,
+        tls=None,
+        log=None,
+        handshake_timeout=5,
+        connects_per_minute=None,
+        frames_per_second=None,
+        clock=time.monotonic,
     ):
+        # Loopback is plain TCP. Any other address is the opt-in LAN listener: a private
+        # address, TLS only, private peers only (hub ADR 005).
         if host not in ("127.0.0.1", "::1"):
-            raise ValueError("Local alpha binds loopback only")
+            from .lan import is_private
+
+            if tls is None or not is_private(host):
+                raise ValueError("Only loopback, or a private LAN address with TLS, is allowed")
+        self.tls = tls
+        self.log = log
+        self.handshake_timeout = handshake_timeout
+        self.connects_per_minute = connects_per_minute
+        self.frames_per_second = frames_per_second
+        self.clock = clock
+        self.recent = {}  # Source address -> deque of recent connection times.
         self.gateway = gateway
         self.credentials = credentials
         self.host, self.port = host, port
@@ -188,6 +216,7 @@ class DeviceServer:
     def status(self):
         return {
             "enabled": self.server is not None,
+            "tls": self.tls is not None,
             "host": self.host,
             "port": self.port,
             "credentials": self.credentials.status,
@@ -223,6 +252,53 @@ class DeviceServer:
         # A peer that stops reading must not hold the session open forever.
         await asyncio.wait_for(writer.drain(), timeout=self.idle_timeout)
 
+    def _log(self, event, **fields):
+        if self.log is not None:
+            self.log.write({"event": event, "listener": f"{self.host}:{self.port}", **fields})
+
+    def _rate_limited(self, peer):
+        if self.connects_per_minute is None:
+            return False
+        now = self.clock()
+        times = self.recent.setdefault(peer, deque())
+        while times and now - times[0] >= 60:
+            times.popleft()
+        if len(times) >= self.connects_per_minute:
+            return True
+        times.append(now)
+        if len(self.recent) > 256:  # Bounded bookkeeping: forget idle sources.
+            for source in [s for s, t in self.recent.items() if not t or now - t[-1] >= 60]:
+                del self.recent[source]
+        return False
+
+    async def _admit(self, writer):
+        """LAN only: private peer, connection rate, then the TLS handshake. False closes."""
+        info = writer.get_extra_info("peername")
+        peer = info[0] if info else None
+        from .lan import is_private
+
+        if not is_private(peer):
+            self._log("lan_peer_rejected", peer=peer)
+            return None
+        if self._rate_limited(peer):
+            self._log("lan_rate_limited", peer=peer)
+            return None
+        raw = writer.transport
+        try:
+            await writer.start_tls(self.tls, ssl_handshake_timeout=self.handshake_timeout)
+        except (ssl.SSLError, ConnectionError, OSError, TimeoutError, AttributeError) as exc:
+            # AttributeError: Python 3.11 when the socket closed during the handshake (for
+            # example evicted as the oldest pending socket). The writer is then left without
+            # a transport; restore the closed one so cleanup and its finalizer stay quiet.
+            if writer.transport is None:
+                writer._transport = raw
+            reason = "closed" if isinstance(exc, AttributeError) else None
+            reason = reason or getattr(exc, "reason", None) or type(exc).__name__
+            self._log("lan_tls_failed", peer=peer, reason=str(reason))
+            return None
+        self._log("lan_connected", peer=peer)
+        return peer
+
     async def client(self, reader, writer):
         task = asyncio.current_task()
         if len(self.pending) >= self.max_pending:
@@ -235,9 +311,15 @@ class DeviceServer:
         self.writers.add(writer)
         self.pending[task] = writer
         loop = asyncio.get_running_loop()
-        hello_deadline = loop.time() + self.hello_timeout
         did = sid = token = None
+        peer = None
+        frames = deque()
         try:
+            if self.tls is not None:
+                peer = await self._admit(writer)
+                if peer is None:
+                    return
+            hello_deadline = loop.time() + self.hello_timeout
             while True:
                 try:
                     if sid is None:
@@ -253,22 +335,43 @@ class DeviceServer:
                         message = json.loads(line)
                     except (ValueError, UnicodeError, RecursionError):
                         raise GatewayError("invalid_request", "Malformed JSON frame") from None
+                    if self.frames_per_second is not None:
+                        now = loop.time()
+                        while frames and now - frames[0] >= 1:
+                            frames.popleft()
+                        if len(frames) >= self.frames_per_second:
+                            raise GatewayError("busy", "Too many frames; slow down")
+                        frames.append(now)
                     validate_request(message)
                     if sid is None:
                         if message["type"] != "hello":
                             raise GatewayError("unauthorized", "Hello required first")
                         hello_id = message["device"]["device_id"]
                         hello_token = message.get("token")
-                        if hello_id in self.reserved_ids:
-                            raise GatewayError("unauthorized", "Device credentials rejected")
-                        self.credentials.check(hello_id, hello_token)
+                        try:
+                            if hello_id in self.reserved_ids:
+                                raise GatewayError("unauthorized", "Device credentials rejected")
+                            self.credentials.check(hello_id, hello_token)
+                        except GatewayError as exc:
+                            if peer is not None:
+                                self._log(
+                                    "lan_auth_rejected", peer=peer, device=hello_id, code=exc.code
+                                )
+                            raise
                         # Only a successful registration binds the connection to a device.
                         sid = self.gateway.register(message)
                         did, token = hello_id, hello_token
                         self.pending.pop(task, None)
+                        if peer is not None:
+                            self._log("lan_hello", peer=peer, device=did)
                         response = {"ok": True, "session_id": sid, "protocol_version": VERSION}
                     else:
-                        self.credentials.check(did, token)
+                        try:
+                            self.credentials.check(did, token)
+                        except GatewayError as exc:
+                            if peer is not None:
+                                self._log("lan_auth_rejected", peer=peer, device=did, code=exc.code)
+                            raise
                         response = self.gateway.handle(did, sid, message)
                 except GatewayError as exc:
                     response = exc.response()
@@ -288,6 +391,8 @@ class DeviceServer:
                 writer.write(INTERNAL_ERROR)
         finally:
             self.pending.pop(task, None)
+            if peer is not None:
+                self._log("lan_disconnected", peer=peer, device=did)
             try:
                 if did is not None and sid is not None:
                     self.gateway.disconnect(did, sid)
