@@ -458,3 +458,33 @@ def test_cli_init_creates_ca_and_lan_cert_and_serve_default_is_off(tmp_path, mon
     with pytest.raises(SystemExit):
         main(["lan-cert", "0.0.0.0"])
     assert build_parser().parse_args(["serve"]).lan_listen is None
+
+
+class VanishedPeerWriter:
+    """A writer whose TLS shutdown never completes, as when a device loses power."""
+
+    def __init__(self, error):
+        self.error = error
+        self.aborted = False
+        self.transport = self
+
+    def close(self):
+        pass
+
+    async def wait_closed(self):
+        if self.error is None:
+            await asyncio.sleep(3600)
+        raise self.error
+
+    def abort(self):
+        self.aborted = True
+
+
+@pytest.mark.parametrize("error", [None, TimeoutError("SSL shutdown timed out"), ssl.SSLError()])
+async def test_closing_a_vanished_tls_peer_never_raises(monkeypatch, error):
+    from grok_gadgets_gateway import transport
+
+    monkeypatch.setattr(transport, "CLOSE_TIMEOUT", 0.05)
+    writer = VanishedPeerWriter(error)
+    await transport._close_writer(writer)
+    assert writer.aborted
