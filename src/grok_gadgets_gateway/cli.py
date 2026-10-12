@@ -16,9 +16,13 @@ from .operator import (
     device_ids,
     enroll,
     init_config,
+    issue_mcp_token,
+    list_mcp_tokens,
     mcp_token_path,
+    mcp_tokens_path,
     read_mcp_token,
     revoke,
+    revoke_mcp_token,
     rotate_mcp_token,
     write_token_file,
 )
@@ -33,6 +37,7 @@ COMMANDS = (
     "revoke",
     "devices",
     "rotate-mcp-token",
+    "mcp-token",
     "serve",
     "stdio",
     "usb-bridge",
@@ -163,6 +168,19 @@ def build_parser():
     rotate = sub.add_parser("rotate-mcp-token", help="replace the MCP bearer token")
     rotate.add_argument("--mcp-token", help=f"Token file (default {mcp_token_path()})")
 
+    tokens = sub.add_parser("mcp-token", help="issue, list or revoke named MCP bearer tokens")
+    token_sub = tokens.add_subparsers(dest="token_command", metavar="ACTION", required=True)
+    token_issue = token_sub.add_parser("issue", help="create a named token and show it once")
+    token_issue.add_argument("name")
+    token_issue.add_argument(
+        "--token-file", help="write the token to this mode-0600 file instead of printing it"
+    )
+    token_sub.add_parser("list", help="list named tokens (never the tokens themselves)")
+    token_revoke = token_sub.add_parser("revoke", help="revoke a named token at once")
+    token_revoke.add_argument("name")
+    for action in (token_issue, token_sub.choices["list"], token_revoke):
+        action.add_argument("--mcp-tokens", help=f"token list (default {mcp_tokens_path()})")
+
     serve = sub.add_parser("serve", help="run authenticated HTTP MCP and the device listener")
     _simulator_options(serve)
     _credentials_option(serve)
@@ -173,6 +191,9 @@ def build_parser():
         "--port", type=int, default=8766, help="loopback MCP HTTP port (default 8766)"
     )
     serve.add_argument("--mcp-token", help=f"bearer token file (default {mcp_token_path()})")
+    serve.add_argument(
+        "--mcp-tokens", help=f"named token list, read per request (default {mcp_tokens_path()})"
+    )
     serve.add_argument(
         "--allowed-host",
         action="append",
@@ -322,6 +343,8 @@ def run(parser, args):
             file=sys.stderr,
         )
         return 0
+    if command == "mcp-token":
+        return run_mcp_token(parser, args)
     if command == "serve":
         try:
             asyncio.run(
@@ -333,6 +356,7 @@ def run(parser, args):
                     device_port=args.device_port,
                     port=args.port,
                     allowed_hosts=args.allowed_host,
+                    mcp_tokens=args.mcp_tokens or str(mcp_tokens_path()),
                     request_log=args.request_log,
                 )
             )
@@ -373,6 +397,34 @@ def run(parser, args):
             arguments,
         )
     return run_stdio(parser, args)
+
+
+def run_mcp_token(parser, args):
+    path = args.mcp_tokens or mcp_tokens_path()
+    try:
+        if args.token_command == "list":
+            for name, created, revoked in list_mcp_tokens(path):
+                print(f"{name}\t{created or '-'}\t{'revoked' if revoked else 'active'}")
+            return 0
+        if args.token_command == "revoke":
+            revoke_mcp_token(args.name, path)
+            print(f"Revoked {args.name}; requests with it fail now.", file=sys.stderr)
+            return 0
+        token = issue_mcp_token(args.name, path)
+        if args.token_file:
+            write_token_file(args.token_file, token)
+    except (OperatorError, CredentialError, OSError) as exc:
+        parser.error(str(exc))
+    if args.token_file:
+        print(f"Wrote the {args.name} token to {args.token_file} (mode 0600).", file=sys.stderr)
+        return 0
+    print(f"GROK_GADGETS_MCP_TOKEN={token}")
+    print(
+        f"Use it as 'Authorization: Bearer <token>' for {args.name}. It is stored only as a "
+        "hash and will not be shown again. A running serve accepts it now.",
+        file=sys.stderr,
+    )
+    return 0
 
 
 async def _serve(credentials, mcp_token, **kwargs):
