@@ -228,3 +228,9 @@ def test_enroll_rotate_and_token_file(tmp_path):
     assert new != token and json.loads(registry.read_text())["devices"]["lamp"]["token"] == new
     missing = gateway("enroll", "ghost", "--rotate", env=env)
     assert missing.returncode == 2 and "enroll ghost" in missing.stderr
+
+
+def test_tests_use_a_private_config_directory(private_home):
+    from grok_gadgets_gateway.operator import config_dir
+
+    assert config_dir() == private_home / ".config" / "grok-gadgets"
