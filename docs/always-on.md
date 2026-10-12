@@ -41,5 +41,8 @@ uv run grok-gadgets-gateway service uninstall
 is in the same folder. `uninstall` stops the service and removes its file. Your config, CA and
 device tokens stay.
 
+After a restart, the gateway can take a minute or two to start while the computer finishes
+logging in. The board shows **Gateway...** until then, and connects without help.
+
 The service runs the gateway from this checkout. If you move or delete the checkout, run
 `service uninstall` and install again from the new place.
