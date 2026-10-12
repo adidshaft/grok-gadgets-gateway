@@ -30,7 +30,7 @@ from .operator import (
 from .service import MCP_PATH, Limits, gateway_version, serve_gateway
 from .simulator import Simulator
 from .simulator_config import SimulatorConfigError, load_config
-from .transport import CredentialError, Credentials, DeviceServer
+from .transport import CredentialError, Credentials, DevicePortInUse, DeviceServer
 
 COMMANDS = (
     "init",
@@ -336,6 +336,13 @@ def run_stdio(parser, args):
     )
     try:
         asyncio.run(server.run_stdio_async())
+    except BaseExceptionGroup as group:
+        in_use = group.subgroup(DevicePortInUse)
+        if in_use is None:
+            raise
+        while isinstance(in_use, BaseExceptionGroup):
+            in_use = in_use.exceptions[0]
+        parser.error(str(in_use))
     finally:
         if request_log is not None:
             request_log.append({"event": "stdio_stopped"})
@@ -508,12 +515,16 @@ def run_wifi_provision(parser, args):
 
     from .lan import ca_pem_text, parse_lan_address
     from .transport import read_registry
-    from .wifi_provision import ProvisionError, factory_reset, provision, provision_frame
+    from .wifi_provision import (
+        ProvisionError,
+        check_board,
+        factory_reset,
+        provision,
+        provision_frame,
+    )
 
     try:
-        if args.factory_reset:
-            frame = None
-        else:
+        if not args.factory_reset:
             if not args.lan:
                 parser.error("--lan ADDRESS[:PORT] is required to provision")
             host, port = parse_lan_address(args.lan)
@@ -524,19 +535,25 @@ def run_wifi_provision(parser, args):
             if record.get("revoked"):
                 parser.error(f"{args.device} is revoked. Run: enroll {args.device} --rotate")
             ca = ca_pem_text()
-            ssid = input("Wi-Fi name (2.4 GHz): ")
-            password = getpass.getpass("Wi-Fi password (not shown): ")
-            frame = provision_frame(ssid, password, record["token"], host, port, ca)
-            del password
     except (OperatorError, CredentialError, ProvisionError) as exc:
         parser.error(str(exc))
     try:
         with serial.Serial(args.serial_port, 115200, timeout=0.1, write_timeout=2) as device:
-            if frame is None:
+            if args.factory_reset:
                 factory_reset(device)
                 print("Factory reset done; the board restarts unprovisioned.", file=sys.stderr)
                 print(f"Also run: grok-gadgets-gateway revoke {args.device}", file=sys.stderr)
                 return 0
+            # Find the board before asking for the Wi-Fi name and password.
+            check_board(device, args.device)
+            try:
+                ssid = input("Wi-Fi name (2.4 GHz): ")
+                password = getpass.getpass("Wi-Fi password (not shown): ")
+            except (EOFError, KeyboardInterrupt):
+                print(file=sys.stderr)
+                parser.error("Cancelled; nothing was sent to the board.")
+            frame = provision_frame(ssid, password, record["token"], host, port, ca)
+            del password
             provision(device, args.device, frame)
     except (serial.SerialException, OSError) as exc:
         parser.error(f"cannot use {args.serial_port}: {exc}")

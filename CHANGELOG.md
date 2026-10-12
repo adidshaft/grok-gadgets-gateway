@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.1.0-alpha.8 — 12 October 2026
+
+- `wifi-provision` opens the serial port and checks the board's device ID before it asks for the Wi-Fi name and password. Ctrl-C or end of input at a prompt prints "Cancelled; nothing was sent to the board." instead of a traceback ([#98](https://github.com/adidshaft/grok-gadgets-gateway/issues/98)). Checked on the owner's kit.
+- `stdio` and `serve` stop with a one-line message when the device port is taken ("Another gateway may be running; stop it or choose another --device-port") instead of a traceback. The simulator demo runs in an empty config directory, so it never loads the operator's devices or opens the device port ([#96](https://github.com/adidshaft/grok-gadgets-gateway/issues/96)).
+
 ## 0.1.0-alpha.7 — 12 October 2026
 
 - `grok-gadgets-gateway --version` prints the package version and exits without starting a server ([#17](https://github.com/adidshaft/grok-gadgets-gateway/issues/17)).

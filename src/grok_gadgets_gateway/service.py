@@ -22,7 +22,7 @@ from .operator import (
 )
 from .simulator import Simulator
 from .simulator_config import SimulatorConfigError, load_config
-from .transport import CredentialError, Credentials, DeviceServer
+from .transport import CredentialError, Credentials, DevicePortInUse, DeviceServer
 
 _HOST = re.compile(r"[A-Za-z0-9][A-Za-z0-9.-]*(?::[0-9]{1,5})?$")
 MCP_PATH = "/mcp"
@@ -317,7 +317,10 @@ async def serve_gateway(
             frames_per_second=LAN_FRAMES_PER_SECOND,
         )
     try:
-        await device_server.start()
+        try:
+            await device_server.start()
+        except DevicePortInUse as exc:
+            raise OperatorError(str(exc)) from None
         if lan_server is not None:
             try:
                 await lan_server.start()

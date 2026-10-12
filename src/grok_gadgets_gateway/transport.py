@@ -158,6 +158,16 @@ class Credentials:
             raise GatewayError("revoked", "Device credential revoked")
 
 
+class DevicePortInUse(RuntimeError):
+    """The loopback device port is taken, usually by another running gateway."""
+
+    def __init__(self, host, port, exc):
+        super().__init__(
+            f"cannot listen on {host}:{port}: {exc.strerror}. Another gateway may be running; "
+            "stop it or choose another --device-port."
+        )
+
+
 class DeviceServer:
     def __init__(
         self,
@@ -207,9 +217,14 @@ class DeviceServer:
         self.pending = OrderedDict()
 
     async def start(self):
-        self.server = await asyncio.start_server(
-            self.client, self.host, self.port, limit=MAX_TCP_FRAME
-        )
+        try:
+            self.server = await asyncio.start_server(
+                self.client, self.host, self.port, limit=MAX_TCP_FRAME
+            )
+        except OSError as exc:
+            if self.tls is not None:
+                raise  # The LAN listener reports its own address error.
+            raise DevicePortInUse(self.host, self.port, exc) from None
         self.port = self.server.sockets[0].getsockname()[1]
         return self
 

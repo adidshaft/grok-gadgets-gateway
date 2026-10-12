@@ -86,13 +86,19 @@ def status(port, *, attempts=10):
     raise ProvisionError("The device did not answer. Is the Wi-Fi build flashed on this port?")
 
 
-def provision(port, device_id, frame):
-    """Check the board's identity, then send one provisioning line. Returns its reply."""
+def check_board(port, device_id):
+    """Confirm the board on this port answers and is `device_id`, before anything is sent."""
     reply = status(port)
     if reply.get("device_id") != device_id:
         raise ProvisionError(
             f"This board reports {reply.get('device_id')!r}, not {device_id!r}; nothing sent"
         )
+    return reply
+
+
+def provision(port, device_id, frame):
+    """Check the board's identity, then send one provisioning line. Returns its reply."""
+    check_board(port, device_id)
     port.write(frame)
     reply = read_reply(port)
     if not reply.get("ok"):
