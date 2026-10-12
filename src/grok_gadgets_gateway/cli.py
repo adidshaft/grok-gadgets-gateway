@@ -6,6 +6,7 @@ import json
 import os
 import signal
 import sys
+from importlib.metadata import version
 
 from .domain import Gateway
 from .mcp_server import RateLimiter, RequestLog, make_server
@@ -143,6 +144,11 @@ def build_parser():
         prog="grok-gadgets-gateway",
         description=DESCRIPTION,
         formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version="grok-gadgets-gateway " + version("grok-gadgets-gateway"),
     )
     sub = parser.add_subparsers(dest="command", metavar="COMMAND")
 
@@ -604,7 +610,7 @@ def main(argv=None):
             parser.print_help(sys.stderr)
             return 2
         argv = ["stdio"]  # Spawned by a connector with no arguments: stdio, as before.
-    elif argv[0].startswith("-") and argv[0] not in ("-h", "--help"):
+    elif argv[0].startswith("-") and argv[0] not in ("-h", "--help", "--version"):
         argv = ["stdio", *argv]  # Older client settings: grok-gadgets-gateway --simulator
     args = parser.parse_args(argv)
     if args.command == "stdio":
