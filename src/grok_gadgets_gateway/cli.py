@@ -112,7 +112,10 @@ def client_settings(port, show_token, client="both"):
 def _credentials_option(parser):
     parser.add_argument(
         "--credentials",
-        help=f"Private registry (default {credentials_path()} when that file exists)",
+        help=(
+            f"Private registry (default {credentials_path()} when that file exists; "
+            "--simulator alone never reads it)"
+        ),
     )
 
 
@@ -299,7 +302,8 @@ def run_stdio(parser, args):
         config = load_config(args.simulator_config) if args.simulator_config else None
     except SimulatorConfigError as exc:
         parser.error(str(exc))
-    credential_path = resolve_credentials(args.credentials)
+    # --simulator alone is the simulated light only: it never reads the device registry.
+    credential_path = args.credentials if args.simulator else resolve_credentials(args.credentials)
     credentials = Credentials(credential_path) if credential_path else None
     if credentials:
         try:
@@ -425,7 +429,8 @@ def run(parser, args):
         try:
             asyncio.run(
                 _serve(
-                    args.credentials or str(credentials_path()),
+                    # --simulator alone never reads the device registry or opens a device port.
+                    args.credentials or (None if args.simulator else str(credentials_path())),
                     args.mcp_token or str(mcp_token_path()),
                     simulator=args.simulator,
                     simulator_config=args.simulator_config,
@@ -605,8 +610,13 @@ async def _serve(credentials, mcp_token, **kwargs):
         except (NotImplementedError, RuntimeError):  # Windows: Ctrl+C still raises
             pass
     async with serve_gateway(credentials, mcp_token, **kwargs) as running:
+        devices = (
+            f"device listener 127.0.0.1:{running.device_port}"
+            if running.device_port
+            else "simulated light only, no device listener"
+        )
         print(
-            f"MCP {running.url} on 127.0.0.1; device listener 127.0.0.1:{running.device_port}. "
+            f"MCP {running.url} on 127.0.0.1; {devices}. "
             "Bearer token is the mcp-token file. This process does not prove Grok or hardware.",
             file=sys.stderr,
         )

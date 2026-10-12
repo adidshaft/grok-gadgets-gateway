@@ -265,16 +265,24 @@ async def serve_gateway(
     """Run until the context exits. HTTP and the device listener bind 127.0.0.1.
 
     `lan_listen` ("address[:port]") adds a TLS device listener on one private address.
+    `credentials=None` (simulator only) reads no device registry and opens no device port.
     """
     if host != "127.0.0.1":
         raise ValueError("MCP HTTP binds 127.0.0.1 only")
     if simulator_config and not simulator:
         raise OperatorError("--simulator-config requires --simulator")
+    if credentials is None and lan_listen is not None:
+        raise OperatorError(
+            "--lan-listen needs device credentials: run without --simulator, "
+            "or pass --credentials with --simulator"
+        )
     try:
         config = load_config(simulator_config) if simulator_config else None
         security = transport_security(allowed_hosts)
-        registry = Credentials(credentials)
-        registry.validate()
+        registry = None
+        if credentials is not None:
+            registry = Credentials(credentials)
+            registry.validate()
         read_mcp_token(mcp_token)
         if mcp_tokens is not None:
             read_named_tokens(mcp_tokens)
@@ -293,13 +301,15 @@ async def serve_gateway(
 
     gateway = Gateway()
     sim = Simulator(gateway, config=config) if simulator else None
-    device_server = DeviceServer(
-        gateway,
-        registry,
-        host="127.0.0.1",
-        port=device_port,
-        reserved_ids=[sim.device_id] if sim else [],
-    )
+    device_server = None
+    if registry is not None:
+        device_server = DeviceServer(
+            gateway,
+            registry,
+            host="127.0.0.1",
+            port=device_port,
+            reserved_ids=[sim.device_id] if sim else [],
+        )
     lan_server = None
     if lan is not None:
         lan_server = DeviceServer(
@@ -318,7 +328,8 @@ async def serve_gateway(
         )
     try:
         try:
-            await device_server.start()
+            if device_server is not None:
+                await device_server.start()
         except DevicePortInUse as exc:
             raise OperatorError(str(exc)) from None
         if lan_server is not None:
@@ -348,7 +359,9 @@ async def serve_gateway(
                     "event": "serve_started",
                     "gateway_version": gateway_version(),
                     "url": running.url,
-                    "device_listener": f"127.0.0.1:{running.device_port}",
+                    "device_listener": (
+                        f"127.0.0.1:{running.device_port}" if running.device_port else None
+                    ),
                     "lan_listener": running.lan,
                     "simulator": sim.device_id if sim else None,
                 }
@@ -357,7 +370,8 @@ async def serve_gateway(
     finally:
         if lan_server is not None:
             await lan_server.close()
-        await device_server.close()
+        if device_server is not None:
+            await device_server.close()
         log.append({"event": "serve_stopped"})
         log.close()
 
@@ -390,7 +404,7 @@ async def _serve_http(
         False,
         request_log=log,
         rate_limiter=rate_limiter,
-        listener_status=device_server.status,
+        listener_status=device_server.status if device_server else None,
         http=True,
         log_level="WARNING",
     )
@@ -417,7 +431,7 @@ async def _serve_http(
         bound = server.servers[0].sockets[0].getsockname()
         if bound[0] != "127.0.0.1":
             raise RuntimeError("MCP HTTP bound a non-loopback address")
-        yield Running(server, task, bound[1], device_server.port)
+        yield Running(server, task, bound[1], device_server.port if device_server else None)
     finally:
         server.should_exit = True
         if not task.done():
