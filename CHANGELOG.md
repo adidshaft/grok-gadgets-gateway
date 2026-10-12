@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+## 0.1.0-alpha.10 — 13 October 2026
+
+- On 12–13 October 2026 the owner's Mac and OLED kit passed name, two address-change and restart checks with the service (`docs/verification/always-on-2026-10-13.md`). Linux systemd is not yet tested on a real host.
 - The macOS service runs as a standard process, not a throttled background job, so it starts sooner after a restart ([#115](https://github.com/adidshaft/grok-gadgets-gateway/issues/115)).
 
 - `lan-cert`, `serve --lan-listen` and `wifi-provision --lan` accept an mDNS name such as `my-mac.local`. A name certificate holds only the name. `serve` binds the name's current private address, checks it every 30 seconds and moves the Wi-Fi listener when it changes (`lan_rebound`). The board needs name support from ESP32 SDK #99 ([#110](https://github.com/adidshaft/grok-gadgets-gateway/issues/110), hub ADR 006).
