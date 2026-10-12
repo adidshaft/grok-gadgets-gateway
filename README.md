@@ -26,14 +26,17 @@ order Grok Bot will: list the gadgets, set the simulated light blue, read its st
 
 ### Install with pip
 
-The package is not on PyPI yet. Each [GitHub release](https://github.com/adidshaft/grok-gadgets-gateway/releases)
-has a wheel and `SHA256SUMS`. Install the wheel into a virtual environment with Python 3.11+:
+The package is on [PyPI](https://pypi.org/project/grok-gadgets-gateway/). Install it into a virtual
+environment with Python 3.11+. It is an alpha, so name the version or pass `--pre`:
 
 ```sh
 python3 -m venv .venv
-.venv/bin/python -m pip install https://github.com/adidshaft/grok-gadgets-gateway/releases/download/v0.1.0-alpha.10/grok_gadgets_gateway-0.1.0a10-py3-none-any.whl
-.venv/bin/grok-gadgets-gateway --help
+.venv/bin/python -m pip install --pre grok-gadgets-gateway
+.venv/bin/grok-gadgets-gateway --version
 ```
+
+Each [GitHub release](https://github.com/adidshaft/grok-gadgets-gateway/releases) also has the wheel and
+`SHA256SUMS`; the PyPI files are the same build.
 
 On an Intel Mac, `cryptography` has no prebuilt wheel and needs a Rust toolchain to build.
 
