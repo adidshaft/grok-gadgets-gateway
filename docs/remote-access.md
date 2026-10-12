@@ -7,6 +7,8 @@
 
 Grok Bot's connector (and `rehearse`) sends `Authorization: Bearer <token>`. The token is the single line in `~/.config/grok-gadgets/mcp-token` (or `$XDG_CONFIG_HOME/grok-gadgets/mcp-token`), mode 0600. `rotate-mcp-token` replaces it and prints `GROK_GADGETS_MCP_TOKEN=...` once on stdout. Update the connector's saved token and reconnect. The server reads the file on each request; no gateway restart is needed.
 
+For an HTTPS name in front of `serve`, follow the [owner-run TLS tunnel guide](tunnel.md). It is untested with Grok Bot.
+
 ## Named tokens
 
 Give each client its own token, so you can revoke one without changing the others:
