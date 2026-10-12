@@ -694,7 +694,36 @@
         "enhancement"
       ],
       "stage": "review",
-      "evidence": "GitHub #90, PR #91; .github/workflows/release.yml and docs/release.md. actionlint clean; tag and checksum steps run locally. Not yet run on GitHub; the owner's PyPI setup is pending."
+      "evidence": "GitHub #90, PR #91; .github/workflows/release.yml. Attached assets for gateway v0.1.0-alpha.7 on 12 Oct 2026; a fresh download passed shasum -c. PyPI setup pending."
+    },
+    {
+      "id": "GW-SIM-ISO-001",
+      "owner": "grok-gadgets-gateway",
+      "problem": "The simulator demo and stdio --simulator loaded the operator's credentials and crashed beside a running gateway",
+      "acceptance": [
+        "Clear exit-2 message when the device port is taken",
+        "The demo never loads the operator's devices",
+        "A test runs the demo while the default device port is held"
+      ],
+      "labels": [
+        "bug"
+      ],
+      "stage": "done",
+      "evidence": "GitHub #96, PR #97; tests/test_cli.py. The demo passed on the owner's Mac beside the running Wi-Fi gateway on 12 Oct 2026."
+    },
+    {
+      "id": "GW-PROV-UX-001",
+      "owner": "grok-gadgets-gateway",
+      "problem": "wifi-provision asked for Wi-Fi details before checking the board and crashed on end of input",
+      "acceptance": [
+        "Board identity checked before any prompt",
+        "Cancel exits 2 with nothing sent and no traceback"
+      ],
+      "labels": [
+        "bug"
+      ],
+      "stage": "done",
+      "evidence": "GitHub #98, PR #99; tests/test_lan.py. On the owner's kit with input closed, the board passed the identity check and nothing was sent (12 Oct 2026)."
     }
   ]
 }
