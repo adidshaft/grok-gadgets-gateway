@@ -488,3 +488,67 @@ async def test_closing_a_vanished_tls_peer_never_raises(monkeypatch, error):
     writer = VanishedPeerWriter(error)
     await transport._close_writer(writer)
     assert writer.aborted
+
+
+class FakeSerialPort(FakeSerial):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def provision_cli(tmp_path, monkeypatch, opener, answers):
+    import builtins
+    import getpass
+
+    import serial
+
+    from grok_gadgets_gateway.cli import main
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    if not (tmp_path / "grok-gadgets" / "credentials.json").exists():
+        assert main(["init", "--client", "http"]) == 0
+        assert main(["enroll", "dev-1"]) == 0
+    prompts = []
+
+    def ask(prompt=""):
+        prompts.append(prompt)
+        answer = answers.pop(0)
+        if isinstance(answer, BaseException):
+            raise answer
+        return answer
+
+    monkeypatch.setattr(builtins, "input", ask)
+    monkeypatch.setattr(getpass, "getpass", ask)
+    monkeypatch.setattr(serial, "Serial", opener)
+    with pytest.raises(SystemExit) as stopped:
+        main(["wifi-provision", "/dev/cu.test", "--device", "dev-1", "--lan", ADDRESS])
+    return stopped.value.code, prompts
+
+
+def test_wifi_provision_finds_the_board_before_asking(tmp_path, monkeypatch, capsys):
+    import serial
+
+    def missing(*args, **kwargs):
+        raise serial.SerialException("could not open port")
+
+    code, prompts = provision_cli(tmp_path, monkeypatch, missing, ["home"])
+    assert code == 2 and prompts == []
+    assert "cannot use /dev/cu.test" in capsys.readouterr().err
+
+    board = FakeSerialPort([b'{"ok":true,"device_id":"other"}\n'])
+    code, prompts = provision_cli(tmp_path, monkeypatch, lambda *a, **k: board, ["home"])
+    assert code == 2 and prompts == [] and board.written == [b'{"type":"status"}\n']
+    assert "nothing sent" in capsys.readouterr().err
+
+
+def test_wifi_provision_cancel_sends_nothing(tmp_path, monkeypatch, capsys):
+    board = FakeSerialPort([b'{"ok":true,"device_id":"dev-1"}\n'])
+    for answers in (["home", EOFError()], [KeyboardInterrupt()]):
+        board.written.clear()
+        board.replies = [b'{"ok":true,"device_id":"dev-1"}\n']
+        code, _ = provision_cli(tmp_path, monkeypatch, lambda *a, **k: board, answers)
+        assert code == 2 and board.written == [b'{"type":"status"}\n']
+        err = capsys.readouterr().err
+        assert "Cancelled; nothing was sent to the board." in err and "Traceback" not in err
