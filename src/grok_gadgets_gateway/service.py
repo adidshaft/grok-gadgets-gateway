@@ -1,4 +1,4 @@
-"""Loopback device listener plus authenticated Streamable HTTP MCP."""
+"""Loopback device listener, optional LAN TLS device listener and authenticated HTTP MCP."""
 
 import asyncio
 import hashlib
@@ -212,12 +212,21 @@ def transport_security(extra_hosts=()):
     )
 
 
+# LAN listener limits (hub ADR 005). Loopback keeps its own, larger limits.
+LAN_SESSIONS = 8
+LAN_PENDING = 4
+LAN_CONNECTS_PER_MINUTE = 20
+LAN_FRAMES_PER_SECOND = 30
+LAN_HANDSHAKE_TIMEOUT = 5
+
+
 class Running:
     def __init__(self, server, task, mcp_port, device_port):
         self.server = server
         self.task = task
         self.mcp_port = mcp_port
         self.device_port = device_port
+        self.lan = None  # "address:port" when the LAN listener runs.
         self.url = f"http://127.0.0.1:{mcp_port}{MCP_PATH}"
 
     async def wait(self):
@@ -250,8 +259,13 @@ async def serve_gateway(
     log_stream=None,
     request_log=None,
     host="127.0.0.1",
+    lan_listen=None,
+    lan_directory=None,
 ):
-    """Run until the context exits. HTTP and the device listener bind 127.0.0.1 only."""
+    """Run until the context exits. HTTP and the device listener bind 127.0.0.1.
+
+    `lan_listen` ("address[:port]") adds a TLS device listener on one private address.
+    """
     if host != "127.0.0.1":
         raise ValueError("MCP HTTP binds 127.0.0.1 only")
     if simulator_config and not simulator:
@@ -264,6 +278,12 @@ async def serve_gateway(
         read_mcp_token(mcp_token)
         if mcp_tokens is not None:
             read_named_tokens(mcp_tokens)
+        lan = None
+        if lan_listen is not None:
+            from .lan import parse_lan_address, server_context
+
+            lan_host, lan_port = parse_lan_address(lan_listen)
+            lan = (lan_host, lan_port, server_context(lan_host, lan_directory))
     except (CredentialError, SimulatorConfigError, ValueError) as exc:
         raise OperatorError(str(exc)) from None
     try:
@@ -280,8 +300,32 @@ async def serve_gateway(
         port=device_port,
         reserved_ids=[sim.device_id] if sim else [],
     )
+    lan_server = None
+    if lan is not None:
+        lan_server = DeviceServer(
+            gateway,
+            registry,
+            host=lan[0],
+            port=lan[1],
+            reserved_ids=[sim.device_id] if sim else [],
+            max_sessions=LAN_SESSIONS,
+            max_pending=LAN_PENDING,
+            tls=lan[2],
+            log=log,
+            handshake_timeout=LAN_HANDSHAKE_TIMEOUT,
+            connects_per_minute=LAN_CONNECTS_PER_MINUTE,
+            frames_per_second=LAN_FRAMES_PER_SECOND,
+        )
     try:
         await device_server.start()
+        if lan_server is not None:
+            try:
+                await lan_server.start()
+            except OSError as exc:
+                raise OperatorError(
+                    f"cannot listen on {lan[0]}:{lan[1]}: {exc.strerror}. "
+                    "Use an address of this computer."
+                ) from None
         async with _serve_http(
             gateway,
             sim,
@@ -294,17 +338,22 @@ async def serve_gateway(
             limits=limits,
             rate_limiter=rate_limiter if rate_limiter is not None else RateLimiter(),
         ) as running:
+            if lan_server is not None:
+                running.lan = f"{lan_server.host}:{lan_server.port}"
             log.append(
                 {
                     "event": "serve_started",
                     "gateway_version": gateway_version(),
                     "url": running.url,
                     "device_listener": f"127.0.0.1:{running.device_port}",
+                    "lan_listener": running.lan,
                     "simulator": sim.device_id if sim else None,
                 }
             )
             yield running
     finally:
+        if lan_server is not None:
+            await lan_server.close()
         await device_server.close()
         log.append({"event": "serve_stopped"})
         log.close()

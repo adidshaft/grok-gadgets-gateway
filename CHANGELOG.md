@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add an opt-in LAN TLS device listener for Wi-Fi devices: `serve --lan-listen ADDRESS[:PORT]` (port 8767). It binds one private IPv4 address of this computer, refuses all, loopback, shared and public addresses, accepts private peers only and limits sessions, handshakes, new connections and frame rate. Same protocol 0.1.0 frames and device tokens; revocation ends a live session on its next frame ([#79](https://github.com/adidshaft/grok-gadgets-gateway/issues/79), hub ADR 005).
+- `init` creates a local CA (`lan/ca.pem`, `lan/ca.key`). New commands: `lan-cert ADDRESS`, `lan-ca show|rotate` and `wifi-provision PORT --device ID --lan ADDRESS` (prompts for the Wi-Fi password without echo; never prints or stores it or the token).
+- The request log records LAN connects, hellos, rejected tokens, TLS failures, rejected peers and rate limits, without tokens. Guide: `docs/wifi-devices.md`.
+- `cryptography` 50.0.2 becomes a direct dependency (it was already installed through `mcp`).
+
 ## 0.1.0-alpha.5 — 12 October 2026
 
 - Add `docs/tunnel.md`: an owner-run TLS tunnel guide in front of `127.0.0.1:8766`, with a named token, limits, the request log and revocation. Untested with Grok Bot ([#70](https://github.com/adidshaft/grok-gadgets-gateway/issues/70)).

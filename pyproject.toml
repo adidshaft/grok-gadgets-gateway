@@ -18,7 +18,13 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
     "Topic :: Home Automation",
 ]
-dependencies = ["mcp==2.3.0", "httpx2==2.13.1", "jsonschema==4.26.0", "pyserial==3.5"]
+dependencies = [
+    "mcp==2.3.0",
+    "httpx2==2.13.1",
+    "jsonschema==4.26.0",
+    "pyserial==3.5",
+    "cryptography==50.0.2",
+]
 
 [project.urls]
 Homepage = "https://grok-gadgets.pages.dev/"

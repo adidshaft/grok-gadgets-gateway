@@ -614,6 +614,29 @@
         "2026-10-05: Ruff lint/format, 126 pytest checks and wheel/sdist passed. Pinned MCP can emit ClosedResourceError on SSE disconnect; test verifies actual termination. Local software only; no tunnel, account or hardware."
       ],
       "blocker": null
+    },
+    {
+      "id": "GW-LAN-001",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Wi-Fi devices cannot reach the loopback-only device listener",
+      "acceptance": [
+        "Opt-in TLS device listener on one private LAN address; off by default",
+        "Local CA from init, lan-cert, lan-ca show|rotate, wifi-provision over USB serial",
+        "Per-frame revocation, private-peer filter, connection, handshake and frame limits; LAN request-log events without tokens",
+        "Tests: listener off by default, wrong CA and name, plain TCP, wrong and revoked tokens, replay, reconnect, limits"
+      ],
+      "dependencies": [
+        "GW-003"
+      ],
+      "labels": [
+        "feature",
+        "gateway",
+        "protocol"
+      ],
+      "milestone": "M9",
+      "stage": "review",
+      "commits": [],
+      "evidence": "tests/test_lan.py; docs/wifi-devices.md; hub ADR 005. Physical Wi-Fi acceptance is pending (ESP-005)."
     }
   ]
 }
