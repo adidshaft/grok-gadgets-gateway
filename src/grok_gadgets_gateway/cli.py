@@ -274,6 +274,25 @@ def build_parser():
     )
     _credentials_option(provision)
 
+    service = sub.add_parser(
+        "service", help="run serve in the background at login: launchd (macOS) or systemd (Linux)"
+    )
+    service_sub = service.add_subparsers(dest="service_command", metavar="ACTION", required=True)
+    service_install = service_sub.add_parser(
+        "install", help="install and start the per-user service; it starts again at every login"
+    )
+    service_install.add_argument(
+        "--lan-listen", metavar="ADDRESS[:PORT]", help="also run the Wi-Fi device listener"
+    )
+    service_install.add_argument("--port", type=int, default=8766, help="loopback MCP HTTP port")
+    service_install.add_argument(
+        "--device-port", type=int, default=8765, help="loopback device port"
+    )
+    service_sub.add_parser("uninstall", help="stop the service and remove it; config stays")
+    service_sub.add_parser("status", help="show whether the service is installed and running")
+    service_logs = service_sub.add_parser("logs", help="print the end of the service log")
+    service_logs.add_argument("--lines", type=int, default=40, help="lines to print")
+
     stdio = sub.add_parser("stdio", help="run MCP over stdin/stdout for a connector that starts it")
     _simulator_options(stdio)
     stdio.add_argument("--test-controls", action="store_true", help="expose test-only MCP controls")
@@ -466,6 +485,8 @@ def run(parser, args):
         return run_lan(parser, args)
     if command == "wifi-provision":
         return run_wifi_provision(parser, args)
+    if command == "service":
+        return run_service(parser, args)
     if command == "rehearse":
         from .rehearse import main as rehearse_main
 
@@ -575,6 +596,70 @@ def run_wifi_provision(parser, args):
         file=sys.stderr,
     )
     return 0
+
+
+def run_service(parser, args, service=None):
+    from .background import Service, serve_arguments
+
+    try:
+        service = service or Service()
+        action = args.service_command
+        if action == "install":
+            if not mcp_token_path().is_file():
+                parser.error("the gateway is not set up. Run: grok-gadgets-gateway init")
+            ports = [("127.0.0.1", args.port), ("127.0.0.1", args.device_port)]
+            if args.lan_listen:
+                from .lan import lan_dir, parse_lan_address, resolve_lan_host
+
+                host, lan_port = parse_lan_address(args.lan_listen)
+                if not (lan_dir() / "server.pem").is_file():
+                    parser.error(f"no LAN certificate. Run: grok-gadgets-gateway lan-cert {host}")
+                ports.append((resolve_lan_host(host), lan_port))
+            program, prefix = executable()
+            command_line = [
+                program,
+                *prefix,
+                *serve_arguments(
+                    args.lan_listen, args.port, args.device_port, service.logs / "requests.jsonl"
+                ),
+            ]
+            environment = {
+                key: os.environ[key] for key in ("XDG_CONFIG_HOME",) if os.environ.get(key)
+            }
+            path = service.install(command_line, environment, ports)
+            print(f"Installed {path}", file=sys.stderr)
+            print(
+                "The gateway runs now and starts again at every login. "
+                "Check it: grok-gadgets-gateway service status",
+                file=sys.stderr,
+            )
+            if service.platform == "linux":
+                print(
+                    "To start it at boot without a login, run: loginctl enable-linger",
+                    file=sys.stderr,
+                )
+            return 0
+        if action == "uninstall":
+            path = service.uninstall()
+            print(
+                f"Stopped the service and removed {path}. Config and tokens stay.", file=sys.stderr
+            )
+            return 0
+        if action == "status":
+            report = service.status()
+            state = "running" if report["running"] else "stopped"
+            if not report["installed"]:
+                state = "not installed"
+            pid = f" (pid {report['pid']})" if report["pid"] else ""
+            print(f"service: {state}{pid}\nunit: {report['unit']}\nlog: {report['log']}")
+            return 0 if report["running"] or not report["installed"] else 3
+        lines = service.tail(args.lines)
+        print(f"log: {service.logs / 'gateway.log'}", file=sys.stderr)
+        for line in lines:
+            print(line)
+        return 0
+    except OperatorError as exc:
+        parser.error(str(exc))
 
 
 def run_mcp_token(parser, args):

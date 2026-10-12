@@ -52,6 +52,9 @@ that looks up `.local` names
 ([ESP32 SDK #99](https://github.com/adidshaft/grok-gadgets-esp32-sdk/issues/99)); until then,
 provision it with the IPv4 address.
 
+When the board shows **Online**, you can [run the gateway as a background service](always-on.md)
+so it comes back after a reboot.
+
 ## Provision a device over USB
 
 Provisioning needs the USB data cable once. Stop any `usb-bridge` for the board first.
