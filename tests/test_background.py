@@ -86,7 +86,11 @@ def test_macos_install_status_uninstall(tmp_path):
     assert (tmp_path / "Library/Logs/grok-gadgets").is_dir()
     with pytest.raises(OperatorError, match="already installed"):
         service.install(COMMAND)
-    runner.stdout = "\tstate = running\n\tpid = 4242\n"
+    # The shape of `launchctl print`: nested blocks repeat `state` after the top-level one.
+    runner.stdout = (
+        "gui/501/org.grokgadgets.gateway = {\n\tactive count = 1\n\tstate = running\n"
+        "\tpid = 4242\n\tendpoints = {\n\t\tstate = active\n\t}\n\tjob state = running\n}\n"
+    )
     assert service.status() | {"unit": None, "log": None} == {
         "installed": True,
         "running": True,

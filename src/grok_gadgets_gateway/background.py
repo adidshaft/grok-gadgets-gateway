@@ -173,6 +173,9 @@ class Service:
         if self.platform == "macos":
             result = self.runner(["launchctl", "print", f"{self.target}/{LABEL}"])
             for line in result.stdout.splitlines():
+                # Only top-level properties: nested blocks repeat keys such as `state = active`.
+                if not line.startswith("\t") or line.startswith("\t\t"):
+                    continue
                 key, _, value = line.strip().partition(" = ")
                 if key == "state":
                     report["running"] = value == "running"
