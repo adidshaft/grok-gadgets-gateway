@@ -65,7 +65,9 @@ def unit_text(platform, command, logs, environment=None):
             "ThrottleInterval": 10,
             "StandardOutPath": str(log),
             "StandardErrorPath": str(log),
-            "ProcessType": "Background",
+            # Not "Background": macOS throttles background jobs, and at boot that delayed
+            # serve by about 90 s on the owner's Mac. Devices wait on this process.
+            "ProcessType": "Standard",
         }
         if environment:
             plist["EnvironmentVariables"] = dict(environment)

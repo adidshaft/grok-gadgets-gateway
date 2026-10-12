@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The macOS service runs as a standard process, not a throttled background job, so it starts sooner after a restart ([#115](https://github.com/adidshaft/grok-gadgets-gateway/issues/115)).
+
 - `lan-cert`, `serve --lan-listen` and `wifi-provision --lan` accept an mDNS name such as `my-mac.local`. A name certificate holds only the name. `serve` binds the name's current private address, checks it every 30 seconds and moves the Wi-Fi listener when it changes (`lan_rebound`). The board needs name support from ESP32 SDK #99 ([#110](https://github.com/adidshaft/grok-gadgets-gateway/issues/110), hub ADR 006).
 - `service install|uninstall|status|logs` runs `serve` as a per-user background service: a launchd agent on macOS, a systemd user unit on Linux. It starts at every login, needs no administrator rights and refuses to install over a running gateway. Guide: `docs/always-on.md` ([#109](https://github.com/adidshaft/grok-gadgets-gateway/issues/109), hub ADR 006).
 

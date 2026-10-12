@@ -55,6 +55,7 @@ def test_launchd_plist(tmp_path):
     plist = plistlib.loads(text.encode())
     assert plist["Label"] == LABEL and plist["ProgramArguments"] == COMMAND
     assert plist["RunAtLoad"] is True and plist["KeepAlive"] is True
+    assert plist["ProcessType"] == "Standard"  # Background jobs are throttled at boot.
     assert plist["StandardOutPath"] == plist["StandardErrorPath"] == str(tmp_path / "gateway.log")
     assert plist["EnvironmentVariables"] == {"XDG_CONFIG_HOME": "/cfg"}
     if shutil.which("plutil"):
