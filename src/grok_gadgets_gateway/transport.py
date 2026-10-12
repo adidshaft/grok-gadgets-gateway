@@ -24,12 +24,21 @@ INTERNAL_ERROR = (
 ).encode()
 
 
+CLOSE_TIMEOUT = 2
+
+
 async def _close_writer(writer):
     writer.close()
     try:
-        await writer.wait_closed()
-    except (ConnectionResetError, BrokenPipeError):
-        pass  # The peer has already gone; cleanup must not report another failure.
+        # A TLS peer that vanished (Wi-Fi loss, power cut) never answers close_notify,
+        # and Python's 30 s SSL shutdown wait would then raise into the server callback.
+        async with asyncio.timeout(CLOSE_TIMEOUT):
+            await writer.wait_closed()
+    except (OSError, TimeoutError):
+        # The peer has already gone; cleanup must not report another failure.
+        transport = getattr(writer, "transport", None)
+        if transport is not None:
+            transport.abort()
 
 
 class CredentialError(ValueError):
