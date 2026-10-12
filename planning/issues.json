@@ -724,6 +724,61 @@
       ],
       "stage": "done",
       "evidence": "GitHub #98, PR #99; tests/test_lan.py. On the owner's kit with input closed, the board passed the identity check and nothing was sent (12 Oct 2026)."
+    },
+    {
+      "id": "GW-SVC-001",
+      "owner": "grok-gadgets-gateway",
+      "problem": "The gateway ran only in a terminal; after a reboot the Wi-Fi board waited at Gateway...",
+      "acceptance": [
+        "service install|uninstall|status|logs with a launchd agent (macOS) or systemd user unit (Linux)",
+        "No root; refuses before init, without a LAN certificate, or over a running gateway"
+      ],
+      "labels": [
+        "enhancement"
+      ],
+      "stage": "done",
+      "evidence": "GitHub #109, PR #111; tests/test_background.py. Mac restart: launchd started serve at login and the board returned to Online. docs/verification/always-on-2026-10-13.md (owner's Mac and OLED kit, 12-13 Oct 2026). Linux systemd not tested on a real host (hub #22)."
+    },
+    {
+      "id": "GW-LAN-002",
+      "owner": "grok-gadgets-gateway",
+      "problem": "The LAN certificate and board settings named one IPv4 address, which changed and broke the setup",
+      "acceptance": [
+        "lan-cert, serve --lan-listen and wifi-provision --lan accept NAME.local",
+        "serve re-resolves and rebinds on an address change"
+      ],
+      "labels": [
+        "enhancement"
+      ],
+      "stage": "done",
+      "evidence": "GitHub #110, PR #112; tests/test_lan.py. Two address changes (.252 to .42 to .40) followed with lan_rebound; board reconnected without new certificates or provisioning. docs/verification/always-on-2026-10-13.md (owner's Mac and OLED kit, 12-13 Oct 2026)."
+    },
+    {
+      "id": "GW-SVC-002",
+      "owner": "grok-gadgets-gateway",
+      "problem": "service status called a running launchd agent stopped",
+      "acceptance": [
+        "Only top-level launchctl state and pid lines count"
+      ],
+      "labels": [
+        "bug"
+      ],
+      "stage": "done",
+      "evidence": "GitHub #113, PR #114; found on the owner's Mac."
+    },
+    {
+      "id": "GW-SVC-003",
+      "owner": "grok-gadgets-gateway",
+      "problem": "After a Mac restart serve took about 90 seconds to listen",
+      "acceptance": [
+        "The launchd agent uses ProcessType Standard",
+        "The guide explains the wait"
+      ],
+      "labels": [
+        "bug"
+      ],
+      "stage": "review",
+      "evidence": "GitHub #115, PR #116. The effect after a restart is not yet observed."
     }
   ]
 }
