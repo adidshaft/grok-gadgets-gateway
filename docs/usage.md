@@ -49,6 +49,8 @@ Days are UTC. Counts come from this gateway's request log only.
 
 A `-` row holds calls without a device or capability, such as `gadgets_list_devices`.
 
+The request log rotates at 5 MiB and keeps 5 old files (`requests.jsonl.1` is the newest). `usage` reads them too, so a summary covers the last 25 to 30 MiB of calls.
+
 Options:
 
 - `--log PATH`: read this log; repeat it for several logs.

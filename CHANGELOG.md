@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Log rotation ([#142](https://github.com/adidshaft/grok-gadgets-gateway/issues/142), hub ADR 008). The request log rotates at 5 MiB and keeps 5 files (`requests.jsonl.1` to `.5`, mode 0600). When the gateway runs as the service, its `gateway.log` is copied to `gateway.log.1` and truncated in place at the same size. `usage` reads the rotated request logs.
+
 ## 0.1.0-alpha.11 — 13 October 2026
 
 - On 13 October 2026 the owner's Grok Bot called the six tools natively from the Mac and the iPhone through `serve --oauth` behind an owner-run tunnel; the request log recorded nine `grok-bot` calls and the owner saw the OLED text (hub #154, ADR 007).
