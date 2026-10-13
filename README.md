@@ -23,7 +23,6 @@ Each [GitHub release](https://github.com/adidshaft/grok-gadgets-gateway/releases
 
 On an Intel Mac, `cryptography` has no prebuilt wheel and needs a Rust toolchain to build.
 
-
 For your first simulator test, follow [first success](docs/first-success.md).
 
 ## Quick start
@@ -42,7 +41,6 @@ uv run grok-gadgets-gateway rehearse
 Run `rehearse` in a second terminal while `serve` keeps running. It calls the six tools in the
 order Grok Bot will: list the gadgets, set the simulated light blue, read its state. See
 [first success in five minutes](docs/first-success.md).
-
 
 ## How it works
 

@@ -53,6 +53,7 @@ If you move or delete it, uninstall the service first. Install the service again
 For an editable source install, the service also uses that checkout. A branch change changes
 the service code. Stop the service before you change its source.
 
-The owner observed about 90 seconds after login. Faster startup is tracked in
-[issue #116](https://github.com/adidshaft/grok-gadgets-gateway/issues/116).
+The owner observed about 90 seconds after login before the startup fix.
+[Issue #115](https://github.com/adidshaft/grok-gadgets-gateway/issues/115) tracks that fix.
+The restart time after the fix has not been observed on the owner kit.
 Linux service installation is implemented; the owner acceptance record covers macOS only.
