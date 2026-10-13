@@ -16,7 +16,7 @@ The [daily record](https://github.com/adidshaft/grok-gadgets/blob/main/docs/veri
 
 ## Hosting boundary
 
-The gateway serves MCP over stdio to a supervising client, or over Streamable HTTP when you run `serve`. `serve` binds `127.0.0.1:8766/mcp` and checks a static bearer token. Its default authenticated device TCP listener accepts loopback connections only. The local device agent or USB bridge must run on that same host. Hosting the static project website does not start either process.
+The gateway serves MCP over stdio to a supervising client, or over Streamable HTTP when you run `serve`. `serve` binds `127.0.0.1:8766/mcp` and checks a local or named token, or an OAuth-issued access token when OAuth is enabled. Its default authenticated device TCP listener accepts loopback connections only. The local device agent or USB bridge must run on that same host. Hosting the static project website does not start either process.
 
 `serve --oauth` provides the sign-in server. An owner-run tunnel terminates public HTTPS for MCP.
 The default device listener stays on loopback. The opt-in `--lan-listen` listener uses TLS on a private network.

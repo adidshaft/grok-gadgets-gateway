@@ -3,7 +3,7 @@
 The connection point between your Grok Bot and your gadgets: a built-in simulated light,
 Linux gadgets and ESP32 devices. It serves six MCP tools. The owner tested USB and Wi-Fi hardware through the gateway.
 Grok Bot calls the six tools natively from the Mac and phone apps through `serve --oauth` behind a tunnel you run ([record](https://github.com/adidshaft/grok-gadgets/blob/main/docs/verification/grok-remote-https-2026-10-13.md), [project status](https://grokgadgets.org/doc-docs-public-support-matrix)).
-Independent project, not affiliated with SpaceXSI or xAI.
+Independent project, not affiliated with SpaceXSI.
 
 > Writing style: ASD-STE100-inspired English. Use short sentences, active verbs and one instruction per step. This is not certified compliance.
 
@@ -135,6 +135,5 @@ Contribute on the `dev` branch; `main` holds tagged stable releases ([branches](
 ## License and affiliation
 
 Apache-2.0; see [LICENSE](LICENSE) and [NOTICE](NOTICE). Grok Gadgets is an independent
-open-source project. It is **not affiliated with, endorsed by or sponsored by SpaceXSI or
-xAI**, which make Grok and Grok Bot. We reconstructed the pre-publication commit dates; see the
+open-source project. It is **not affiliated with, endorsed by or sponsored by SpaceXSI**. We reconstructed the pre-publication commit dates; see the
 [history record](https://github.com/adidshaft/grok-gadgets/blob/main/docs/verification/publication-sanitization.md).
