@@ -41,3 +41,7 @@ build/
 .DS_Store
 Thumbs.db
 grok-gadgets-requests*.jsonl
+
+# Relay container example: the real tunnel config and credentials stay local.
+examples/docker/cloudflared/*
+!examples/docker/cloudflared/config.yml.example

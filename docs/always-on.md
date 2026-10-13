@@ -26,7 +26,7 @@ out if you only use USB or the loopback MCP port.
 | macOS | A launchd agent: `~/Library/LaunchAgents/org.grokgadgets.gateway.plist` | Now, and at every login |
 | Linux | A systemd user unit: `~/.config/systemd/user/grok-gadgets-gateway.service` | Now, and at every login |
 
-On Linux, run `loginctl enable-linger` once to start it at boot without a login.
+On Linux, run `loginctl enable-linger` once to start it at boot without a login. To run the gateway on an always-on Linux host instead of your Mac, see [relay host](relay-host.md).
 
 `install` refuses to run when the gateway is not set up, when the LAN certificate is missing, or
 when another gateway already holds a port. It needs no administrator rights and writes no
