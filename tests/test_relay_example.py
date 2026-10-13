@@ -4,6 +4,8 @@ import re
 import tomllib
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 DOCKER = ROOT / "examples" / "docker"
 
@@ -40,6 +42,8 @@ def test_image_build_context_holds_what_the_wheel_needs():
     assert re.search(r"^FROM python:\d+\.\d+-slim-\w+$", dockerfile, re.MULTILINE)
 
 
+# The hub's simulator kit ships the source without .gitignore; the rule matters in a checkout.
+@pytest.mark.skipif(not (ROOT / ".gitignore").exists(), reason="not a git checkout")
 def test_real_tunnel_files_are_ignored():
     rules = (ROOT / ".gitignore").read_text()
     assert "examples/docker/cloudflared/*" in rules
