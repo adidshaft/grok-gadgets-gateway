@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## 0.1.0-alpha.11 — unreleased (prepared 13 October 2026)
+## 0.1.0-alpha.11 — 13 October 2026
 
 - On 13 October 2026 the owner's Grok Bot called the six tools natively from the Mac and the iPhone through `serve --oauth` behind an owner-run tunnel; the request log recorded nine `grok-bot` calls and the owner saw the OLED text (hub #154, ADR 007).
 - OAuth sign-in for Grok Bot ([#71](https://github.com/adidshaft/grok-gadgets-gateway/issues/71)). A personal Grok Bot cannot add a server with a fixed bearer header (hub #154). With `serve --oauth`, the gateway is its own OAuth 2.1 sign-in server at `https://ALLOWED-HOST`: protected-resource metadata, dynamic client registration, PKCE, refresh and revocation, built on the MCP SDK's auth routes. The sign-in page asks for nothing; the owner approves its code on the Mac with `grok-gadgets-gateway oauth approve CODE --name grok-bot`. Tokens are stored as hashes, carry the approved name into the request log and limits, and end at once with `oauth revoke NAME` or `remote off`. `service install --oauth` passes it to the service.
