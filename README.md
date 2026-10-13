@@ -2,7 +2,7 @@
 
 The connection point between your Grok Bot and your gadgets: a built-in simulated light,
 Linux gadgets and ESP32 devices. It serves six MCP tools. The owner tested USB and Wi-Fi hardware through the gateway.
-Grok Bot ran local `rehearse` commands; native MCP access remains unverified ([project status](https://grok-gadgets.pages.dev/doc-docs-public-support-matrix)).
+Grok Bot calls the six tools natively from the Mac and phone apps through `serve --oauth` behind a tunnel you run ([record](https://github.com/adidshaft/grok-gadgets/blob/main/docs/verification/grok-remote-https-2026-10-13.md), [project status](https://grok-gadgets.pages.dev/doc-docs-public-support-matrix)).
 Independent project, not affiliated with SpaceXSI or xAI.
 
 > Writing style: ASD-STE100-inspired English. Use short sentences, active verbs and one instruction per step. This is not certified compliance.
@@ -105,7 +105,7 @@ Read [remote access](docs/remote-access.md) and [security](SECURITY.md) first.
 ## Learn more
 
 - [First success](docs/first-success.md) and the [simulator guide](docs/simulator.md)
-- [Keep the gateway running](docs/always-on.md) as a background service.
+- [Keep the gateway running](docs/always-on.md) as a background service, and [leave the Grok Bot route on](docs/daily-use.md).
 - [Track usage](docs/usage.md): calls by token, device, capability and day, and an opt-in usage hook.
 - [Local operation](docs/local-operation.md), [architecture](docs/architecture.md) and [protocol 0.1.0](protocol/0.1.0/README.md)
 - Demo without HTTP: `uv run python -m grok_gadgets_gateway.demo` (uses test-only controls)

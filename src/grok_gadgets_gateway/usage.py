@@ -160,6 +160,28 @@ def parse_time(text, end=False):
     return value if value.tzinfo else value.replace(tzinfo=UTC)
 
 
+def last_record(paths, match, tail_bytes=256 * 1024):
+    """The newest JSON line in the logs (oldest file first) for which `match` is true.
+
+    Reads only the end of each file, newest file first, so a large log stays cheap.
+    """
+    for path in reversed([Path(p) for p in paths]):
+        try:
+            with path.open("rb") as file:
+                file.seek(max(file.seek(0, os.SEEK_END) - tail_bytes, 0))
+                lines = file.read().decode("utf-8", "replace").splitlines()
+        except OSError:
+            continue
+        for line in reversed(lines):
+            try:
+                record = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(record, dict) and match(record):
+                return record
+    return None
+
+
 def read_calls(paths, since=None, until=None, token=None):
     """`mcp_tool_call` records from request logs, in the window and for the token."""
     calls = []

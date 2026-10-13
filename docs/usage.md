@@ -49,6 +49,8 @@ Days are UTC. Counts come from this gateway's request log only.
 
 A `-` row holds calls without a device or capability, such as `gadgets_list_devices`.
 
+The request log rotates at 5 MiB and keeps 5 old files (`requests.jsonl.1` is the newest). `usage` reads them too, so a summary covers the last 25 to 30 MiB of calls.
+
 Options:
 
 - `--log PATH`: read this log; repeat it for several logs.
@@ -100,3 +102,5 @@ Rules:
 - When `serve` stops, it prints `Usage hook: N lines sent, M dropped.` A `stdio` request log records the same counts in `stdio_stopped`.
 
 Use `usage` for totals. The hook is for live use; it has no history.
+
+Example: [`examples/usage-hooks/macos-notify.py`](../examples/usage-hooks/macos-notify.py) posts a local macOS notification for each remote call. `service install --usage-hook` passes a hook to the service; see [daily use](daily-use.md#5-notify-on-each-remote-call-optional).

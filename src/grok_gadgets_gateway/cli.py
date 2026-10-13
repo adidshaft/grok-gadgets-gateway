@@ -236,7 +236,7 @@ def build_parser():
         "--log",
         action="append",
         metavar="PATH",
-        help="request log to read (repeatable; default: the service's requests.jsonl)",
+        help="request log to read, with its rotated files (repeatable; default: the service's)",
     )
     usage.add_argument("--since", metavar="ISO", help="from this UTC date or time")
     usage.add_argument("--until", metavar="ISO", help="up to this UTC date or time")
@@ -376,6 +376,7 @@ def build_parser():
     service_install.add_argument(
         "--device-port", type=int, default=8765, help="loopback device port"
     )
+    _usage_hook_option(service_install)
     service_sub.add_parser("uninstall", help="stop the service and remove it; config stays")
     service_sub.add_parser("status", help="show whether the service is installed and running")
     service_logs = service_sub.add_parser("logs", help="print the end of the service log")
@@ -722,6 +723,15 @@ def run_service(parser, args, service=None):
                 parser.error("the gateway is not set up. Run: grok-gadgets-gateway init")
             if args.oauth and len(args.allowed_host) != 1:
                 parser.error("--oauth needs exactly one --allowed-host: the tunnel name")
+            if args.usage_hook is not None:
+                import shlex
+
+                try:
+                    hook = shlex.split(args.usage_hook)
+                except ValueError as exc:
+                    parser.error(f"--usage-hook: {exc}")
+                if not hook or not os.path.isabs(hook[0]):
+                    parser.error("--usage-hook: the service needs an absolute program path")
             if args.allowed_host:
                 from .service import transport_security
 
@@ -748,6 +758,7 @@ def run_service(parser, args, service=None):
                     service.logs / "requests.jsonl",
                     args.allowed_host,
                     args.oauth,
+                    args.usage_hook,
                 ),
             ]
             environment = {
@@ -779,6 +790,9 @@ def run_service(parser, args, service=None):
                 state = "not installed"
             pid = f" (pid {report['pid']})" if report["pid"] else ""
             print(f"service: {state}{pid}\nunit: {report['unit']}\nlog: {report['log']}")
+            if report["installed"]:
+                for line in route_status(service):
+                    print(line)
             return 0 if report["running"] or not report["installed"] else 3
         lines = service.tail(args.lines)
         print(f"log: {service.logs / 'gateway.log'}", file=sys.stderr)
@@ -812,6 +826,9 @@ def run_usage(parser, args):
         if found is None or not found.is_file():
             parser.error("no service request log here; pass --log PATH")
         paths = [found]
+    from .logfiles import rotated
+
+    paths = [old for path in paths for old in rotated(path)] or paths
     try:
         since = parse_time(args.since) if args.since else None
         until = parse_time(args.until, end=True) if args.until else None
@@ -870,6 +887,57 @@ def run_oauth(parser, args):
     except (OperatorError, OSError) as exc:
         parser.error(str(exc))
     return 0
+
+
+def route_status(service, now=None):
+    """Lines for `service status` about the Grok Bot route; never a token or a code."""
+    from datetime import UTC, datetime, timedelta
+
+    from .background import option_values
+    from .logfiles import rotated
+    from .oauth import sign_ins
+    from .usage import last_record
+
+    command = service.unit_command()
+    hosts = option_values(command, "--allowed-host")
+    logs = option_values(command, "--request-log") or [service.logs / "requests.jsonl"]
+    paths = [old for path in logs for old in rotated(path)]
+    lines = [
+        f"allowed host: {', '.join(hosts) if hosts else 'none (no tunnel route)'}",
+        f"sign-in (--oauth): {'on' if '--oauth' in command else 'off'}",
+        f"remote: {'on' if remote_enabled() else 'off (kill switch)'}",
+    ]
+    try:
+        live = sign_ins()
+    except OperatorError as exc:
+        live, lines = [], [*lines, f"live sign-ins: unreadable ({exc})"]
+    else:
+        names = [
+            f"{name} (until {datetime.fromtimestamp(expires, UTC):%Y-%m-%d})"
+            for name, _, expires in live
+        ]
+        lines.append(f"live sign-ins: {', '.join(names) if names else 'none'}")
+    call = last_record(
+        paths, lambda r: r.get("event") == "mcp_tool_call" and r.get("remote") is True
+    )
+    if call:
+        lines.append(
+            f"last remote call: {call.get('ts', '-')} {call.get('tool', '-')} "
+            f"{call.get('outcome', '-')} as {call.get('token') or '-'}"
+        )
+    else:
+        lines.append("last remote call: none in the request log")
+    flood = last_record(paths, lambda r: r.get("event") == "oauth_flood")
+    now = now or datetime.now(UTC)
+    try:
+        recent = flood and now - datetime.fromisoformat(flood["ts"]) < timedelta(days=1)
+    except (KeyError, TypeError, ValueError):
+        recent = False
+    if recent:
+        lines.append(f"sign-in flood: {flood['ts']} {flood.get('reason', '-')}")
+    else:
+        lines.append("sign-in flood: none in the last 24 hours")
+    return lines
 
 
 def run_remote(parser, args):

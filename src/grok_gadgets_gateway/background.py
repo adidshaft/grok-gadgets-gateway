@@ -4,6 +4,7 @@ macOS: a launchd user agent in ~/Library/LaunchAgents. Linux: a systemd user uni
 ~/.config/systemd/user. No root, no system files. Config, CA and tokens are never touched.
 """
 
+import itertools
 import os
 import plistlib
 import shlex
@@ -44,7 +45,13 @@ def unit_path(platform, home=None):
 
 
 def serve_arguments(
-    lan_listen=None, port=8766, device_port=8765, request_log=None, allowed_hosts=(), oauth=False
+    lan_listen=None,
+    port=8766,
+    device_port=8765,
+    request_log=None,
+    allowed_hosts=(),
+    oauth=False,
+    usage_hook=None,
 ):
     """The `serve` flags the service runs with; the same rules as a foreground `serve`."""
     args = ["serve", "--port", str(port), "--device-port", str(device_port)]
@@ -56,7 +63,14 @@ def serve_arguments(
         args.append("--oauth")
     if request_log:
         args += ["--request-log", str(request_log)]
+    if usage_hook:
+        args += ["--usage-hook", usage_hook]
     return args
+
+
+def option_values(command, flag):
+    """Every value given to `flag` in an argument list, such as the unit's --allowed-host."""
+    return [value for option, value in itertools.pairwise(command) if option == flag]
 
 
 def unit_text(platform, command, logs, environment=None):
@@ -198,6 +212,21 @@ class Service:
                 elif key == "MainPID" and value.isdigit() and value != "0":
                     report["pid"] = int(value)
         return report
+
+    def unit_command(self):
+        """The executable and arguments in the installed unit; [] when there is none."""
+        if not self.installed():
+            return []
+        text = self.path.read_text()
+        if self.platform == "macos":
+            try:
+                return list(plistlib.loads(text.encode()).get("ProgramArguments", []))
+            except (plistlib.InvalidFileException, ValueError):
+                return []
+        for line in text.splitlines():
+            if line.startswith("ExecStart="):
+                return shlex.split(line.removeprefix("ExecStart="))
+        return []
 
     def tail(self, lines=40):
         log = self.logs / "gateway.log"
