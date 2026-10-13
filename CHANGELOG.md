@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## 0.1.0-alpha.12 — unreleased (prepared 13 October 2026)
+## 0.1.0-alpha.12 — 13 October 2026
 
 - Daily use ([#142](https://github.com/adidshaft/grok-gadgets-gateway/issues/142)): `docs/daily-use.md` covers the tunnel client as a user service, a daily check, sleep settings and floods. `service install --usage-hook CMD` passes a usage hook to the service (absolute program path). `examples/usage-hooks/macos-notify.py` posts a local macOS notification for each remote call; no external service.
 - `service status` shows the Grok Bot route ([#142](https://github.com/adidshaft/grok-gadgets-gateway/issues/142)): the allowed host and `--oauth` from the installed unit, `remote` on or off, live sign-ins with their end date, the last remote tool call from the request log (rotated files included) and any `oauth_flood` line in the last 24 hours.
