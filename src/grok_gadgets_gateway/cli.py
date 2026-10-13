@@ -236,7 +236,7 @@ def build_parser():
         "--log",
         action="append",
         metavar="PATH",
-        help="request log to read (repeatable; default: the service's requests.jsonl)",
+        help="request log to read, with its rotated files (repeatable; default: the service's)",
     )
     usage.add_argument("--since", metavar="ISO", help="from this UTC date or time")
     usage.add_argument("--until", metavar="ISO", help="up to this UTC date or time")
@@ -823,6 +823,9 @@ def run_usage(parser, args):
         if found is None or not found.is_file():
             parser.error("no service request log here; pass --log PATH")
         paths = [found]
+    from .logfiles import rotated
+
+    paths = [old for path in paths for old in rotated(path)] or paths
     try:
         since = parse_time(args.since) if args.since else None
         until = parse_time(args.until, end=True) if args.until else None

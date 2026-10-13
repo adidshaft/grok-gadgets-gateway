@@ -2,7 +2,7 @@
 
 The connection point between your Grok Bot and your gadgets: a built-in simulated light,
 Linux gadgets and ESP32 devices. It serves six MCP tools. The owner tested USB and Wi-Fi hardware through the gateway.
-Grok Bot ran local `rehearse` commands; native MCP access remains unverified ([project status](https://grok-gadgets.pages.dev/doc-docs-public-support-matrix)).
+Grok Bot calls the six tools natively from the Mac and phone apps through `serve --oauth` behind a tunnel you run ([record](https://github.com/adidshaft/grok-gadgets/blob/main/docs/verification/grok-remote-https-2026-10-13.md), [project status](https://grok-gadgets.pages.dev/doc-docs-public-support-matrix)).
 Independent project, not affiliated with SpaceXSI or xAI.
 
 > Writing style: ASD-STE100-inspired English. Use short sentences, active verbs and one instruction per step. This is not certified compliance.
