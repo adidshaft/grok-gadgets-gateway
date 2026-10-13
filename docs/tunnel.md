@@ -143,6 +143,8 @@ The sign-in paths keep the Host check, and `remote off` blocks them. A stranger 
 
 The caller is the address in the tunnel's forwarding header, such as `CF-Connecting-IP` or `X-Forwarded-For`.
 
+To leave the route on every day, follow [Leave the Grok Bot route on](daily-use.md).
+
 ## Turn it off and revoke
 
 1. Turn remote access off. Remote requests get 503 at once:

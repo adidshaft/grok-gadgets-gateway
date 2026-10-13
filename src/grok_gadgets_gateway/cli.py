@@ -376,6 +376,7 @@ def build_parser():
     service_install.add_argument(
         "--device-port", type=int, default=8765, help="loopback device port"
     )
+    _usage_hook_option(service_install)
     service_sub.add_parser("uninstall", help="stop the service and remove it; config stays")
     service_sub.add_parser("status", help="show whether the service is installed and running")
     service_logs = service_sub.add_parser("logs", help="print the end of the service log")
@@ -722,6 +723,15 @@ def run_service(parser, args, service=None):
                 parser.error("the gateway is not set up. Run: grok-gadgets-gateway init")
             if args.oauth and len(args.allowed_host) != 1:
                 parser.error("--oauth needs exactly one --allowed-host: the tunnel name")
+            if args.usage_hook is not None:
+                import shlex
+
+                try:
+                    hook = shlex.split(args.usage_hook)
+                except ValueError as exc:
+                    parser.error(f"--usage-hook: {exc}")
+                if not hook or not os.path.isabs(hook[0]):
+                    parser.error("--usage-hook: the service needs an absolute program path")
             if args.allowed_host:
                 from .service import transport_security
 
@@ -748,6 +758,7 @@ def run_service(parser, args, service=None):
                     service.logs / "requests.jsonl",
                     args.allowed_host,
                     args.oauth,
+                    args.usage_hook,
                 ),
             ]
             environment = {
