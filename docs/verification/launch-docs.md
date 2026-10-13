@@ -45,3 +45,5 @@ Public repositories/downloads, private vulnerability reporting, hosted CI and ow
 protection remain pending activation. Native Grok invocation, mobile, physical C124,
 Windows/Intel and independent human reproduction remain open. GW-004 uses primary
 M5 for native Grok evidence with M8 separately linked for physical acceptance.
+Update, 13 October 2026: native Grok Bot calls from Mac and iPhone are recorded
+([record](https://github.com/adidshaft/grok-gadgets/blob/main/docs/verification/grok-remote-https-2026-10-13.md)) and GW-004 is closed.

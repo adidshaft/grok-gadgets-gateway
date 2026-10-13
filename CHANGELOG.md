@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Log rotation ([#142](https://github.com/adidshaft/grok-gadgets-gateway/issues/142), hub ADR 008). The request log rotates at 5 MiB and keeps 5 files (`requests.jsonl.1` to `.5`, mode 0600). When the gateway runs as the service, its `gateway.log` is copied to `gateway.log.1` and truncated in place at the same size. `usage` reads the rotated request logs.
+- Sign-in floods cannot lock the owner out ([#142](https://github.com/adidshaft/grok-gadgets-gateway/issues/142), hub ADR 008). Registered clients without a live sign-in are pruned after an hour or when the list of 20 is full; a client with a live sign-in is kept. Waiting sign-ins drop the oldest instead of refusing, at most 2 per client. Sign-in paths have separate budgets per caller and in total, so registration floods do not block refresh. A hit limit writes one `oauth_flood` line a minute.
 
 ## 0.1.0-alpha.11 — 13 October 2026
 

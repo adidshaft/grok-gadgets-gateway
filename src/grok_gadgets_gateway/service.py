@@ -39,7 +39,20 @@ _FORWARDING_HEADERS = (b"forwarded", b"x-forwarded-for", b"x-forwarded-host", b"
 
 # OAuth discovery and sign-in paths answer without a bearer token (serve --oauth only).
 OAUTH_PATHS = ("/authorize", "/token", "/register", "/revoke", "/oauth/approve")
-OAUTH_CALLS_PER_MINUTE = 60
+# Requests a minute for each group of sign-in paths: (per caller, in total). Separate
+# groups keep a registration flood from starving Grok Bot's hourly refresh (hub ADR 008).
+OAUTH_BUDGETS = {
+    "sign_up": (10, 30),  # /register and /authorize create state
+    "token": (60, 120),  # /token and /revoke: refresh for a live sign-in
+    "page": (60, 120),  # discovery metadata and the approval page, which reloads every 3 s
+}
+OAUTH_GROUPS = {
+    "/register": "sign_up",
+    "/authorize": "sign_up",
+    "/token": "token",
+    "/revoke": "token",
+}
+FORWARDED_FOR = (b"cf-connecting-ip", b"x-forwarded-for", b"x-real-ip")
 
 
 def _host_name(headers):
@@ -62,6 +75,20 @@ def is_remote(headers):
     if any(name in headers for name in _FORWARDING_HEADERS):
         return True
     return _host_name(headers) not in _LOOPBACK_HOSTS
+
+
+def caller(scope, values):
+    """Who sent a request: the tunnel's forwarding header, else the peer address.
+
+    Behind a tunnel every peer is 127.0.0.1. Only a process on this computer can forge the
+    header, and it can reach loopback anyway.
+    """
+    for header in FORWARDED_FOR:
+        value = values.get(header, b"").decode("latin-1").split(",")[0].strip()
+        if value:
+            return value[:64]
+    client = scope.get("client") or ("-",)
+    return str(client[0])
 
 
 class FileTokenVerifier:
@@ -159,7 +186,8 @@ class BearerAuth:
         self.resource_metadata = resource_metadata
         self.allowed_hosts = tuple(allowed_hosts)
         self.clock = clock
-        self.oauth_calls = deque()
+        self.oauth_calls = {}  # (group, caller or "*") -> deque of request times
+        self.flood_alerted_at = None
         self.active = {}
 
     def _oauth_path(self, path):
@@ -173,15 +201,29 @@ class BearerAuth:
             await _send_json(send, 421, "misdirected_request", "Host is not allowed")
             return
         now = self.clock()
-        while self.oauth_calls and now - self.oauth_calls[0] >= 60:
-            self.oauth_calls.popleft()
-        if len(self.oauth_calls) >= OAUTH_CALLS_PER_MINUTE:
+        group = OAUTH_GROUPS.get(scope.get("path", ""), "page")
+        # Accepted requests are capped by the totals, so this sweep stays small.
+        for key, calls in list(self.oauth_calls.items()):
+            while calls and now - calls[0] >= 60:
+                calls.popleft()
+            if not calls:
+                del self.oauth_calls[key]
+        windows = [
+            (self.oauth_calls.setdefault((group, key), deque()), limit)
+            for key, limit in zip((caller(scope, values), "*"), OAUTH_BUDGETS[group])
+        ]
+        if any(len(calls) >= limit for calls, limit in windows):
             self._reject(429, "oauth_rate_limited", None)
+            if self.flood_alerted_at is None or now - self.flood_alerted_at >= 60:
+                self.flood_alerted_at = now
+                if self.log is not None:
+                    self.log.write({"event": "oauth_flood", "reason": f"{group}_rate_limited"})
             await _send_json(
                 send, 429, "slow_down", "Too many sign-in requests", [(b"retry-after", b"10")]
             )
             return
-        self.oauth_calls.append(now)
+        for calls, _ in windows:
+            calls.append(now)
         await self.oauth_app(scope, receive, send)
 
     def _reject(self, status, reason, name):
