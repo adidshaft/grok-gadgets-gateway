@@ -1,0 +1,54 @@
+# The gateway and its tunnel client on one always-on Linux host (hub ADR 009, stage 1).
+#
+#   gateway      /mcp on 127.0.0.1:8766 inside the gateway's network namespace, reached only
+#                through the tunnel; the relay device listener on port 8443 for Wi-Fi devices.
+#   cloudflared  shares the gateway's network namespace and forwards one hostname to
+#                http://127.0.0.1:8766. It never forwards port 8443.
+#
+# Set MCP_HOST in .env (see .env.example). Guide: docs/relay-host.md.
+name: grok-gadgets-relay
+
+services:
+  gateway:
+    build:
+      context: ../..
+      dockerfile: examples/docker/Dockerfile
+    image: grok-gadgets-gateway:relay
+    restart: unless-stopped
+    command:
+      - serve
+      - --oauth
+      - --allowed-host
+      - ${MCP_HOST:?set MCP_HOST in .env}
+      - --device-listen
+      - 0.0.0.0:8443
+      - --request-log
+      - /data/logs/requests.jsonl
+    volumes:
+      - gateway-data:/data
+    ports:
+      # Devices only. The MCP port 8766 is never published.
+      - "8443:8443"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import socket; socket.create_connection(('127.0.0.1', 8766), 2).close()"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.7.3
+    restart: unless-stopped
+    network_mode: "service:gateway"
+    depends_on:
+      - gateway
+    command: ["tunnel", "--no-autoupdate", "--config", "/etc/cloudflared/config.yml", "run"]
+    volumes:
+      - ./cloudflared:/etc/cloudflared:ro
+
+volumes:
+  gateway-data:
