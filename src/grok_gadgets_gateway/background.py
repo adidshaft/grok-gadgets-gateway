@@ -4,6 +4,7 @@ macOS: a launchd user agent in ~/Library/LaunchAgents. Linux: a systemd user uni
 ~/.config/systemd/user. No root, no system files. Config, CA and tokens are never touched.
 """
 
+import itertools
 import os
 import plistlib
 import shlex
@@ -57,6 +58,11 @@ def serve_arguments(
     if request_log:
         args += ["--request-log", str(request_log)]
     return args
+
+
+def option_values(command, flag):
+    """Every value given to `flag` in an argument list, such as the unit's --allowed-host."""
+    return [value for option, value in itertools.pairwise(command) if option == flag]
 
 
 def unit_text(platform, command, logs, environment=None):
@@ -198,6 +204,21 @@ class Service:
                 elif key == "MainPID" and value.isdigit() and value != "0":
                     report["pid"] = int(value)
         return report
+
+    def unit_command(self):
+        """The executable and arguments in the installed unit; [] when there is none."""
+        if not self.installed():
+            return []
+        text = self.path.read_text()
+        if self.platform == "macos":
+            try:
+                return list(plistlib.loads(text.encode()).get("ProgramArguments", []))
+            except (plistlib.InvalidFileException, ValueError):
+                return []
+        for line in text.splitlines():
+            if line.startswith("ExecStart="):
+                return shlex.split(line.removeprefix("ExecStart="))
+        return []
 
     def tail(self, lines=40):
         log = self.logs / "gateway.log"
