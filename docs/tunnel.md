@@ -94,14 +94,10 @@ curl -s -o /dev/null -w "%{http_code}\n" -X POST https://gadgets.example.net/mcp
 
 Expected: `401`. If you get anything else, stop the tunnel and check its target.
 
-## 5. Add the server in Grok Bot
+## 5. Connect Grok Bot with OAuth
 
-Add a **Remote HTTPS** MCP server:
-
-- URL: `https://gadgets.example.net/mcp`
-- Header: `Authorization: Bearer <contents of grok-bot.token>`
-
-Then ask: "list my gadgets", "set the light blue", "what's its state?". The request log must show `mcp_tool_call` lines with `"token":"grok-bot"` and a client other than `grok-gadgets-rehearse`. If no lines appear, Grok Bot did not reach the gateway, whatever it says.
+The fixed-token checks above test the tunnel only. The owner's personal Grok Bot has no header form.
+Use the OAuth steps below. Do not paste a token into chat.
 
 ## OAuth sign-in for Grok Bot
 

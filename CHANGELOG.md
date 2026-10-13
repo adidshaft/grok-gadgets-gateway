@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.1.0-alpha.13 — 14 October 2026
+
+- On 13 October 2026 the owner's ESP32-S3 OLED kit connected to `serve --device-listen` on an always-on Linux server, and Grok Bot on the iPhone, on cellular, showed text on it while the Mac slept. Server reboot, `remote off`, revoke, re-enroll, re-provision and a wrong CA also passed ([hub record](https://github.com/adidshaft/grok-gadgets/blob/dev/docs/verification/mac-free-route-2026-10-13.md)).
+- Relay host example ([#156](https://github.com/adidshaft/grok-gadgets-gateway/issues/156), hub ADR 009). `examples/docker/` runs `serve --oauth --allowed-host --device-listen` in a container with a pinned Cloudflare Tunnel client that shares its network, so `/mcp` stays on `127.0.0.1:8766` and only port 8443 is published. Config, tokens and logs live in a volume. `docs/relay-host.md` covers the container, a Linux user service, provisioning with the relay's CA, a daily check and turn-off. The container was built and checked only on a Mac (device hello, wrong token, wrong CA, plain HTTP, restart); the owner's relay ran the user-service route.
+- Relay device listener ([#154](https://github.com/adidshaft/grok-gadgets-gateway/issues/154), hub ADR 009). `serve --device-listen ADDRESS[:PORT]` (port 8443 by default, off unless set) runs a TLS device listener on any address of an always-on host and accepts any peer. It has per-address limits under global ones: 20 new connections a minute and 4 waiting connections per address, 32 waiting and 64 sessions in total, and a 5 s handshake. It logs `device_*` lines with the peer address and never a token, and one `device_flood` line a minute while a limit refuses connections. `diagnostics` and `service status` show it; `service install --device-listen` passes it to the service.
+- DNS names for Wi-Fi devices ([#155](https://github.com/adidshaft/grok-gadgets-gateway/issues/155)). `device-cert NAME` issues the relay listener certificate for one public DNS name from the `init` CA, beside the LAN certificate. `wifi-provision --gateway NAME[:PORT]` stores a DNS name for the board, and `--ca FILE` pins a relay's CA when the relay was set up on another host. `lan-cert` and `--lan` are unchanged.
+- `usage --calibrate 0` now saves nothing. A whole-percent usage page often shows no change, and a zero rate would count every later call as free.
+
 ## 0.1.0-alpha.12 — 13 October 2026
 
 - Daily use ([#142](https://github.com/adidshaft/grok-gadgets-gateway/issues/142)): `docs/daily-use.md` covers the tunnel client as a user service, a daily check, sleep settings and floods. `service install --usage-hook CMD` passes a usage hook to the service (absolute program path). `examples/usage-hooks/macos-notify.py` posts a local macOS notification for each remote call; no external service.

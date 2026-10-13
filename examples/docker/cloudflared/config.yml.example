@@ -1,0 +1,8 @@
+# Copy to config.yml. Put the tunnel's credentials file beside it as TUNNEL-ID.json.
+# Keep both files private: anyone with the credentials file can run your tunnel.
+tunnel: TUNNEL-ID
+credentials-file: /etc/cloudflared/TUNNEL-ID.json
+ingress:
+  - hostname: gadgets.example.net
+    service: http://127.0.0.1:8766
+  - service: http_status:404

@@ -102,6 +102,53 @@ With `--request-log`, the gateway writes these LAN lines. Each has `ts`, `event`
 | `lan_rate_limited` | Too many new connections from one address |
 | `lan_disconnected` | Session ended |
 
+## Relay listener: devices on any network
+
+The relay listener lets a Wi-Fi device reach a gateway on an always-on host, away from your
+home network. The design is in hub
+[ADR 009](https://github.com/adidshaft/grok-gadgets/blob/dev/docs/decisions/009-relay-route.md).
+It is **off by default** and starts only with `serve --device-listen`. It uses the same
+protocol 0.1.0 frames, the same tokens and the same CA as the LAN listener. The owner's kit
+passed through it on 13 October 2026 ([record](https://github.com/adidshaft/grok-gadgets/blob/dev/docs/verification/mac-free-route-2026-10-13.md)).
+
+| Control | Detail |
+| --- | --- |
+| Any address | `--device-listen` takes one IP address of the host, for example `0.0.0.0:8443` or `[::]:8443`. The default port is 8443. |
+| Any peer | Every source address may connect. The token, TLS and the limits protect the port. |
+| TLS and name | The certificate from `device-cert NAME` names one public DNS name only. The device checks the certificate against that name and pins your CA. |
+| Limits | 64 sessions, 32 connections waiting for a hello, 4 waiting per source address, 5 s TLS handshake, 20 new connections a minute per source address, 30 frames a second per session. |
+| No HTTP | A plain HTTP request fails the TLS handshake. HTTP inside TLS is closed and logged. Never put the port behind a web tunnel. |
+
+On the relay host:
+
+```sh
+grok-gadgets-gateway init
+grok-gadgets-gateway device-cert devices.example.net
+grok-gadgets-gateway enroll oledkit-0123456789ab
+grok-gadgets-gateway serve --device-listen 0.0.0.0:8443 --request-log ~/grok-gadgets-requests.jsonl
+```
+
+Point a DNS-only record for `devices.example.net` at the host, and open TCP port 8443 in its
+firewall. `diagnostics` and `service status` show the relay listener.
+
+Provision the board over USB on the computer it is plugged into. If the relay was set up on
+another host, copy its `lan/ca.pem` and `credentials.json` to this computer first:
+
+```sh
+grok-gadgets-gateway wifi-provision /dev/cu.usbmodem101 --device oledkit-0123456789ab \
+  --gateway devices.example.net --ca relay-ca.pem --credentials relay-credentials.json
+```
+
+Delete the copied `credentials.json` afterwards: it holds every device token. The board needs
+firmware that accepts a DNS name for the gateway.
+
+The relay listener writes the same lines as the LAN listener with a `device_` prefix:
+`device_connected`, `device_hello`, `device_auth_rejected`, `device_tls_failed`,
+`device_rate_limited` and `device_disconnected`. A source address that hits its connection
+limit is logged once a minute. While any limit refuses connections, the gateway writes one
+`device_flood` line a minute with a `reason`: `connection_rate`, `pending`,
+`pending_per_address` or `sessions`.
+
 ## Limits
 
 - The device has no clock, and its TLS library does not check certificate dates. Rotate

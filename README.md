@@ -2,10 +2,18 @@
 
 The connection point between your Grok Bot and your gadgets: a built-in simulated light,
 Linux gadgets and ESP32 devices. It serves six MCP tools. The owner tested USB and Wi-Fi hardware through the gateway.
-Grok Bot calls the six tools natively from the Mac and phone apps through `serve --oauth` behind a tunnel you run ([record](https://github.com/adidshaft/grok-gadgets/blob/main/docs/verification/grok-remote-https-2026-10-13.md), [project status](https://grok-gadgets.pages.dev/doc-docs-public-support-matrix)).
-Independent project, not affiliated with SpaceXSI or xAI.
+Grok Bot calls the six tools natively from the Mac and phone apps through `serve --oauth` behind a tunnel you run ([record](https://github.com/adidshaft/grok-gadgets/blob/main/docs/verification/grok-remote-https-2026-10-13.md), [project status](https://grokgadgets.org/doc-docs-public-support-matrix)).
+Independent project, not affiliated with SpaceXSI.
 
 > Writing style: ASD-STE100-inspired English. Use short sentences, active verbs and one instruction per step. This is not certified compliance.
+
+## Start here
+
+| Path | Next step |
+| --- | --- |
+| [Use a gadget](https://github.com/adidshaft/grok-gadgets/blob/main/docs/getting-started/connect-grok-bot.md) | Connect Grok Bot to the tested kit |
+| [Build a gadget](docs/first-success.md) | Start with a simulated light |
+| [Run the gateway](docs/daily-use.md) | Keep the current Mac route available |
 
 ## Install from PyPI
 
@@ -46,8 +54,9 @@ order Grok Bot will: list the gadgets, set the simulated light blue, read its st
 
 ```mermaid
 flowchart LR
-    B["Grok Bot"] -->|Local command| R["rehearse"]
-    R --> G["Gateway<br>Tested Mac setup"]
+    B["Grok Bot on Mac or iPhone"] -->|HTTPS and OAuth| T["Owner-run tunnel"]
+    T --> G["Gateway<br>Owner’s Mac"]
+    R["rehearse: local check"] --> G
     G --> S["Simulated light"]
     G --> D["Linux / ESP32 gadgets"]
 ```
@@ -89,7 +98,10 @@ Read the [connection evidence](https://github.com/adidshaft/grok-gadgets/blob/de
 On 13 October 2026 Grok Bot also called the six tools natively from the Mac and the iPhone.
 It used an owner-run tunnel and `serve --oauth`, a sign-in that you approve on the Mac
 ([tunnel guide](docs/tunnel.md#oauth-sign-in-for-grok-bot)).
-The Mac must keep the gateway running, including for Wi-Fi devices. Never expose port 8765.
+The owner tested this route for one day, including a phone call over cellular.
+The Mac must stay awake and run the gateway and tunnel. During sleep, calls failed; nothing was queued.
+A gateway without the Mac is planned, not available yet. See the [roadmap](https://github.com/adidshaft/grok-gadgets/blob/main/ROADMAP.md).
+Never expose port 8765.
 Read [remote access](docs/remote-access.md) and [security](SECURITY.md) first.
 
 ## Troubleshooting
@@ -109,7 +121,7 @@ Read [remote access](docs/remote-access.md) and [security](SECURITY.md) first.
 - [Track usage](docs/usage.md): calls by token, device, capability and day, and an opt-in usage hook.
 - [Local operation](docs/local-operation.md), [architecture](docs/architecture.md) and [protocol 0.1.0](protocol/0.1.0/README.md)
 - Demo without HTTP: `uv run python -m grok_gadgets_gateway.demo` (uses test-only controls)
-- Shared docs and the website: [hub repository](https://github.com/adidshaft/grok-gadgets) and <https://grok-gadgets.pages.dev/>
+- Shared docs and the website: [hub repository](https://github.com/adidshaft/grok-gadgets) and <https://grokgadgets.org/>
 
 ## Community
 
@@ -123,6 +135,5 @@ Contribute on the `dev` branch; `main` holds tagged stable releases ([branches](
 ## License and affiliation
 
 Apache-2.0; see [LICENSE](LICENSE) and [NOTICE](NOTICE). Grok Gadgets is an independent
-open-source project. It is **not affiliated with, endorsed by or sponsored by SpaceXSI or
-xAI**, which make Grok and Grok Bot. We reconstructed the pre-publication commit dates; see the
+open-source project. It is **not affiliated with, endorsed by or sponsored by SpaceXSI**. We reconstructed the pre-publication commit dates; see the
 [history record](https://github.com/adidshaft/grok-gadgets/blob/main/docs/verification/publication-sanitization.md).

@@ -201,6 +201,12 @@ def test_estimates_are_labelled_and_calibration_is_saved(tmp_path):
     assert (rate_file.stat().st_mode & 0o777) == 0o600
     with pytest.raises(OperatorError, match="no tool calls"):
         calibrate([], 1.0, "%", since, until, rate_file)
+    # A whole-percent page often shows no change: a zero rate is refused and nothing is saved.
+    rate_file.unlink()
+    for used in (0, 0.0, -1):
+        with pytest.raises(OperatorError, match="more than zero|nothing was saved"):
+            calibrate(calls, used, "%", since, until, rate_file)
+    assert not rate_file.exists()
     rate_file.write_text("{")
     with pytest.raises(OperatorError, match="damaged"):
         read_rate(rate_file)
