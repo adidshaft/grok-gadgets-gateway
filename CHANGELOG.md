@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.1.0-alpha.11 — 13 October 2026
+
+- On 13 October 2026 the owner's Grok Bot called the six tools natively from the Mac and the iPhone through `serve --oauth` behind an owner-run tunnel; the request log recorded nine `grok-bot` calls and the owner saw the OLED text (hub #154, ADR 007).
+- OAuth sign-in for Grok Bot ([#71](https://github.com/adidshaft/grok-gadgets-gateway/issues/71)). A personal Grok Bot cannot add a server with a fixed bearer header (hub #154). With `serve --oauth`, the gateway is its own OAuth 2.1 sign-in server at `https://ALLOWED-HOST`: protected-resource metadata, dynamic client registration, PKCE, refresh and revocation, built on the MCP SDK's auth routes. The sign-in page asks for nothing; the owner approves its code on the Mac with `grok-gadgets-gateway oauth approve CODE --name grok-bot`. Tokens are stored as hashes, carry the approved name into the request log and limits, and end at once with `oauth revoke NAME` or `remote off`. `service install --oauth` passes it to the service.
+- Usage tracking ([#132](https://github.com/adidshaft/grok-gadgets-gateway/issues/132), guide `docs/usage.md`). Tool-call lines add `bytes_in` and `bytes_out`. `grok-gadgets-gateway usage` summarizes a request log by token, device, capability and UTC day, with `--since`, `--until`, `--token` and `--json`. `--rate` or `--calibrate` (from the owner's own Grok Bot readings) adds a column labelled estimate; the gateway never reads a Grok Bot account. `serve` and `stdio` accept an opt-in `--usage-hook CMD` that receives one allowlisted JSON line per call, never tokens or arguments, without delaying or failing a call.
+
+- Tunnel hardening ([#130](https://github.com/adidshaft/grok-gadgets-gateway/issues/130), hub #4). A request through a tunnel Host or with a forwarding header is remote: it needs a named token (the local `default` token gets 403), and `grok-gadgets-gateway remote off|on|status` is a kill switch that refuses remote requests with 503 at once. `--allowed-host` requires `--request-log`, and tool-call lines record `"remote"`. The device port closes HTTP connections and logs `device_http_rejected`. `service install --allowed-host` passes the tunnel name to the service.
+
 ## 0.1.0-alpha.10 — 13 October 2026
 
 - On 12–13 October 2026 the owner's Mac and OLED kit passed name, two address-change and restart checks with the service (`docs/verification/always-on-2026-10-13.md`). Linux systemd is not yet tested on a real host.

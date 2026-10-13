@@ -98,6 +98,7 @@ async def test_streamable_http_requires_token_and_runs_simulator(tmp_path):
         port=port,
         allowed_hosts=["tunnel.example"],
         log_stream=logs,
+        request_log=tmp_path / "requests.jsonl",
     ) as running:
         assert running.url == f"http://127.0.0.1:{port}/mcp"
         assert running.device_port == device_port
@@ -167,7 +168,8 @@ async def test_streamable_http_requires_token_and_runs_simulator(tmp_path):
             {"Authorization": f"Bearer {TOKEN}"},
             ForcedHost("evil.example"),
         )
-        assert 421 in rejected
+        # Another Host is remote, and the local token never works remotely (test_remote: 421).
+        assert rejected == [403]
 
     text = logs.getvalue()
     assert "args_sha256" in text and TOKEN not in text and DEVICE not in text

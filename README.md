@@ -7,24 +7,7 @@ Independent project, not affiliated with SpaceXSI or xAI.
 
 > Writing style: ASD-STE100-inspired English. Use short sentences, active verbs and one instruction per step. This is not certified compliance.
 
-## Quick start
-
-Needs Git and [uv](https://docs.astral.sh/uv/getting-started/installation/).
-
-```sh
-git clone https://github.com/adidshaft/grok-gadgets-gateway.git
-cd grok-gadgets-gateway
-uv sync --locked
-uv run grok-gadgets-gateway init
-uv run grok-gadgets-gateway serve --simulator
-uv run grok-gadgets-gateway rehearse
-```
-
-Run `rehearse` in a second terminal while `serve` keeps running. It calls the six tools in the
-order Grok Bot will: list the gadgets, set the simulated light blue, read its state. See
-[first success in five minutes](docs/first-success.md).
-
-### Install with pip
+## Install from PyPI
 
 The package is on [PyPI](https://pypi.org/project/grok-gadgets-gateway/). Install it into a virtual
 environment with Python 3.11+. It is an alpha, so name the version or pass `--pre`:
@@ -39,6 +22,25 @@ Each [GitHub release](https://github.com/adidshaft/grok-gadgets-gateway/releases
 `SHA256SUMS`; the PyPI files are the same build.
 
 On an Intel Mac, `cryptography` has no prebuilt wheel and needs a Rust toolchain to build.
+
+For your first simulator test, follow [first success](docs/first-success.md).
+
+## Quick start
+
+For contributors: clone the source with Git and [uv](https://docs.astral.sh/uv/getting-started/installation/).
+
+```sh
+git clone https://github.com/adidshaft/grok-gadgets-gateway.git
+cd grok-gadgets-gateway
+uv sync --locked
+uv run grok-gadgets-gateway init
+uv run grok-gadgets-gateway serve --simulator
+uv run grok-gadgets-gateway rehearse
+```
+
+Run `rehearse` in a second terminal while `serve` keeps running. It calls the six tools in the
+order Grok Bot will: list the gadgets, set the simulated light blue, read its state. See
+[first success in five minutes](docs/first-success.md).
 
 ## How it works
 
@@ -84,10 +86,11 @@ address, `serve --lan-listen`; see [Wi-Fi devices](docs/wifi-devices.md).
 
 The owner tested Grok Bot local commands on 12 October 2026. Grok Bot ran `rehearse` on the Mac.
 Read the [connection evidence](https://github.com/adidshaft/grok-gadgets/blob/dev/docs/verification/grok-local-execution-2026-10-12.md).
-Native MCP calls and the public tunnel test remain open ([tracking issue](https://github.com/adidshaft/grok-gadgets/issues/4)).
-The Mac must keep the gateway running, including for Wi-Fi devices. `serve` is not an
-OAuth server, and a tunnel does not replace the bearer token. Never expose port 8765. Read
-[remote access](docs/remote-access.md) and [security](SECURITY.md) first.
+On 13 October 2026 Grok Bot also called the six tools natively from the Mac and the iPhone.
+It used an owner-run tunnel and `serve --oauth`, a sign-in that you approve on the Mac
+([tunnel guide](docs/tunnel.md#oauth-sign-in-for-grok-bot)).
+The Mac must keep the gateway running, including for Wi-Fi devices. Never expose port 8765.
+Read [remote access](docs/remote-access.md) and [security](SECURITY.md) first.
 
 ## Troubleshooting
 
@@ -103,6 +106,7 @@ OAuth server, and a tunnel does not replace the bearer token. Never expose port 
 
 - [First success](docs/first-success.md) and the [simulator guide](docs/simulator.md)
 - [Keep the gateway running](docs/always-on.md) as a background service.
+- [Track usage](docs/usage.md): calls by token, device, capability and day, and an opt-in usage hook.
 - [Local operation](docs/local-operation.md), [architecture](docs/architecture.md) and [protocol 0.1.0](protocol/0.1.0/README.md)
 - Demo without HTTP: `uv run python -m grok_gadgets_gateway.demo` (uses test-only controls)
 - Shared docs and the website: [hub repository](https://github.com/adidshaft/grok-gadgets) and <https://grok-gadgets.pages.dev/>

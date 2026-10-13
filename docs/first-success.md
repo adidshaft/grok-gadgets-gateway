@@ -4,16 +4,15 @@ Run the gateway with its simulated light. Then rehearse what your Grok Bot will 
 six gadgets tools in the same order, on your own computer. You need no hardware, account or
 API key.
 
-You need Git and [uv](https://docs.astral.sh/uv/getting-started/installation/).
+You need Python 3.11 or later. Install the published alpha in a virtual environment.
 
 ## 1. Start the gateway
 
 ```sh
-git clone https://github.com/adidshaft/grok-gadgets-gateway.git
-cd grok-gadgets-gateway
-uv sync --locked
-uv run grok-gadgets-gateway init
-uv run grok-gadgets-gateway serve --simulator
+python3 -m venv .venv
+.venv/bin/python -m pip install --pre grok-gadgets-gateway
+.venv/bin/grok-gadgets-gateway init
+.venv/bin/grok-gadgets-gateway serve --simulator
 ```
 
 Leave it running. It serves MCP on `http://127.0.0.1:8766/mcp` and accepts only the bearer
@@ -24,7 +23,7 @@ token that `init` wrote to `~/.config/grok-gadgets/mcp-token`.
 In a second terminal, in the same folder:
 
 ```sh
-uv run grok-gadgets-gateway rehearse
+.venv/bin/grok-gadgets-gateway rehearse
 ```
 
 Expected output:
@@ -41,7 +40,7 @@ Rehearsal passed: these are the calls Grok Bot will make. It does not prove a Gr
 MCP connector will use. For your own gadget, name the command and its arguments:
 
 ```sh
-uv run grok-gadgets-gateway rehearse --device desk-lamp --command set.light --args '{"on": true}'
+.venv/bin/grok-gadgets-gateway rehearse --device desk-lamp --command set.light --args '{"on": true}'
 ```
 
 ## What this proves
@@ -53,11 +52,13 @@ CI runs this path from a clean checkout on every push and every night:
 [`scripts/check_first_success.py`](../scripts/check_first_success.py) runs the commands from the
 README quick start, including `rehearse`.
 
+On Windows, use `.venv\Scripts\python.exe` and `.venv\Scripts\grok-gadgets-gateway.exe` instead.
+
 ## If something fails
 
 | Symptom | Next step |
 | --- | --- |
 | `no authenticated gateway answers` | Start `serve` first. If you changed `--port` on `serve`, pass the same `--port` to `rehearse`. |
-| `MCP token file does not exist` | Run `uv run grok-gadgets-gateway init`. |
+| `MCP token file does not exist` | Run `.venv/bin/grok-gadgets-gateway init`. |
 | Port 8766 or 8765 in use | Stop the other process, or pass `--port` and `--device-port` to `serve`. |
 | `no gadget offers rgb.set` | Start `serve` with `--simulator`. |

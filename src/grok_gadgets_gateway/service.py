@@ -5,8 +5,11 @@ import hashlib
 import hmac
 import json
 import re
+import time
+from collections import deque
 from contextlib import asynccontextmanager
 from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
 
 import uvicorn
 from mcp.server.transport_security import TransportSecuritySettings
@@ -28,6 +31,37 @@ _HOST = re.compile(r"[A-Za-z0-9][A-Za-z0-9.-]*(?::[0-9]{1,5})?$")
 MCP_PATH = "/mcp"
 # Set by BearerAuth after a token matches; any client-sent copy is removed first.
 TOKEN_HEADER = b"x-grok-gadgets-token"
+REMOTE_HEADER = b"x-grok-gadgets-remote"
+_LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
+# A tunnel or proxy adds one of these; a local client does not.
+_FORWARDING_HEADERS = (b"forwarded", b"x-forwarded-for", b"x-forwarded-host", b"x-real-ip")
+
+
+# OAuth discovery and sign-in paths answer without a bearer token (serve --oauth only).
+OAUTH_PATHS = ("/authorize", "/token", "/register", "/revoke", "/oauth/approve")
+OAUTH_CALLS_PER_MINUTE = 60
+
+
+def _host_name(headers):
+    host = headers.get(b"host", b"").decode("latin-1").strip().lower()
+    if host.startswith("["):
+        return host[1 : host.find("]")] if "]" in host else host
+    return host.partition(":")[0] if host.count(":") == 1 else host
+
+
+def host_allowed(headers, extra_hosts):
+    """The Host check for paths the MCP app does not cover: loopback or an --allowed-host."""
+    host = headers.get(b"host", b"").decode("latin-1").strip().lower()
+    names = {*_LOOPBACK_HOSTS, *(h.lower() for h in extra_hosts if ":" not in h)}
+    exact = {h.lower() for h in extra_hosts if ":" in h}
+    return host in exact or _host_name(headers) in names
+
+
+def is_remote(headers):
+    """True for a request through a tunnel: a non-loopback Host or a forwarding header."""
+    if any(name in headers for name in _FORWARDING_HEADERS):
+        return True
+    return _host_name(headers) not in _LOOPBACK_HOSTS
 
 
 class FileTokenVerifier:
@@ -38,13 +72,19 @@ class FileTokenVerifier:
     The token is never logged.
     """
 
-    def __init__(self, path, named_path=None):
+    def __init__(self, path, named_path=None, oauth=None):
         self.path = path
         self.named_path = named_path
+        # With serve --oauth, an access token from an owner-approved sign-in also matches.
+        self.oauth = oauth
 
     async def verify_token(self, token):
         if not isinstance(token, str) or not token:
             return None
+        if self.oauth is not None:
+            name = await self.oauth.verify_name(token)
+            if name is not None:
+                return name
         if self.named_path is not None:
             try:
                 name = match_named_token(token, read_named_tokens(self.named_path))
@@ -96,12 +136,53 @@ class BearerAuth:
     authorization server on loopback. Rejections are logged without the token or body.
     """
 
-    def __init__(self, app, verifier, limits=None, log=None):
+    def __init__(
+        self,
+        app,
+        verifier,
+        limits=None,
+        log=None,
+        remote_switch=None,
+        oauth_app=None,
+        resource_metadata=None,
+        allowed_hosts=(),
+        clock=time.monotonic,
+    ):
         self.app = app
         self.verifier = verifier
         self.limits = limits or Limits()
         self.log = log
+        # Path of the kill-switch file; read on every remote request.
+        self.remote_switch = remote_switch
+        # serve --oauth: discovery and sign-in routes, and the metadata URL for 401s.
+        self.oauth_app = oauth_app
+        self.resource_metadata = resource_metadata
+        self.allowed_hosts = tuple(allowed_hosts)
+        self.clock = clock
+        self.oauth_calls = deque()
         self.active = {}
+
+    def _oauth_path(self, path):
+        return self.oauth_app is not None and (
+            path.startswith("/.well-known/") or path in OAUTH_PATHS
+        )
+
+    async def _oauth(self, scope, receive, send, values):
+        if not host_allowed(values, self.allowed_hosts):
+            self._reject(421, "host_not_allowed", None)
+            await _send_json(send, 421, "misdirected_request", "Host is not allowed")
+            return
+        now = self.clock()
+        while self.oauth_calls and now - self.oauth_calls[0] >= 60:
+            self.oauth_calls.popleft()
+        if len(self.oauth_calls) >= OAUTH_CALLS_PER_MINUTE:
+            self._reject(429, "oauth_rate_limited", None)
+            await _send_json(
+                send, 429, "slow_down", "Too many sign-in requests", [(b"retry-after", b"10")]
+            )
+            return
+        self.oauth_calls.append(now)
+        await self.oauth_app(scope, receive, send)
 
     def _reject(self, status, reason, name):
         if self.log is not None:
@@ -113,18 +194,39 @@ class BearerAuth:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
-        headers = [(k, v) for k, v in scope.get("headers") or [] if k != TOKEN_HEADER]
+        internal = (TOKEN_HEADER, REMOTE_HEADER)
+        headers = [(k, v) for k, v in scope.get("headers") or [] if k not in internal]
         values = dict(headers)
+        remote = is_remote(values)
+        if remote and self.remote_switch is not None and Path(self.remote_switch).exists():
+            self._reject(503, "remote_disabled", None)
+            await _send_json(
+                send, 503, "remote_disabled", "Remote access is turned off on this gateway"
+            )
+            return
+        if self._oauth_path(scope.get("path", "")):
+            await self._oauth(scope, receive, send, values)
+            return
         scheme, _, token = values.get(b"authorization", b"").decode("latin-1").partition(" ")
         name = await self.verifier.verify_token(token) if scheme.lower() == "bearer" else None
         if name is None:
             self._reject(401, "invalid_token", None)
+            challenge = 'Bearer error="invalid_token"'
+            if self.resource_metadata:
+                challenge += f', resource_metadata="{self.resource_metadata}"'
             await _send_json(
                 send,
                 401,
                 "invalid_token",
                 "Bearer token required",
-                [(b"www-authenticate", b'Bearer error="invalid_token"')],
+                [(b"www-authenticate", challenge.encode())],
+            )
+            return
+        if remote and name == DEFAULT_TOKEN_NAME:
+            # The local mcp-token never leaves this computer; remote clients get a named one.
+            self._reject(403, "named_token_required", name)
+            await _send_json(
+                send, 403, "named_token_required", "Use a named token for remote access"
             )
             return
         limits = self.limits
@@ -165,7 +267,8 @@ class BearerAuth:
                 started = True
             await send(message)
 
-        scope = {**scope, "headers": [*headers, (TOKEN_HEADER, name.encode())]}
+        added = [(TOKEN_HEADER, name.encode()), (REMOTE_HEADER, b"1" if remote else b"0")]
+        scope = {**scope, "headers": [*headers, *added]}
         self.active[name] = self.active.get(name, 0) + 1
         try:
             if scope.get("method") == "POST":
@@ -265,6 +368,11 @@ async def serve_gateway(
     lan_directory=None,
     lan_recheck=None,
     resolver=None,
+    remote_switch=None,
+    usage_hook=None,
+    oauth=False,
+    oauth_issuer=None,
+    oauth_directory=None,
 ):
     """Run until the context exits. HTTP and the device listener bind 127.0.0.1.
 
@@ -273,6 +381,16 @@ async def serve_gateway(
     """
     if host != "127.0.0.1":
         raise ValueError("MCP HTTP binds 127.0.0.1 only")
+    if allowed_hosts and request_log is None:
+        # A tunnel is only allowed when every call through it is recorded.
+        raise OperatorError("--allowed-host requires --request-log")
+    if oauth:
+        if oauth_issuer is None:
+            if len(allowed_hosts) != 1:
+                raise OperatorError("--oauth needs exactly one --allowed-host: the tunnel name")
+            oauth_issuer = f"https://{allowed_hosts[0]}"
+        if request_log is None:
+            raise OperatorError("--oauth requires --request-log")
     if simulator_config and not simulator:
         raise OperatorError("--simulator-config requires --simulator")
     if credentials is None and lan_listen is not None:
@@ -314,6 +432,7 @@ async def serve_gateway(
             host="127.0.0.1",
             port=device_port,
             reserved_ids=[sim.device_id] if sim else [],
+            log=log,
         )
 
     def make_lan_server(address):
@@ -391,6 +510,11 @@ async def serve_gateway(
             mcp_tokens=mcp_tokens,
             limits=limits,
             rate_limiter=rate_limiter if rate_limiter is not None else RateLimiter(),
+            remote_switch=remote_switch,
+            usage_hook=usage_hook,
+            allowed_hosts=allowed_hosts,
+            oauth_issuer=oauth_issuer if oauth else None,
+            oauth_directory=oauth_directory,
         ) as running:
             follower = None
             if lan_server is not None:
@@ -423,6 +547,40 @@ async def serve_gateway(
         log.close()
 
 
+def _oauth_routes(issuer, directory, log):
+    """The SDK's OAuth routes, protected-resource metadata and the owner approval page."""
+    from mcp.server.auth.routes import (
+        build_resource_metadata_url,
+        create_auth_routes,
+        create_protected_resource_routes,
+    )
+    from mcp.server.auth.settings import ClientRegistrationOptions, RevocationOptions
+    from pydantic import AnyHttpUrl
+    from starlette.applications import Starlette
+    from starlette.routing import Route
+
+    from .oauth import APPROVE_PATH, SCOPE, OwnerApprovedOAuth
+
+    provider = OwnerApprovedOAuth(issuer, directory, log)
+    issuer_url = AnyHttpUrl(provider.issuer)
+    resource = AnyHttpUrl(provider.issuer + MCP_PATH)
+    routes = [
+        *create_auth_routes(
+            provider,
+            issuer_url,
+            client_registration_options=ClientRegistrationOptions(
+                enabled=True, valid_scopes=[SCOPE], default_scopes=[SCOPE]
+            ),
+            revocation_options=RevocationOptions(enabled=True),
+        ),
+        *create_protected_resource_routes(
+            resource, [issuer_url], scopes_supported=[SCOPE], resource_name="Grok Gadgets gateway"
+        ),
+        Route(APPROVE_PATH, provider.approve_page, methods=["GET"]),
+    ]
+    return provider, Starlette(routes=routes), str(build_resource_metadata_url(resource))
+
+
 def gateway_version():
     try:
         return version("grok-gadgets-gateway")
@@ -443,6 +601,11 @@ async def _serve_http(
     mcp_tokens=None,
     limits=None,
     rate_limiter=None,
+    remote_switch=None,
+    usage_hook=None,
+    allowed_hosts=(),
+    oauth_issuer=None,
+    oauth_directory=None,
 ):
     mcp = make_server(
         gateway,
@@ -453,6 +616,7 @@ async def _serve_http(
         rate_limiter=rate_limiter,
         listener_status=device_server.status if device_server else None,
         http=True,
+        usage_hook=usage_hook,
         log_level="WARNING",
     )
     app = mcp.streamable_http_app(
@@ -461,8 +625,20 @@ async def _serve_http(
         transport_security=security,
         host="127.0.0.1",
     )
+    provider = oauth_app = resource_metadata = None
+    if oauth_issuer is not None:
+        provider, oauth_app, resource_metadata = _oauth_routes(oauth_issuer, oauth_directory, log)
     config = uvicorn.Config(
-        BearerAuth(app, FileTokenVerifier(mcp_token, mcp_tokens), limits, log),
+        BearerAuth(
+            app,
+            FileTokenVerifier(mcp_token, mcp_tokens, provider),
+            limits,
+            log,
+            remote_switch,
+            oauth_app=oauth_app,
+            resource_metadata=resource_metadata,
+            allowed_hosts=allowed_hosts,
+        ),
         host="127.0.0.1",
         port=port,
         log_level="warning",

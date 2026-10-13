@@ -22,9 +22,12 @@ from .operator import (
     mcp_token_path,
     mcp_tokens_path,
     read_mcp_token,
+    remote_enabled,
+    remote_off_path,
     revoke,
     revoke_mcp_token,
     rotate_mcp_token,
+    set_remote,
     write_token_file,
 )
 from .service import MCP_PATH, Limits, gateway_version, serve_gateway
@@ -39,6 +42,9 @@ COMMANDS = (
     "devices",
     "rotate-mcp-token",
     "mcp-token",
+    "remote",
+    "oauth",
+    "usage",
     "serve",
     "stdio",
     "usb-bridge",
@@ -129,6 +135,26 @@ def _positive_int(text):
     return value
 
 
+def _usage_hook_option(parser):
+    parser.add_argument(
+        "--usage-hook",
+        metavar="CMD",
+        help="start CMD once and write one JSON usage line per tool call to its stdin "
+        "(no tokens or arguments; never delays a call). See docs/usage.md",
+    )
+
+
+def _start_usage_hook(parser, command):
+    if not command:
+        return None
+    from .usage import UsageHook
+
+    try:
+        return UsageHook(command)
+    except (OperatorError, ValueError) as exc:
+        parser.error(f"--usage-hook: {exc}")
+
+
 def _request_log_option(parser):
     parser.add_argument(
         "--request-log",
@@ -203,6 +229,51 @@ def build_parser():
     for action in (token_issue, token_sub.choices["list"], token_revoke):
         action.add_argument("--mcp-tokens", help=f"token list (default {mcp_tokens_path()})")
 
+    usage = sub.add_parser(
+        "usage", help="summarize tool calls by token, device, capability and day"
+    )
+    usage.add_argument(
+        "--log",
+        action="append",
+        metavar="PATH",
+        help="request log to read (repeatable; default: the service's requests.jsonl)",
+    )
+    usage.add_argument("--since", metavar="ISO", help="from this UTC date or time")
+    usage.add_argument("--until", metavar="ISO", help="up to this UTC date or time")
+    usage.add_argument("--token", metavar="NAME", help="only calls with this token name")
+    usage.add_argument("--json", action="store_true", help="print JSON")
+    usage.add_argument(
+        "--rate", type=float, metavar="N", help="estimate N units per call (needs --unit)"
+    )
+    usage.add_argument("--unit", metavar="TEXT", help='estimate unit, e.g. "%% weekly usage"')
+    usage.add_argument(
+        "--calibrate",
+        type=float,
+        metavar="USED",
+        help="Grok Bot usage you measured over --since..--until (needs --unit); saves the rate",
+    )
+
+    oauth = sub.add_parser(
+        "oauth", help="approve, list or revoke Grok Bot sign-ins for serve --oauth"
+    )
+    oauth_sub = oauth.add_subparsers(dest="oauth_command", required=True)
+    oauth_sub.add_parser("pending", help="list sign-ins waiting for your approval")
+    oauth_approve = oauth_sub.add_parser("approve", help="approve the sign-in with this code")
+    oauth_approve.add_argument("code")
+    oauth_approve.add_argument(
+        "--name", default="grok-bot", help="name in logs and limits (default grok-bot)"
+    )
+    oauth_deny = oauth_sub.add_parser("deny", help="refuse the sign-in with this code")
+    oauth_deny.add_argument("code")
+    oauth_sub.add_parser("list", help="list live sign-ins (never the tokens)")
+    oauth_revoke = oauth_sub.add_parser("revoke", help="end every sign-in with this name at once")
+    oauth_revoke.add_argument("name")
+
+    remote = sub.add_parser(
+        "remote", help="kill switch: turn remote (tunnel) access off or on at once"
+    )
+    remote.add_argument("state", choices=["off", "on", "status"])
+
     serve = sub.add_parser("serve", help="run authenticated HTTP MCP and the device listener")
     _simulator_options(serve)
     _credentials_option(serve)
@@ -238,7 +309,8 @@ def build_parser():
         "--allowed-host",
         action="append",
         default=[],
-        help="extra Host header allowed for a tunnel in front of 127.0.0.1",
+        help="extra Host header allowed for a tunnel in front of 127.0.0.1; "
+        "needs --request-log, and remote requests need a named token",
     )
     serve.add_argument(
         "--lan-listen",
@@ -246,7 +318,14 @@ def build_parser():
         help="also run the TLS device listener on this private LAN address of this computer "
         "(port 8767 by default; off unless set; run lan-cert first)",
     )
+    serve.add_argument(
+        "--oauth",
+        action="store_true",
+        help="let Grok Bot sign in with OAuth at https://ALLOWED-HOST; you approve each sign-in "
+        "with: grok-gadgets-gateway oauth approve CODE",
+    )
     _request_log_option(serve)
+    _usage_hook_option(serve)
 
     lan_cert = sub.add_parser(
         "lan-cert", help="issue the LAN listener certificate for one private address or NAME.local"
@@ -286,6 +365,15 @@ def build_parser():
     )
     service_install.add_argument("--port", type=int, default=8766, help="loopback MCP HTTP port")
     service_install.add_argument(
+        "--allowed-host",
+        action="append",
+        default=[],
+        help="tunnel Host header to allow (see serve --allowed-host)",
+    )
+    service_install.add_argument(
+        "--oauth", action="store_true", help="let Grok Bot sign in (see serve --oauth)"
+    )
+    service_install.add_argument(
         "--device-port", type=int, default=8765, help="loopback device port"
     )
     service_sub.add_parser("uninstall", help="stop the service and remove it; config stays")
@@ -299,6 +387,7 @@ def build_parser():
     _credentials_option(stdio)
     stdio.add_argument("--device-port", type=int, default=8765)
     _request_log_option(stdio)
+    _usage_hook_option(stdio)
 
     bridge = sub.add_parser("usb-bridge", help="connect a USB serial device to the gateway")
     bridge.add_argument("serial_port")
@@ -359,8 +448,14 @@ def run_stdio(parser, args):
                 "simulator": simulator.device_id if simulator else None,
             }
         )
+    usage_hook = _start_usage_hook(parser, args.usage_hook)
     server = make_server(
-        gateway, simulator, device_server, args.test_controls, request_log=request_log
+        gateway,
+        simulator,
+        device_server,
+        args.test_controls,
+        request_log=request_log,
+        usage_hook=usage_hook,
     )
     try:
         asyncio.run(server.run_stdio_async())
@@ -372,8 +467,9 @@ def run_stdio(parser, args):
             in_use = in_use.exceptions[0]
         parser.error(str(in_use))
     finally:
+        hook = usage_hook.close() if usage_hook is not None else None
         if request_log is not None:
-            request_log.append({"event": "stdio_stopped"})
+            request_log.append({"event": "stdio_stopped", "usage_hook": hook})
             request_log.close()
     return 0
 
@@ -449,7 +545,14 @@ def run(parser, args):
         return 0
     if command == "mcp-token":
         return run_mcp_token(parser, args)
+    if command == "remote":
+        return run_remote(parser, args)
+    if command == "oauth":
+        return run_oauth(parser, args)
+    if command == "usage":
+        return run_usage(parser, args)
     if command == "serve":
+        usage_hook = _start_usage_hook(parser, args.usage_hook)
         try:
             asyncio.run(
                 _serve(
@@ -466,12 +569,22 @@ def run(parser, args):
                     rate_limiter=RateLimiter(args.calls_per_minute, args.commands_per_minute),
                     request_log=args.request_log,
                     lan_listen=args.lan_listen,
+                    remote_switch=str(remote_off_path()),
+                    usage_hook=usage_hook,
+                    oauth=args.oauth,
                 )
             )
         except OperatorError as exc:
             parser.error(str(exc))
         except KeyboardInterrupt:
             return 0
+        finally:
+            if usage_hook is not None:
+                counts = usage_hook.close()
+                print(
+                    f"Usage hook: {counts['sent']} lines sent, {counts['dropped']} dropped.",
+                    file=sys.stderr,
+                )
         return 0
     if command == "usb-bridge":
         from .usb_bridge import bridge
@@ -607,6 +720,15 @@ def run_service(parser, args, service=None):
         if action == "install":
             if not mcp_token_path().is_file():
                 parser.error("the gateway is not set up. Run: grok-gadgets-gateway init")
+            if args.oauth and len(args.allowed_host) != 1:
+                parser.error("--oauth needs exactly one --allowed-host: the tunnel name")
+            if args.allowed_host:
+                from .service import transport_security
+
+                try:
+                    transport_security(args.allowed_host)
+                except ValueError as exc:
+                    parser.error(str(exc))
             ports = [("127.0.0.1", args.port), ("127.0.0.1", args.device_port)]
             if args.lan_listen:
                 from .lan import lan_dir, parse_lan_address, resolve_lan_host
@@ -620,7 +742,12 @@ def run_service(parser, args, service=None):
                 program,
                 *prefix,
                 *serve_arguments(
-                    args.lan_listen, args.port, args.device_port, service.logs / "requests.jsonl"
+                    args.lan_listen,
+                    args.port,
+                    args.device_port,
+                    service.logs / "requests.jsonl",
+                    args.allowed_host,
+                    args.oauth,
                 ),
             ]
             environment = {
@@ -660,6 +787,102 @@ def run_service(parser, args, service=None):
         return 0
     except OperatorError as exc:
         parser.error(str(exc))
+
+
+def run_usage(parser, args):
+    from .usage import (
+        calibrate,
+        default_log,
+        format_summary,
+        parse_time,
+        read_calls,
+        read_rate,
+        summarize,
+    )
+
+    if (args.rate is not None or args.calibrate is not None) and not args.unit:
+        parser.error("--rate and --calibrate need --unit")
+    if args.rate is not None and args.calibrate is not None:
+        parser.error("use --rate or --calibrate, not both")
+    if args.calibrate is not None and not (args.since and args.until):
+        parser.error("--calibrate needs --since and --until around your two readings")
+    paths = args.log
+    if not paths:
+        found = default_log()
+        if found is None or not found.is_file():
+            parser.error("no service request log here; pass --log PATH")
+        paths = [found]
+    try:
+        since = parse_time(args.since) if args.since else None
+        until = parse_time(args.until, end=True) if args.until else None
+        calls = read_calls(paths, since, until, args.token)
+        if args.calibrate is not None:
+            rate = calibrate(calls, args.calibrate, args.unit, since, until)
+            print(f"Saved the estimate rate: {rate['source']}.", file=sys.stderr)
+        elif args.rate is not None:
+            rate = {"rate": args.rate, "unit": args.unit}
+        else:
+            rate = read_rate()
+    except OperatorError as exc:
+        parser.error(str(exc))
+    summary = summarize(calls, rate)
+    if args.json:
+        print(json.dumps(summary, indent=2))
+    else:
+        print(format_summary(summary))
+    return 0
+
+
+def run_oauth(parser, args):
+    from datetime import UTC, datetime
+
+    from .oauth import approve, pending_requests, revoke_name, sign_ins
+
+    def when(seconds):
+        return datetime.fromtimestamp(seconds, UTC).strftime("%Y-%m-%d %H:%M UTC")
+
+    try:
+        action = args.oauth_command
+        if action == "pending":
+            requests = pending_requests()
+            for request in requests:
+                print(
+                    f"{request['code']}\t{request.get('client_name') or '-'}\t"
+                    f"{request.get('redirect_host') or '-'}\texpires {when(request['expires_at'])}"
+                )
+            if not requests:
+                print("No sign-in is waiting.", file=sys.stderr)
+        elif action == "approve":
+            code = approve(args.code, args.name)
+            print(
+                f"Approved {code} as {args.name}. The sign-in page continues within seconds.",
+                file=sys.stderr,
+            )
+        elif action == "deny":
+            code = approve(args.code, None, deny=True)
+            print(f"Refused {code}.", file=sys.stderr)
+        elif action == "list":
+            for name, client, expires in sign_ins():
+                print(f"{name}\t{client}\trefresh expires {when(expires)}")
+        else:
+            revoke_name(args.name)
+            print(f"Ended every {args.name} sign-in; its tokens fail now.", file=sys.stderr)
+    except (OperatorError, OSError) as exc:
+        parser.error(str(exc))
+    return 0
+
+
+def run_remote(parser, args):
+    try:
+        if args.state != "status":
+            set_remote(args.state == "on")
+    except OSError as exc:
+        parser.error(f"cannot change {remote_off_path()}: {exc.strerror}")
+    if remote_enabled():
+        print("remote: on (requests through --allowed-host need a named token)")
+    else:
+        print("remote: off (every remote request gets 503; loopback and devices still work)")
+    return 0
 
 
 def run_mcp_token(parser, args):
