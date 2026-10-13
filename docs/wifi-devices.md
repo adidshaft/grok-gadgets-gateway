@@ -48,9 +48,9 @@ name, for example `my-mac.local`. On macOS, `scutil --get LocalHostName` prints 
 `.local`. The certificate then names only the name, so it stays valid when the address changes.
 `serve` binds the name's current private address and checks it again every 30 seconds. When the
 address changes, it moves the Wi-Fi listener and logs `lan_rebound`. The board needs firmware
-that looks up `.local` names
-([ESP32 SDK #99](https://github.com/adidshaft/grok-gadgets-esp32-sdk/issues/99)); until then,
-provision it with the IPv4 address.
+that looks up `.local` names.
+The released ESP32 SDK v0.2.0-alpha.12 supports these names.
+Use an IPv4 address only with older firmware that does not support name lookup.
 
 When the board shows **Online**, you can [run the gateway as a background service](always-on.md)
 so it comes back after a reboot.

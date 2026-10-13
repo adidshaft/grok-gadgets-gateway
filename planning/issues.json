@@ -779,6 +779,23 @@
       ],
       "stage": "review",
       "evidence": "GitHub #115, PR #116. The effect after a restart is not yet observed."
+    },
+    {
+      "id": "DOC-STE-002",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Current install and kit guidance after the 13 October releases",
+      "acceptance": [
+        "Published package installation precedes source setup where available",
+        "Current owner evidence and remaining verification gates stay distinct"
+      ],
+      "dependencies": [],
+      "labels": [
+        "documentation"
+      ],
+      "milestone": "Documentation upkeep",
+      "stage": "done",
+      "commits": [],
+      "evidence": "Ruff check and format pass; 215 pytest tests pass with an isolated HOME and configuration. README simulator rehearsal check passes."
     }
   ]
 }
