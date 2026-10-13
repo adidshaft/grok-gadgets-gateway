@@ -108,8 +108,8 @@ The relay listener lets a Wi-Fi device reach a gateway on an always-on host, awa
 home network. The design is in hub
 [ADR 009](https://github.com/adidshaft/grok-gadgets/blob/dev/docs/decisions/009-relay-route.md).
 It is **off by default** and starts only with `serve --device-listen`. It uses the same
-protocol 0.1.0 frames, the same tokens and the same CA as the LAN listener. No owner's kit has
-passed through it yet; hub Phase 9 records that check.
+protocol 0.1.0 frames, the same tokens and the same CA as the LAN listener. The owner's kit
+passed through it on 13 October 2026 ([record](https://github.com/adidshaft/grok-gadgets/blob/dev/docs/verification/mac-free-route-2026-10-13.md)).
 
 | Control | Detail |
 | --- | --- |

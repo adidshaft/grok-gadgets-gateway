@@ -5,9 +5,10 @@ Grok Bot reaches it through your tunnel with OAuth sign-in. Your Mac can then sl
 off. The design is in hub
 [ADR 009](https://github.com/adidshaft/grok-gadgets/blob/dev/docs/decisions/009-relay-route.md).
 
-**Status:** the container and the commands below pass this repository's tests. No owner's kit
-has run through a relay host yet; hub Phase 9 records that check. Run one relay for your own
-gadgets only. It has one operator and no accounts.
+**Status:** on 13 October 2026 the owner's ESP32-S3 OLED kit ran through a relay on a small
+Linux server with the user-service route below. Grok Bot on the iPhone, on cellular, showed text
+on it while the Mac slept ([record](https://github.com/adidshaft/grok-gadgets/blob/dev/docs/verification/mac-free-route-2026-10-13.md)). The container route was checked only on a Mac.
+Run one relay for your own gadgets only. It has one operator and no accounts.
 
 ```text
 Grok Bot ─HTTPS + OAuth─▶ gadgets.example.net (tunnel) ─▶ 127.0.0.1:8766 /mcp   ┐
