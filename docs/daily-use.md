@@ -2,7 +2,7 @@
 
 This guide keeps the [tunnel route](tunnel.md#oauth-sign-in-for-grok-bot) running every day, so Grok Bot on your Mac and phone can reach your gadgets from home and away. The design and threat model are in hub [ADR 008](https://github.com/adidshaft/grok-gadgets/blob/main/docs/decisions/008-daily-native-route.md).
 
-**Status:** written for daily use and not yet recorded over several days on the owner's setup. Hub [#251](https://github.com/adidshaft/grok-gadgets/issues/251) tracks that record.
+**Status:** used on the owner's setup on 13 October 2026. The [record](https://github.com/adidshaft/grok-gadgets/blob/main/docs/verification/daily-route-2026-10-13.md) covers calls from the Mac and from the phone on cellular, a gateway restart, the kill switch, Mac sleep and a Mac restart. One owner, one day; not yet reproduced by someone else.
 
 ```text
 login ─▶ gateway service (launchd/systemd) ─▶ 127.0.0.1:8766
@@ -43,7 +43,19 @@ The last rule answers 404 for any other hostname. Then install the client as a l
 cloudflared service install
 ```
 
-Cloudflare's [macOS service guide](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/local-management/as-a-service/macos/) describes this command. With `sudo`, it installs a system daemon instead; this project does not need one. For another provider, use its own user-service setup with the same rule: one hostname, one target, `127.0.0.1:8766`.
+Cloudflare's [macOS service guide](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/local-management/as-a-service/macos/) describes this command. With `sudo`, it installs a system daemon instead; this project does not need one.
+
+On the owner's Mac (cloudflared 2026.7.3), the login agent ran plain `cloudflared` with no arguments. It exited at once with "use `cloudflared tunnel run`" and restarted again and again. Point the agent at your config and reload it:
+
+```sh
+launchctl bootout gui/$(id -u)/com.cloudflare.cloudflared
+plutil -replace ProgramArguments -json \
+  "[\"$(command -v cloudflared)\",\"tunnel\",\"--config\",\"$HOME/.cloudflared/config.yml\",\"run\"]" \
+  ~/Library/LaunchAgents/com.cloudflare.cloudflared.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.cloudflare.cloudflared.plist
+```
+
+Check `~/Library/Logs/com.cloudflare.cloudflared.err.log` for `Registered tunnel connection`. For another provider, use its own user-service setup with the same rule: one hostname, one target, `127.0.0.1:8766`.
 
 Never point the tunnel at port 8765, 8767 or any device address.
 
@@ -110,4 +122,10 @@ Then run `remote on` and sign in again when you are ready.
 
 ## After a restart
 
-The gateway and the tunnel client start at login. The board returns to **Online** without help. The gateway keeps sign-ins in `oauth/state.json`, so a sign-in should survive a gateway restart; this is not yet recorded with Grok Bot. The time from login to a working phone call is not yet recorded; hub [#251](https://github.com/adidshaft/grok-gadgets/issues/251) and [#115](https://github.com/adidshaft/grok-gadgets-gateway/issues/115) track it.
+The gateway and the tunnel client start at login. The board returns to **Online** without help, and Grok Bot keeps its sign-in, because the gateway stores sign-ins in `oauth/state.json`.
+
+On 13 October 2026 on the owner's Mac ([record](https://github.com/adidshaft/grok-gadgets/blob/main/docs/verification/daily-route-2026-10-13.md)):
+
+- After a gateway restart, the board was back in about 1 second, and the next Grok Bot call needed no new sign-in.
+- After a Mac restart, the gateway listened 66 seconds after boot, within a minute of login. The tunnel connected at the same time, and the board was **Online** 72 seconds after boot.
+- While the Mac slept, Grok Bot got a 502 from the tunnel provider. The tunnel and the board came back within seconds of the wake.
