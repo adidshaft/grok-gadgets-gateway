@@ -2,7 +2,7 @@
 
 This guide puts an HTTPS name that you control in front of `serve`. Grok Bot can then reach the gateway as a **Remote HTTPS** MCP server. You run the tunnel. The project runs no URL, relay or account for you.
 
-**Status: the sign-in route is not yet tested with Grok Bot.** On 13 October 2026 three owner runs showed that a personal Grok Bot cannot add a server with a fixed bearer header: the app has no form for it, and Grok Bot will not put a fixed token into its setup step ([record](https://github.com/adidshaft/grok-gadgets/blob/dev/docs/verification/grok-remote-https-2026-10-13.md)). Use [OAuth sign-in](#oauth-sign-in-for-grok-bot) for Grok Bot. The fixed-token steps below still suit clients that can send a header.
+**Status: works with Grok Bot on the owner's setup.** On 13 October 2026 the owner's Grok Bot added the server from chat, the owner approved one sign-in, and Grok Bot called the six tools itself from the Mac and the iPhone ([record](https://github.com/adidshaft/grok-gadgets/blob/main/docs/verification/grok-remote-https-2026-10-13.md), [ADR 007](https://github.com/adidshaft/grok-gadgets/blob/main/docs/decisions/007-grok-bot-remote-https.md)). A personal Grok Bot cannot add a server with a fixed bearer header, so use [OAuth sign-in](#oauth-sign-in-for-grok-bot). The fixed-token steps below suit clients that can send a header.
 
 ```text
 Grok Bot ──HTTPS──▶ gadgets.example.net (your tunnel) ──▶ 127.0.0.1:8766 /mcp (serve)
