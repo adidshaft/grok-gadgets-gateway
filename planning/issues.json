@@ -796,6 +796,52 @@
       "stage": "done",
       "commits": [],
       "evidence": "Ruff check and format pass; 215 pytest tests pass with an isolated HOME and configuration. README simulator rehearsal check passes."
+    },
+    {
+      "id": "GW-REMOTE-001",
+      "owner": "grok-gadgets-gateway",
+      "problem": "serve behind a tunnel accepted the local default token, had no kill switch, allowed a tunnel without a request log, and logged nothing for HTTP on the device port",
+      "acceptance": [
+        "Remote requests (tunnel Host or forwarding header) need a named token; default gets 403",
+        "remote off|on|status kill switch; 503 at once",
+        "--allowed-host requires --request-log; service install passes it through",
+        "Device port closes HTTP and logs device_http_rejected"
+      ],
+      "labels": [
+        "enhancement",
+        "security"
+      ],
+      "stage": "done",
+      "evidence": "GitHub #130, PR #131; tests/test_remote.py. Local loopback checks only (13 Oct 2026); no tunnel or Grok Bot session yet (hub #154)."
+    },
+    {
+      "id": "GW-USAGE-001",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Developers could not see or export how their gadgets were used",
+      "acceptance": [
+        "bytes_in/bytes_out per call",
+        "usage summary by token, device, capability and day",
+        "opt-in --usage-hook: allowlisted lines, never blocks or breaks a call",
+        "rate or calibration labelled estimate"
+      ],
+      "labels": [
+        "enhancement"
+      ],
+      "stage": "done",
+      "evidence": "GitHub #132, PR #133; tests/test_usage.py; docs/usage.md. Local serve and stdio runs only (13 Oct 2026)."
+    },
+    {
+      "id": "GW-USAGE-OTEL-001",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Team usage export could be compared with gateway usage",
+      "acceptance": [
+        "Later; only on a team request and owner approval"
+      ],
+      "labels": [
+        "enhancement"
+      ],
+      "stage": "later",
+      "evidence": "GitHub #134."
     }
   ]
 }
