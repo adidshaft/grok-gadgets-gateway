@@ -189,14 +189,26 @@ class DeviceServer:
         connects_per_minute=None,
         frames_per_second=None,
         clock=time.monotonic,
+        public=False,
+        pending_per_address=None,
     ):
         # Loopback is plain TCP. Any other address is the opt-in LAN listener: a private
-        # address, TLS only, private peers only (hub ADR 005).
-        if host not in ("127.0.0.1", "::1"):
+        # address, TLS only, private peers only (hub ADR 005). `public` is the relay listener:
+        # any address and any peer, TLS only, per-address limits (hub ADR 009).
+        if public:
+            if tls is None:
+                raise ValueError("The relay device listener needs TLS")
+        elif host not in ("127.0.0.1", "::1"):
             from .lan import is_private
 
             if tls is None or not is_private(host):
                 raise ValueError("Only loopback, or a private LAN address with TLS, is allowed")
+        self.public = public
+        self.prefix = "device" if public else "lan"
+        self.pending_per_address = pending_per_address
+        self.pending_peers = {}  # Pending task -> source address, for the per-address cap.
+        self.limited = {}  # Source address -> when its rate limit was last logged.
+        self.last_flood = None
         self.tls = tls
         self.log = log
         self.handshake_timeout = handshake_timeout
@@ -233,6 +245,7 @@ class DeviceServer:
     def status(self):
         return {
             "enabled": self.server is not None,
+            "public": self.public,
             "tls": self.tls is not None,
             "host": self.host,
             "port": self.port,
@@ -273,6 +286,22 @@ class DeviceServer:
         if self.log is not None:
             self.log.write({"event": event, "listener": f"{self.host}:{self.port}", **fields})
 
+    def _event(self, name, **fields):
+        """`lan_NAME` on the LAN listener, `device_NAME` on the relay listener."""
+        self._log(f"{self.prefix}_{name}", **fields)
+
+    def _flood(self, reason):
+        """Relay only: one `device_flood` line a minute while a limit refuses connections."""
+        if not self.public:
+            return
+        now = self.clock()
+        if self.last_flood is None or now - self.last_flood >= 60:
+            self.last_flood = now
+            self._log("device_flood", reason=reason)
+
+    def _pending_from(self, peer):
+        return sum(1 for source in self.pending_peers.values() if source == peer)
+
     def _rate_limited(self, peer):
         if self.connects_per_minute is None:
             return False
@@ -288,17 +317,22 @@ class DeviceServer:
                 del self.recent[source]
         return False
 
-    async def _admit(self, writer):
-        """LAN only: private peer, connection rate, then the TLS handshake. False closes."""
-        info = writer.get_extra_info("peername")
-        peer = info[0] if info else None
+    async def _admit(self, writer, peer):
+        """TLS listeners: peer rule, connection rate, then the TLS handshake. None closes."""
         from .lan import is_private
 
-        if not is_private(peer):
+        if not self.public and not is_private(peer):
             self._log("lan_peer_rejected", peer=peer)
             return None
         if self._rate_limited(peer):
-            self._log("lan_rate_limited", peer=peer)
+            now = self.clock()
+            # A relay logs each limited source once a minute, so a flood cannot fill the log.
+            if not self.public or now - self.limited.get(peer, -60) >= 60:
+                self.limited[peer] = now
+                if len(self.limited) > 256:
+                    self.limited = {p: t for p, t in self.limited.items() if now - t < 60}
+                self._event("rate_limited", peer=peer)
+            self._flood("connection_rate")
             return None
         raw = writer.transport
         try:
@@ -311,29 +345,45 @@ class DeviceServer:
                 writer._transport = raw
             reason = "closed" if isinstance(exc, AttributeError) else None
             reason = reason or getattr(exc, "reason", None) or type(exc).__name__
-            self._log("lan_tls_failed", peer=peer, reason=str(reason))
+            self._event("tls_failed", peer=peer, reason=str(reason))
             return None
-        self._log("lan_connected", peer=peer)
+        self._event("connected", peer=peer)
         return peer
 
     async def client(self, reader, writer):
         task = asyncio.current_task()
+        source = None
+        if self.tls is not None:
+            info = writer.get_extra_info("peername")
+            source = info[0] if info else None
+        if (
+            self.pending_per_address is not None
+            and self._pending_from(source) >= self.pending_per_address
+        ):
+            # One address cannot hold every pending slot and starve the other devices.
+            self._flood("pending_per_address")
+            await _close_writer(writer)
+            return
         if len(self.pending) >= self.max_pending:
-            _, oldest = self.pending.popitem(last=False)
+            evicted, oldest = self.pending.popitem(last=False)
+            self.pending_peers.pop(evicted, None)
             oldest.close()  # Evict the oldest unauthenticated socket, never a session.
+            self._flood("pending")
         if len(self.connections) >= self.max_sessions + self.max_pending:
+            self._flood("sessions")
             await _close_writer(writer)
             return
         self.connections.add(task)
         self.writers.add(writer)
         self.pending[task] = writer
+        self.pending_peers[task] = source
         loop = asyncio.get_running_loop()
         did = sid = token = None
         peer = None
         frames = deque()
         try:
             if self.tls is not None:
-                peer = await self._admit(writer)
+                peer = await self._admit(writer, source)
                 if peer is None:
                     return
             hello_deadline = loop.time() + self.hello_timeout
@@ -375,23 +425,24 @@ class DeviceServer:
                             self.credentials.check(hello_id, hello_token)
                         except GatewayError as exc:
                             if peer is not None:
-                                self._log(
-                                    "lan_auth_rejected", peer=peer, device=hello_id, code=exc.code
+                                self._event(
+                                    "auth_rejected", peer=peer, device=hello_id, code=exc.code
                                 )
                             raise
                         # Only a successful registration binds the connection to a device.
                         sid = self.gateway.register(message)
                         did, token = hello_id, hello_token
                         self.pending.pop(task, None)
+                        self.pending_peers.pop(task, None)
                         if peer is not None:
-                            self._log("lan_hello", peer=peer, device=did)
+                            self._event("hello", peer=peer, device=did)
                         response = {"ok": True, "session_id": sid, "protocol_version": VERSION}
                     else:
                         try:
                             self.credentials.check(did, token)
                         except GatewayError as exc:
                             if peer is not None:
-                                self._log("lan_auth_rejected", peer=peer, device=did, code=exc.code)
+                                self._event("auth_rejected", peer=peer, device=did, code=exc.code)
                             raise
                         response = self.gateway.handle(did, sid, message)
                 except GatewayError as exc:
@@ -412,8 +463,9 @@ class DeviceServer:
                 writer.write(INTERNAL_ERROR)
         finally:
             self.pending.pop(task, None)
+            self.pending_peers.pop(task, None)
             if peer is not None:
-                self._log("lan_disconnected", peer=peer, device=did)
+                self._event("disconnected", peer=peer, device=did)
             try:
                 if did is not None and sid is not None:
                     self.gateway.disconnect(did, sid)

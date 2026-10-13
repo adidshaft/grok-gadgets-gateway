@@ -51,6 +51,7 @@ COMMANDS = (
     "rehearse",
     "lan-cert",
     "lan-ca",
+    "device-cert",
     "wifi-provision",
 )
 DESCRIPTION = """Grok Gadgets gateway: the MCP server your Grok Bot will use to reach your gadgets.
@@ -319,6 +320,13 @@ def build_parser():
         "(port 8767 by default; off unless set; run lan-cert first)",
     )
     serve.add_argument(
+        "--device-listen",
+        metavar="ADDRESS[:PORT]",
+        help="also run the relay device listener on this address of an always-on host, for "
+        "Wi-Fi devices anywhere (port 8443 by default; any peer; TLS; off unless set; run "
+        "device-cert first)",
+    )
+    serve.add_argument(
         "--oauth",
         action="store_true",
         help="let Grok Bot sign in with OAuth at https://ALLOWED-HOST; you approve each sign-in "
@@ -336,6 +344,12 @@ def build_parser():
     )
     lan_ca = sub.add_parser("lan-ca", help="show or replace the local CA that devices pin")
     lan_ca.add_argument("action", choices=["show", "rotate"])
+    device_cert = sub.add_parser(
+        "device-cert", help="issue the relay listener certificate for one public DNS name"
+    )
+    device_cert.add_argument(
+        "name", help="the DNS name that devices connect to, e.g. devices.example.net"
+    )
 
     provision = sub.add_parser(
         "wifi-provision",
@@ -343,10 +357,22 @@ def build_parser():
     )
     provision.add_argument("serial_port")
     provision.add_argument("--device", required=True, help="enrolled device ID of this board")
-    provision.add_argument(
+    where = provision.add_mutually_exclusive_group()
+    where.add_argument(
         "--lan",
         metavar="ADDRESS[:PORT]",
         help="the address or NAME.local given to serve --lan-listen",
+    )
+    where.add_argument(
+        "--gateway",
+        metavar="NAME[:PORT]",
+        help="the relay's DNS name from device-cert (port 8443 by default)",
+    )
+    provision.add_argument(
+        "--ca",
+        metavar="FILE",
+        help="the CA the device pins (default: this computer's; give the relay's ca.pem "
+        "when the relay was set up elsewhere)",
     )
     provision.add_argument(
         "--factory-reset", action="store_true", help="erase the board's Wi-Fi settings instead"
@@ -362,6 +388,11 @@ def build_parser():
     )
     service_install.add_argument(
         "--lan-listen", metavar="ADDRESS[:PORT]", help="also run the Wi-Fi device listener"
+    )
+    service_install.add_argument(
+        "--device-listen",
+        metavar="ADDRESS[:PORT]",
+        help="also run the relay device listener (see serve --device-listen)",
     )
     service_install.add_argument("--port", type=int, default=8766, help="loopback MCP HTTP port")
     service_install.add_argument(
@@ -570,6 +601,7 @@ def run(parser, args):
                     rate_limiter=RateLimiter(args.calls_per_minute, args.commands_per_minute),
                     request_log=args.request_log,
                     lan_listen=args.lan_listen,
+                    device_listen=args.device_listen,
                     remote_switch=str(remote_off_path()),
                     usage_hook=usage_hook,
                     oauth=args.oauth,
@@ -595,7 +627,7 @@ def run(parser, args):
             parser.error("Set GROK_GADGETS_DEVICE_TOKEN (from enroll) in the environment")
         asyncio.run(bridge(args.serial_port, token, port=args.port))
         return 0
-    if command in ("lan-cert", "lan-ca"):
+    if command in ("lan-cert", "lan-ca", "device-cert"):
         return run_lan(parser, args)
     if command == "wifi-provision":
         return run_wifi_provision(parser, args)
@@ -628,9 +660,26 @@ def run(parser, args):
 
 
 def run_lan(parser, args):
-    from .lan import ca_fingerprint, create_ca, issue_server_cert, lan_dir, parse_lan_address
+    from .lan import (
+        DEFAULT_DEVICE_PORT,
+        ca_fingerprint,
+        create_ca,
+        issue_device_cert,
+        issue_server_cert,
+        lan_dir,
+        parse_lan_address,
+    )
 
     try:
+        if args.command == "device-cert":
+            path = issue_device_cert(args.name)
+            name = args.name.lower()
+            print(
+                f"Wrote {path} for {name}. Start: serve --device-listen 0.0.0.0:"
+                f"{DEFAULT_DEVICE_PORT}. Provision devices with --gateway {name}",
+                file=sys.stderr,
+            )
+            return 0
         if args.command == "lan-cert":
             address, _ = parse_lan_address(args.address)
             path = issue_server_cert(address)
@@ -658,7 +707,7 @@ def run_wifi_provision(parser, args):
 
     import serial
 
-    from .lan import ca_pem_text, parse_lan_address
+    from .lan import ca_pem_text, parse_gateway_address, parse_lan_address, read_ca_file
     from .transport import read_registry
     from .wifi_provision import (
         ProvisionError,
@@ -670,16 +719,19 @@ def run_wifi_provision(parser, args):
 
     try:
         if not args.factory_reset:
-            if not args.lan:
-                parser.error("--lan ADDRESS[:PORT] is required to provision")
-            host, port = parse_lan_address(args.lan)
+            if args.lan:
+                host, port = parse_lan_address(args.lan)
+            elif args.gateway:
+                host, port = parse_gateway_address(args.gateway)
+            else:
+                parser.error("--lan ADDRESS[:PORT] or --gateway NAME[:PORT] is required")
             path = args.credentials or credentials_path()
             record = read_registry(path).get(args.device)
             if record is None:
                 parser.error(f"{args.device} is not enrolled. Run: enroll {args.device}")
             if record.get("revoked"):
                 parser.error(f"{args.device} is revoked. Run: enroll {args.device} --rotate")
-            ca = ca_pem_text()
+            ca = read_ca_file(args.ca) if args.ca else ca_pem_text()
     except (OperatorError, CredentialError, ProvisionError) as exc:
         parser.error(str(exc))
     try:
@@ -747,6 +799,11 @@ def run_service(parser, args, service=None):
                 if not (lan_dir() / "server.pem").is_file():
                     parser.error(f"no LAN certificate. Run: grok-gadgets-gateway lan-cert {host}")
                 ports.append((resolve_lan_host(host), lan_port))
+            if args.device_listen:
+                from .lan import device_context, parse_device_listen
+
+                device_context()  # The relay certificate must exist before the unit starts.
+                ports.append(parse_device_listen(args.device_listen))
             program, prefix = executable()
             command_line = [
                 program,
@@ -759,6 +816,7 @@ def run_service(parser, args, service=None):
                     args.allowed_host,
                     args.oauth,
                     args.usage_hook,
+                    args.device_listen,
                 ),
             ]
             environment = {
@@ -907,6 +965,11 @@ def route_status(service, now=None):
         f"sign-in (--oauth): {'on' if '--oauth' in command else 'off'}",
         f"remote: {'on' if remote_enabled() else 'off (kill switch)'}",
     ]
+    relay = option_values(command, "--device-listen")
+    if relay:
+        from .lan import device_cert_name
+
+        lines.append(f"relay device listener: {relay[0]} for {device_cert_name() or 'no name'}")
     try:
         live = sign_ins()
     except OperatorError as exc:
@@ -1003,6 +1066,11 @@ async def _serve(credentials, mcp_token, **kwargs):
         )
         if running.lan:
             print(f"LAN TLS device listener {running.lan} (private peers only).", file=sys.stderr)
+        if running.relay:
+            print(
+                f"Relay TLS device listener {running.relay} (any peer; token and limits).",
+                file=sys.stderr,
+            )
         stopping = asyncio.create_task(stop.wait())
         await asyncio.wait({running.task, stopping}, return_when=asyncio.FIRST_COMPLETED)
         stopping.cancel()

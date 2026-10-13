@@ -76,7 +76,7 @@ grok-gadgets-gateway usage --token grok-bot \
   --calibrate 1.5 --unit "% weekly usage"
 ```
 
-`--calibrate` divides your measured change (1.5) by the calls in that window and saves the rate to `usage-rate.json` next to your tokens. Later summaries add an `estimate` column and say where the rate came from. Calibrate again whenever you take new readings. The estimate includes everything Grok Bot did in that window, not only tool calls.
+`--calibrate` divides your measured change (1.5) by the calls in that window and saves the rate to `usage-rate.json` next to your tokens. Later summaries add an `estimate` column and say where the rate came from. Calibrate again whenever you take new readings. If the page shows no change, `--calibrate 0` saves nothing: use a longer window. The estimate includes everything Grok Bot did in that window, not only tool calls.
 
 ## Usage hook
 
