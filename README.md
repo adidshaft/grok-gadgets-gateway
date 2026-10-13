@@ -7,24 +7,7 @@ Independent project, not affiliated with SpaceXSI or xAI.
 
 > Writing style: ASD-STE100-inspired English. Use short sentences, active verbs and one instruction per step. This is not certified compliance.
 
-## Quick start
-
-Needs Git and [uv](https://docs.astral.sh/uv/getting-started/installation/).
-
-```sh
-git clone https://github.com/adidshaft/grok-gadgets-gateway.git
-cd grok-gadgets-gateway
-uv sync --locked
-uv run grok-gadgets-gateway init
-uv run grok-gadgets-gateway serve --simulator
-uv run grok-gadgets-gateway rehearse
-```
-
-Run `rehearse` in a second terminal while `serve` keeps running. It calls the six tools in the
-order Grok Bot will: list the gadgets, set the simulated light blue, read its state. See
-[first success in five minutes](docs/first-success.md).
-
-### Install with pip
+## Install from PyPI
 
 The package is on [PyPI](https://pypi.org/project/grok-gadgets-gateway/). Install it into a virtual
 environment with Python 3.11+. It is an alpha, so name the version or pass `--pre`:
@@ -39,6 +22,27 @@ Each [GitHub release](https://github.com/adidshaft/grok-gadgets-gateway/releases
 `SHA256SUMS`; the PyPI files are the same build.
 
 On an Intel Mac, `cryptography` has no prebuilt wheel and needs a Rust toolchain to build.
+
+
+For your first simulator test, follow [first success](docs/first-success.md).
+
+## Quick start
+
+For contributors: clone the source with Git and [uv](https://docs.astral.sh/uv/getting-started/installation/).
+
+```sh
+git clone https://github.com/adidshaft/grok-gadgets-gateway.git
+cd grok-gadgets-gateway
+uv sync --locked
+uv run grok-gadgets-gateway init
+uv run grok-gadgets-gateway serve --simulator
+uv run grok-gadgets-gateway rehearse
+```
+
+Run `rehearse` in a second terminal while `serve` keeps running. It calls the six tools in the
+order Grok Bot will: list the gadgets, set the simulated light blue, read its state. See
+[first success in five minutes](docs/first-success.md).
+
 
 ## How it works
 
