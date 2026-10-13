@@ -301,6 +301,7 @@ async def serve_gateway(
     lan_recheck=None,
     resolver=None,
     remote_switch=None,
+    usage_hook=None,
 ):
     """Run until the context exits. HTTP and the device listener bind 127.0.0.1.
 
@@ -432,6 +433,7 @@ async def serve_gateway(
             limits=limits,
             rate_limiter=rate_limiter if rate_limiter is not None else RateLimiter(),
             remote_switch=remote_switch,
+            usage_hook=usage_hook,
         ) as running:
             follower = None
             if lan_server is not None:
@@ -485,6 +487,7 @@ async def _serve_http(
     limits=None,
     rate_limiter=None,
     remote_switch=None,
+    usage_hook=None,
 ):
     mcp = make_server(
         gateway,
@@ -495,6 +498,7 @@ async def _serve_http(
         rate_limiter=rate_limiter,
         listener_status=device_server.status if device_server else None,
         http=True,
+        usage_hook=usage_hook,
         log_level="WARNING",
     )
     app = mcp.streamable_http_app(

@@ -19,6 +19,7 @@ from mcp.types import ToolAnnotations
 
 from .domain import ACK_TIMEOUT_SECONDS
 from .protocol import GatewayError
+from .usage import json_size
 
 REDACTED = "[redacted]"
 _SECRET_KEY = re.compile(r"token|secret|password|passwd|key|credential", re.IGNORECASE)
@@ -120,6 +121,10 @@ def came_remote(ctx):
     return None if value is None else value == "1"
 
 
+def transport_name(ctx):
+    return "stdio" if token_name(ctx) is None else "streamable-http"
+
+
 def user_agent(ctx):
     try:
         headers = ctx.headers
@@ -193,6 +198,7 @@ def make_server(
     listener_status=None,
     http=False,
     command_wait=COMMAND_WAIT_SECONDS,
+    usage_hook=None,
     **server_options,
 ):
     # Never wait past the gateway's own acknowledgement deadline.
@@ -231,11 +237,11 @@ def make_server(
     def finish(tool, arguments, started, response, ctx=None):
         request_id = uuid.uuid4().hex[:16]
         response = {**response, "request_id": request_id}
-        if request_log is not None:
+        if request_log is not None or usage_hook is not None:
             record = {
                 "event": "mcp_tool_call",
                 "request_id": request_id,
-                "transport": request_log.transport,
+                "transport": request_log.transport if request_log else transport_name(ctx),
                 "client": client_name(ctx),
                 "token": token_name(ctx),
                 "remote": came_remote(ctx),
@@ -243,6 +249,8 @@ def make_server(
                 "args_sha256": argument_hash(arguments),
                 "outcome": "ok" if response["ok"] else response["error"]["code"],
                 "duration_ms": round((time.monotonic() - started) * 1000, 1),
+                "bytes_in": json_size(arguments),
+                "bytes_out": json_size(response),
             }
             for key in ("device_id", "capability"):
                 if isinstance(arguments.get(key), str):
@@ -255,6 +263,10 @@ def make_server(
                     duplicate=command.get("duplicate", False),
                     simulated=command["simulated"],
                 )
+            if usage_hook is not None:
+                usage_hook.send({"ts": datetime.now(UTC).isoformat(), **record})
+            if request_log is None:
+                return response
             detail = {"user_agent": user_agent(ctx)} if request_log.file else None
             if detail is not None:
                 if tool == "gadgets_command":

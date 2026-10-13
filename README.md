@@ -105,6 +105,7 @@ OAuth server, and a tunnel does not replace the bearer token. Never expose port 
 
 - [First success](docs/first-success.md) and the [simulator guide](docs/simulator.md)
 - [Keep the gateway running](docs/always-on.md) as a background service.
+- [Track usage](docs/usage.md): calls by token, device, capability and day, and an opt-in usage hook.
 - [Local operation](docs/local-operation.md), [architecture](docs/architecture.md) and [protocol 0.1.0](protocol/0.1.0/README.md)
 - Demo without HTTP: `uv run python -m grok_gadgets_gateway.demo` (uses test-only controls)
 - Shared docs and the website: [hub repository](https://github.com/adidshaft/grok-gadgets) and <https://grok-gadgets.pages.dev/>

@@ -43,6 +43,7 @@ COMMANDS = (
     "rotate-mcp-token",
     "mcp-token",
     "remote",
+    "usage",
     "serve",
     "stdio",
     "usb-bridge",
@@ -133,6 +134,26 @@ def _positive_int(text):
     return value
 
 
+def _usage_hook_option(parser):
+    parser.add_argument(
+        "--usage-hook",
+        metavar="CMD",
+        help="start CMD once and write one JSON usage line per tool call to its stdin "
+        "(no tokens or arguments; never delays a call). See docs/usage.md",
+    )
+
+
+def _start_usage_hook(parser, command):
+    if not command:
+        return None
+    from .usage import UsageHook
+
+    try:
+        return UsageHook(command)
+    except (OperatorError, ValueError) as exc:
+        parser.error(f"--usage-hook: {exc}")
+
+
 def _request_log_option(parser):
     parser.add_argument(
         "--request-log",
@@ -207,6 +228,30 @@ def build_parser():
     for action in (token_issue, token_sub.choices["list"], token_revoke):
         action.add_argument("--mcp-tokens", help=f"token list (default {mcp_tokens_path()})")
 
+    usage = sub.add_parser(
+        "usage", help="summarize tool calls by token, device, capability and day"
+    )
+    usage.add_argument(
+        "--log",
+        action="append",
+        metavar="PATH",
+        help="request log to read (repeatable; default: the service's requests.jsonl)",
+    )
+    usage.add_argument("--since", metavar="ISO", help="from this UTC date or time")
+    usage.add_argument("--until", metavar="ISO", help="up to this UTC date or time")
+    usage.add_argument("--token", metavar="NAME", help="only calls with this token name")
+    usage.add_argument("--json", action="store_true", help="print JSON")
+    usage.add_argument(
+        "--rate", type=float, metavar="N", help="estimate N units per call (needs --unit)"
+    )
+    usage.add_argument("--unit", metavar="TEXT", help='estimate unit, e.g. "% weekly usage"')
+    usage.add_argument(
+        "--calibrate",
+        type=float,
+        metavar="USED",
+        help="Grok Bot usage you measured over --since..--until (needs --unit); saves the rate",
+    )
+
     remote = sub.add_parser(
         "remote", help="kill switch: turn remote (tunnel) access off or on at once"
     )
@@ -257,6 +302,7 @@ def build_parser():
         "(port 8767 by default; off unless set; run lan-cert first)",
     )
     _request_log_option(serve)
+    _usage_hook_option(serve)
 
     lan_cert = sub.add_parser(
         "lan-cert", help="issue the LAN listener certificate for one private address or NAME.local"
@@ -315,6 +361,7 @@ def build_parser():
     _credentials_option(stdio)
     stdio.add_argument("--device-port", type=int, default=8765)
     _request_log_option(stdio)
+    _usage_hook_option(stdio)
 
     bridge = sub.add_parser("usb-bridge", help="connect a USB serial device to the gateway")
     bridge.add_argument("serial_port")
@@ -375,8 +422,14 @@ def run_stdio(parser, args):
                 "simulator": simulator.device_id if simulator else None,
             }
         )
+    usage_hook = _start_usage_hook(parser, args.usage_hook)
     server = make_server(
-        gateway, simulator, device_server, args.test_controls, request_log=request_log
+        gateway,
+        simulator,
+        device_server,
+        args.test_controls,
+        request_log=request_log,
+        usage_hook=usage_hook,
     )
     try:
         asyncio.run(server.run_stdio_async())
@@ -388,8 +441,9 @@ def run_stdio(parser, args):
             in_use = in_use.exceptions[0]
         parser.error(str(in_use))
     finally:
+        hook = usage_hook.close() if usage_hook is not None else None
         if request_log is not None:
-            request_log.append({"event": "stdio_stopped"})
+            request_log.append({"event": "stdio_stopped", "usage_hook": hook})
             request_log.close()
     return 0
 
@@ -467,7 +521,10 @@ def run(parser, args):
         return run_mcp_token(parser, args)
     if command == "remote":
         return run_remote(parser, args)
+    if command == "usage":
+        return run_usage(parser, args)
     if command == "serve":
+        usage_hook = _start_usage_hook(parser, args.usage_hook)
         try:
             asyncio.run(
                 _serve(
@@ -485,12 +542,20 @@ def run(parser, args):
                     request_log=args.request_log,
                     lan_listen=args.lan_listen,
                     remote_switch=str(remote_off_path()),
+                    usage_hook=usage_hook,
                 )
             )
         except OperatorError as exc:
             parser.error(str(exc))
         except KeyboardInterrupt:
             return 0
+        finally:
+            if usage_hook is not None:
+                counts = usage_hook.close()
+                print(
+                    f"Usage hook: {counts['sent']} lines sent, {counts['dropped']} dropped.",
+                    file=sys.stderr,
+                )
         return 0
     if command == "usb-bridge":
         from .usb_bridge import bridge
@@ -690,6 +755,50 @@ def run_service(parser, args, service=None):
         return 0
     except OperatorError as exc:
         parser.error(str(exc))
+
+
+def run_usage(parser, args):
+    from .usage import (
+        calibrate,
+        default_log,
+        format_summary,
+        parse_time,
+        read_calls,
+        read_rate,
+        summarize,
+    )
+
+    if (args.rate is not None or args.calibrate is not None) and not args.unit:
+        parser.error("--rate and --calibrate need --unit")
+    if args.rate is not None and args.calibrate is not None:
+        parser.error("use --rate or --calibrate, not both")
+    if args.calibrate is not None and not (args.since and args.until):
+        parser.error("--calibrate needs --since and --until around your two readings")
+    paths = args.log
+    if not paths:
+        found = default_log()
+        if found is None or not found.is_file():
+            parser.error("no service request log here; pass --log PATH")
+        paths = [found]
+    try:
+        since = parse_time(args.since) if args.since else None
+        until = parse_time(args.until, end=True) if args.until else None
+        calls = read_calls(paths, since, until, args.token)
+        if args.calibrate is not None:
+            rate = calibrate(calls, args.calibrate, args.unit, since, until)
+            print(f"Saved the estimate rate: {rate['source']}.", file=sys.stderr)
+        elif args.rate is not None:
+            rate = {"rate": args.rate, "unit": args.unit}
+        else:
+            rate = read_rate()
+    except OperatorError as exc:
+        parser.error(str(exc))
+    summary = summarize(calls, rate)
+    if args.json:
+        print(json.dumps(summary, indent=2))
+    else:
+        print(format_summary(summary))
+    return 0
 
 
 def run_remote(parser, args):
