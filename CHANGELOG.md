@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Sign-in floods cannot lock the owner out ([#142](https://github.com/adidshaft/grok-gadgets-gateway/issues/142), hub ADR 008). Registered clients without a live sign-in are pruned after an hour or when the list of 20 is full; a client with a live sign-in is kept. Waiting sign-ins drop the oldest instead of refusing, at most 2 per client. Sign-in paths have separate budgets per caller and in total, so registration floods do not block refresh. A hit limit writes one `oauth_flood` line a minute.
+
 ## 0.1.0-alpha.11 — 13 October 2026
 
 - On 13 October 2026 the owner's Grok Bot called the six tools natively from the Mac and the iPhone through `serve --oauth` behind an owner-run tunnel; the request log recorded nine `grok-bot` calls and the owner saw the OLED text (hub #154, ADR 007).

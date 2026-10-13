@@ -134,7 +134,14 @@ grok-gadgets-gateway oauth revoke grok-bot # end every grok-bot sign-in at once
 grok-gadgets-gateway oauth deny K7QX-M2PA  # refuse a request
 ```
 
-The sign-in paths keep the Host check, `remote off` blocks them, and they allow 60 requests a minute in total. The gateway accepts at most 20 registered clients and 8 waiting sign-ins.
+The sign-in paths keep the Host check, and `remote off` blocks them. A stranger who finds the hostname cannot lock you out:
+
+- Registration and new sign-ins allow 10 requests a minute per caller and 30 in total. Refresh and revocation have their own budget, so a flood does not end a working sign-in.
+- The gateway keeps at most 20 registered clients. A client with no live sign-in is removed after an hour, or sooner when the list is full. A client with a live sign-in is never removed.
+- At most 8 sign-ins wait, 2 per client. A new request drops the oldest waiting one. You approve by code, so other waiting requests do no harm.
+- While a limit is hit, the request log gets one `oauth_flood` line a minute.
+
+The caller is the address in the tunnel's forwarding header, such as `CF-Connecting-IP` or `X-Forwarded-For`.
 
 ## Turn it off and revoke
 
