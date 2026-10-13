@@ -35,7 +35,7 @@ grok-gadgets-gateway mcp-token revoke grok-bot
 
 A rejected call does not count toward the limit. The windows reset when `serve` restarts. HTTP rejections are written to the logs as `http_rejected` lines with the status, the reason and the token name. They never contain the token or the body. `stdio` has no token and no limits.
 
-This package does not terminate public TLS and it does not speak OAuth. Native remote MCP access with Grok Bot remains unverified. A cloud Bot cannot open `127.0.0.1` on your computer. If you want a Bot to reach the gateway, you run `serve` on the gadget host and you publish HTTPS yourself.
+This package does not terminate public TLS. With `serve --oauth` it is its own OAuth sign-in server, and you approve each sign-in on this computer; see [OAuth sign-in](tunnel.md#oauth-sign-in-for-grok-bot). Native remote MCP access with Grok Bot remains unverified. A cloud Bot cannot open `127.0.0.1` on your computer. If you want a Bot to reach the gateway, you run `serve` on the gadget host and you publish HTTPS yourself.
 
 ## What you may publish
 

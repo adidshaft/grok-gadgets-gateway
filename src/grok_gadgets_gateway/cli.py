@@ -43,6 +43,7 @@ COMMANDS = (
     "rotate-mcp-token",
     "mcp-token",
     "remote",
+    "oauth",
     "usage",
     "serve",
     "stdio",
@@ -252,6 +253,22 @@ def build_parser():
         help="Grok Bot usage you measured over --since..--until (needs --unit); saves the rate",
     )
 
+    oauth = sub.add_parser(
+        "oauth", help="approve, list or revoke Grok Bot sign-ins for serve --oauth"
+    )
+    oauth_sub = oauth.add_subparsers(dest="oauth_command", required=True)
+    oauth_sub.add_parser("pending", help="list sign-ins waiting for your approval")
+    oauth_approve = oauth_sub.add_parser("approve", help="approve the sign-in with this code")
+    oauth_approve.add_argument("code")
+    oauth_approve.add_argument(
+        "--name", default="grok-bot", help="name in logs and limits (default grok-bot)"
+    )
+    oauth_deny = oauth_sub.add_parser("deny", help="refuse the sign-in with this code")
+    oauth_deny.add_argument("code")
+    oauth_sub.add_parser("list", help="list live sign-ins (never the tokens)")
+    oauth_revoke = oauth_sub.add_parser("revoke", help="end every sign-in with this name at once")
+    oauth_revoke.add_argument("name")
+
     remote = sub.add_parser(
         "remote", help="kill switch: turn remote (tunnel) access off or on at once"
     )
@@ -301,6 +318,12 @@ def build_parser():
         help="also run the TLS device listener on this private LAN address of this computer "
         "(port 8767 by default; off unless set; run lan-cert first)",
     )
+    serve.add_argument(
+        "--oauth",
+        action="store_true",
+        help="let Grok Bot sign in with OAuth at https://ALLOWED-HOST; you approve each sign-in "
+        "with: grok-gadgets-gateway oauth approve CODE",
+    )
     _request_log_option(serve)
     _usage_hook_option(serve)
 
@@ -346,6 +369,9 @@ def build_parser():
         action="append",
         default=[],
         help="tunnel Host header to allow (see serve --allowed-host)",
+    )
+    service_install.add_argument(
+        "--oauth", action="store_true", help="let Grok Bot sign in (see serve --oauth)"
     )
     service_install.add_argument(
         "--device-port", type=int, default=8765, help="loopback device port"
@@ -521,6 +547,8 @@ def run(parser, args):
         return run_mcp_token(parser, args)
     if command == "remote":
         return run_remote(parser, args)
+    if command == "oauth":
+        return run_oauth(parser, args)
     if command == "usage":
         return run_usage(parser, args)
     if command == "serve":
@@ -543,6 +571,7 @@ def run(parser, args):
                     lan_listen=args.lan_listen,
                     remote_switch=str(remote_off_path()),
                     usage_hook=usage_hook,
+                    oauth=args.oauth,
                 )
             )
         except OperatorError as exc:
@@ -691,6 +720,8 @@ def run_service(parser, args, service=None):
         if action == "install":
             if not mcp_token_path().is_file():
                 parser.error("the gateway is not set up. Run: grok-gadgets-gateway init")
+            if args.oauth and len(args.allowed_host) != 1:
+                parser.error("--oauth needs exactly one --allowed-host: the tunnel name")
             if args.allowed_host:
                 from .service import transport_security
 
@@ -716,6 +747,7 @@ def run_service(parser, args, service=None):
                     args.device_port,
                     service.logs / "requests.jsonl",
                     args.allowed_host,
+                    args.oauth,
                 ),
             ]
             environment = {
@@ -798,6 +830,45 @@ def run_usage(parser, args):
         print(json.dumps(summary, indent=2))
     else:
         print(format_summary(summary))
+    return 0
+
+
+def run_oauth(parser, args):
+    from datetime import UTC, datetime
+
+    from .oauth import approve, pending_requests, revoke_name, sign_ins
+
+    def when(seconds):
+        return datetime.fromtimestamp(seconds, UTC).strftime("%Y-%m-%d %H:%M UTC")
+
+    try:
+        action = args.oauth_command
+        if action == "pending":
+            requests = pending_requests()
+            for request in requests:
+                print(
+                    f"{request['code']}\t{request.get('client_name') or '-'}\t"
+                    f"{request.get('redirect_host') or '-'}\texpires {when(request['expires_at'])}"
+                )
+            if not requests:
+                print("No sign-in is waiting.", file=sys.stderr)
+        elif action == "approve":
+            code = approve(args.code, args.name)
+            print(
+                f"Approved {code} as {args.name}. The sign-in page continues within seconds.",
+                file=sys.stderr,
+            )
+        elif action == "deny":
+            code = approve(args.code, None, deny=True)
+            print(f"Refused {code}.", file=sys.stderr)
+        elif action == "list":
+            for name, client, expires in sign_ins():
+                print(f"{name}\t{client}\trefresh expires {when(expires)}")
+        else:
+            revoke_name(args.name)
+            print(f"Ended every {args.name} sign-in; its tokens fail now.", file=sys.stderr)
+    except (OperatorError, OSError) as exc:
+        parser.error(str(exc))
     return 0
 
 
