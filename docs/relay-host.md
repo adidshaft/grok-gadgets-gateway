@@ -162,5 +162,7 @@ docker compose exec gateway sh -c 'tail -n 50 /data/logs/requests.jsonl'
   [Wi-Fi devices](wifi-devices.md#relay-listener-devices-on-any-network) protect it.
 - Keep the host's OS updated and allow only SSH and TCP 8443 in.
 - Anyone with a shell on the host can approve sign-ins and read device tokens.
-- The relay sees device IDs, commands, reported state and events. The request log keeps an
-  argument hash, never arguments or state, and rotates at 5 MiB with 5 files.
+- The relay sees device IDs, commands, reported state and events. The request log file is for
+  the operator. It records command arguments, such as the text sent to a display, with secret
+  fields redacted, and the state that `gadgets_get_state` returned. It never records tokens.
+  It rotates at 5 MiB and keeps 5 files.
