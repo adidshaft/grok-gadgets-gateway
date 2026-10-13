@@ -56,5 +56,5 @@ GitHub issues track current work. Keep local issue IDs in commits so contributor
 ## Evidence limits
 
 The owner tested one ESP32-S3 OLED kit over USB and Wi-Fi on 12 October 2026.
-Grok Bot ran local shell commands through `rehearse`. Native MCP access, mobile operation and an independent second installation remain unverified.
+Grok Bot ran local shell commands through `rehearse`. On 13 October 2026 it also called the six tools natively from the Mac and the iPhone through `serve --oauth` behind an owner-run tunnel. An independent second installation remains unverified.
 The Wi-Fi kit still needs a running gateway computer.
