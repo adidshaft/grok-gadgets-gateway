@@ -244,7 +244,7 @@ def build_parser():
     usage.add_argument(
         "--rate", type=float, metavar="N", help="estimate N units per call (needs --unit)"
     )
-    usage.add_argument("--unit", metavar="TEXT", help='estimate unit, e.g. "% weekly usage"')
+    usage.add_argument("--unit", metavar="TEXT", help='estimate unit, e.g. "%% weekly usage"')
     usage.add_argument(
         "--calibrate",
         type=float,
