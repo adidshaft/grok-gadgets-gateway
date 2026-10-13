@@ -86,10 +86,11 @@ address, `serve --lan-listen`; see [Wi-Fi devices](docs/wifi-devices.md).
 
 The owner tested Grok Bot local commands on 12 October 2026. Grok Bot ran `rehearse` on the Mac.
 Read the [connection evidence](https://github.com/adidshaft/grok-gadgets/blob/dev/docs/verification/grok-local-execution-2026-10-12.md).
-Native MCP calls and the public tunnel test remain open ([tracking issue](https://github.com/adidshaft/grok-gadgets/issues/4)).
-The Mac must keep the gateway running, including for Wi-Fi devices. `serve` is not an
-OAuth server, and a tunnel does not replace the bearer token. Never expose port 8765. Read
-[remote access](docs/remote-access.md) and [security](SECURITY.md) first.
+Native MCP calls through a tunnel remain open ([tracking issue](https://github.com/adidshaft/grok-gadgets/issues/4)).
+Grok Bot cannot add a server with a fixed bearer header, so `serve --oauth` adds a sign-in
+that you approve on the Mac ([tunnel guide](docs/tunnel.md#oauth-sign-in-for-grok-bot)).
+The Mac must keep the gateway running, including for Wi-Fi devices. Never expose port 8765.
+Read [remote access](docs/remote-access.md) and [security](SECURITY.md) first.
 
 ## Troubleshooting
 

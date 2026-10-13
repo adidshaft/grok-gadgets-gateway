@@ -44,7 +44,7 @@ def unit_path(platform, home=None):
 
 
 def serve_arguments(
-    lan_listen=None, port=8766, device_port=8765, request_log=None, allowed_hosts=()
+    lan_listen=None, port=8766, device_port=8765, request_log=None, allowed_hosts=(), oauth=False
 ):
     """The `serve` flags the service runs with; the same rules as a foreground `serve`."""
     args = ["serve", "--port", str(port), "--device-port", str(device_port)]
@@ -52,6 +52,8 @@ def serve_arguments(
         args += ["--lan-listen", lan_listen]
     for host in allowed_hosts:
         args += ["--allowed-host", host]
+    if oauth:
+        args.append("--oauth")
     if request_log:
         args += ["--request-log", str(request_log)]
     return args

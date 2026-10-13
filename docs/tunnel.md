@@ -2,7 +2,7 @@
 
 This guide puts an HTTPS name that you control in front of `serve`. Grok Bot can then reach the gateway as a **Remote HTTPS** MCP server. You run the tunnel. The project runs no URL, relay or account for you.
 
-**Status: untested with Grok Bot.** The route comes from [ADR 004](https://github.com/adidshaft/grok-gadgets/blob/dev/docs/decisions/004-grok-bot-route.md). In the 12 October 2026 test, Grok Bot reached the gateway only through approved local `rehearse` commands. The owner test of this tunnel route is [HUB-GROK-REMOTE-TEST-001](https://github.com/adidshaft/grok-gadgets/issues/154). Until it records a result, treat this guide as a design.
+**Status: the sign-in route is not yet tested with Grok Bot.** On 13 October 2026 three owner runs showed that a personal Grok Bot cannot add a server with a fixed bearer header: the app has no form for it, and Grok Bot will not put a fixed token into its setup step ([record](https://github.com/adidshaft/grok-gadgets/blob/dev/docs/verification/grok-remote-https-2026-10-13.md)). Use [OAuth sign-in](#oauth-sign-in-for-grok-bot) for Grok Bot. The fixed-token steps below still suit clients that can send a header.
 
 ```text
 Grok Bot ──HTTPS──▶ gadgets.example.net (your tunnel) ──▶ 127.0.0.1:8766 /mcp (serve)
@@ -103,6 +103,39 @@ Add a **Remote HTTPS** MCP server:
 
 Then ask: "list my gadgets", "set the light blue", "what's its state?". The request log must show `mcp_tool_call` lines with `"token":"grok-bot"` and a client other than `grok-gadgets-rehearse`. If no lines appear, Grok Bot did not reach the gateway, whatever it says.
 
+## OAuth sign-in for Grok Bot
+
+With `--oauth`, the gateway is its own OAuth 2.1 sign-in server: protected-resource metadata, dynamic client registration, PKCE, refresh and revocation. Grok Bot needs only the URL. You approve each sign-in on this computer, so no password or token is typed into a web page or a chat.
+
+```sh
+grok-gadgets-gateway serve --simulator --allowed-host gadgets.example.net --oauth \
+  --request-log ~/grok-gadgets-requests.jsonl
+```
+
+`--oauth` needs exactly one `--allowed-host`, the tunnel name; the sign-in address is `https://gadgets.example.net`. The always-on service takes the same flags: `service install --lan-listen my-mac.local --allowed-host gadgets.example.net --oauth`.
+
+1. Open the tunnel (section 4).
+2. Ask Grok Bot in chat to add a **Remote HTTPS** MCP server named `grok-gadgets` with the URL `https://gadgets.example.net/mcp`, using OAuth sign-in and no header.
+3. Grok Bot shows a sign-in step. The page that opens shows a code such as `K7QX-M2PA` and waits.
+4. On this computer, check the code and approve it:
+
+   ```sh
+   grok-gadgets-gateway oauth pending
+   grok-gadgets-gateway oauth approve K7QX-M2PA --name grok-bot
+   ```
+
+   The page continues by itself, and Grok Bot finishes the sign-in. Approve only a code that your own sign-in page shows. An unapproved request expires after 10 minutes.
+
+The approved name, here `grok-bot`, is the token name in the request log and the [limits](remote-access.md#limits). An access token lasts 1 hour and a refresh token 30 days. The gateway stores only their SHA-256 hashes, in `oauth/state.json` next to your tokens.
+
+```sh
+grok-gadgets-gateway oauth list            # live sign-ins, never the tokens
+grok-gadgets-gateway oauth revoke grok-bot # end every grok-bot sign-in at once
+grok-gadgets-gateway oauth deny K7QX-M2PA  # refuse a request
+```
+
+The sign-in paths keep the Host check, `remote off` blocks them, and they allow 60 requests a minute in total. The gateway accepts at most 20 registered clients and 8 waiting sign-ins.
+
 ## Turn it off and revoke
 
 1. Turn remote access off. Remote requests get 503 at once:
@@ -111,10 +144,11 @@ Then ask: "list my gadgets", "set the light blue", "what's its state?". The requ
    grok-gadgets-gateway remote off
    ```
 
-2. Revoke the token. It fails on its next request, also inside an open session:
+2. Revoke the token, or the sign-in with `--oauth`. It fails on its next request, also inside an open session:
 
    ```sh
    grok-gadgets-gateway mcp-token revoke grok-bot
+   grok-gadgets-gateway oauth revoke grok-bot
    ```
 
 3. Stop the tunnel client.
