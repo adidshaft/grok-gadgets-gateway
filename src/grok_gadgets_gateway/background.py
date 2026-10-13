@@ -4,6 +4,7 @@ macOS: a launchd user agent in ~/Library/LaunchAgents. Linux: a systemd user uni
 ~/.config/systemd/user. No root, no system files. Config, CA and tokens are never touched.
 """
 
+import itertools
 import os
 import plistlib
 import shlex
@@ -61,7 +62,7 @@ def serve_arguments(
 
 def option_values(command, flag):
     """Every value given to `flag` in an argument list, such as the unit's --allowed-host."""
-    return [value for option, value in zip(command, command[1:]) if option == flag]
+    return [value for option, value in itertools.pairwise(command) if option == flag]
 
 
 def unit_text(platform, command, logs, environment=None):
