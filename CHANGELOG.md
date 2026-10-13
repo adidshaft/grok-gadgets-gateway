@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Tunnel hardening ([#130](https://github.com/adidshaft/grok-gadgets-gateway/issues/130), hub #4). A request through a tunnel Host or with a forwarding header is remote: it needs a named token (the local `default` token gets 403), and `grok-gadgets-gateway remote off|on|status` is a kill switch that refuses remote requests with 503 at once. `--allowed-host` requires `--request-log`, and tool-call lines record `"remote"`. The device port closes HTTP connections and logs `device_http_rejected`. `service install --allowed-host` passes the tunnel name to the service.
+
 ## 0.1.0-alpha.10 — 13 October 2026
 
 - On 12–13 October 2026 the owner's Mac and OLED kit passed name, two address-change and restart checks with the service (`docs/verification/always-on-2026-10-13.md`). Linux systemd is not yet tested on a real host.

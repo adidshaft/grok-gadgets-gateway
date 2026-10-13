@@ -32,7 +32,11 @@ grok-gadgets-gateway serve --simulator --allowed-host gadgets.example.net \
   --request-log ~/grok-gadgets-requests.jsonl
 ```
 
-Expected: `MCP http://127.0.0.1:8766/mcp on 127.0.0.1`. The gateway still listens on loopback only. `--allowed-host` lets requests with that Host header through. Requests with any other Host get HTTP 421.
+Expected: `MCP http://127.0.0.1:8766/mcp on 127.0.0.1`. The gateway still listens on loopback only. `--allowed-host` lets requests with that Host header through. Requests with any other Host get HTTP 421. Without `--request-log`, `serve` refuses to start.
+
+Requests through the tunnel are [remote](remote-access.md#remote-requests): they need a named token. The local `default` token gets HTTP 403.
+
+If the always-on service runs, it already uses port 8766. Stop it first, or reinstall it with the tunnel name: `grok-gadgets-gateway service install --lan-listen my-mac.local --allowed-host gadgets.example.net`. Then the service keeps its own request log, shown by `service status`.
 
 The default [limits](remote-access.md#limits) apply per token: 60 tool calls and 10 commands a minute, 8 open requests, 64 KiB bodies and 30 seconds per request.
 
@@ -62,7 +66,22 @@ curl -s -o /dev/null -w "%{http_code}\n" -X POST http://127.0.0.1:8766/mcp \
   -H "Host: wrong.example.org" -H "Content-Type: application/json" -d '{}'
 ```
 
-Expected: `401`. With a valid token and a wrong Host, the answer is `421`.
+Expected: `401`. With the `grok-bot` token and a wrong Host, the answer is `421`.
+
+```sh
+curl -s -o /dev/null -w "%{http_code}\n" -X POST http://127.0.0.1:8766/mcp \
+  -H "Host: gadgets.example.net" \
+  -H "Authorization: Bearer $(cat ~/.config/grok-gadgets/mcp-token)" \
+  -H "Content-Type: application/json" -d '{}'
+```
+
+Expected: `403`. The local token never works through the tunnel.
+
+```sh
+grok-gadgets-gateway remote off
+```
+
+Repeat the `initialize` check. Expected: `503`. Then run `grok-gadgets-gateway remote on`.
 
 ## 4. Open the tunnel
 
@@ -86,25 +105,32 @@ Then ask: "list my gadgets", "set the light blue", "what's its state?". The requ
 
 ## Turn it off and revoke
 
-1. Revoke the token. It fails on its next request, also inside an open session:
+1. Turn remote access off. Remote requests get 503 at once:
+
+   ```sh
+   grok-gadgets-gateway remote off
+   ```
+
+2. Revoke the token. It fails on its next request, also inside an open session:
 
    ```sh
    grok-gadgets-gateway mcp-token revoke grok-bot
    ```
 
-2. Stop the tunnel client.
-3. Stop `serve` with Ctrl+C.
-4. Remove the MCP server from Grok Bot.
-5. Delete the token file: `rm ~/.config/grok-gadgets/grok-bot.token`.
+3. Stop the tunnel client.
+4. Stop `serve` with Ctrl+C.
+5. Remove the MCP server from Grok Bot.
+6. Delete the token file: `rm ~/.config/grok-gadgets/grok-bot.token`.
 
-To shut off all remote access at once, stop the tunnel or `serve`.
+`remote off` stays in effect after a restart. Before the next tunnel session, run `grok-gadgets-gateway remote on`.
 
 ## Security checklist
 
-- Only `127.0.0.1:8766` goes through the tunnel. Never forward the device port 8765.
+- Only `127.0.0.1:8766` goes through the tunnel. Never forward the device port 8765 or the Wi-Fi listener; the device port refuses HTTP and logs `device_http_rejected`.
 - Each client has its own named token. The token is in a header, never in the URL.
 - `--allowed-host` names only your tunnel hostname.
-- The request log is on, and you read it after each session.
+- The request log is on (`--allowed-host` requires it), and you read it after each session.
+- `grok-gadgets-gateway remote off` is the kill switch.
 - The token, the log and screenshots of your account stay private.
 - The tunnel is on only while you use it.
 

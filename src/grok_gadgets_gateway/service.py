@@ -7,6 +7,7 @@ import json
 import re
 from contextlib import asynccontextmanager
 from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
 
 import uvicorn
 from mcp.server.transport_security import TransportSecuritySettings
@@ -28,6 +29,22 @@ _HOST = re.compile(r"[A-Za-z0-9][A-Za-z0-9.-]*(?::[0-9]{1,5})?$")
 MCP_PATH = "/mcp"
 # Set by BearerAuth after a token matches; any client-sent copy is removed first.
 TOKEN_HEADER = b"x-grok-gadgets-token"
+REMOTE_HEADER = b"x-grok-gadgets-remote"
+_LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
+# A tunnel or proxy adds one of these; a local client does not.
+_FORWARDING_HEADERS = (b"forwarded", b"x-forwarded-for", b"x-forwarded-host", b"x-real-ip")
+
+
+def is_remote(headers):
+    """True for a request through a tunnel: a non-loopback Host or a forwarding header."""
+    if any(name in headers for name in _FORWARDING_HEADERS):
+        return True
+    host = headers.get(b"host", b"").decode("latin-1").strip().lower()
+    if host.startswith("["):
+        host = host[1 : host.find("]")] if "]" in host else host
+    elif host.count(":") == 1:
+        host = host.partition(":")[0]
+    return host not in _LOOPBACK_HOSTS
 
 
 class FileTokenVerifier:
@@ -96,11 +113,13 @@ class BearerAuth:
     authorization server on loopback. Rejections are logged without the token or body.
     """
 
-    def __init__(self, app, verifier, limits=None, log=None):
+    def __init__(self, app, verifier, limits=None, log=None, remote_switch=None):
         self.app = app
         self.verifier = verifier
         self.limits = limits or Limits()
         self.log = log
+        # Path of the kill-switch file; read on every remote request.
+        self.remote_switch = remote_switch
         self.active = {}
 
     def _reject(self, status, reason, name):
@@ -113,8 +132,16 @@ class BearerAuth:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
-        headers = [(k, v) for k, v in scope.get("headers") or [] if k != TOKEN_HEADER]
+        internal = (TOKEN_HEADER, REMOTE_HEADER)
+        headers = [(k, v) for k, v in scope.get("headers") or [] if k not in internal]
         values = dict(headers)
+        remote = is_remote(values)
+        if remote and self.remote_switch is not None and Path(self.remote_switch).exists():
+            self._reject(503, "remote_disabled", None)
+            await _send_json(
+                send, 503, "remote_disabled", "Remote access is turned off on this gateway"
+            )
+            return
         scheme, _, token = values.get(b"authorization", b"").decode("latin-1").partition(" ")
         name = await self.verifier.verify_token(token) if scheme.lower() == "bearer" else None
         if name is None:
@@ -125,6 +152,13 @@ class BearerAuth:
                 "invalid_token",
                 "Bearer token required",
                 [(b"www-authenticate", b'Bearer error="invalid_token"')],
+            )
+            return
+        if remote and name == DEFAULT_TOKEN_NAME:
+            # The local mcp-token never leaves this computer; remote clients get a named one.
+            self._reject(403, "named_token_required", name)
+            await _send_json(
+                send, 403, "named_token_required", "Use a named token for remote access"
             )
             return
         limits = self.limits
@@ -165,7 +199,8 @@ class BearerAuth:
                 started = True
             await send(message)
 
-        scope = {**scope, "headers": [*headers, (TOKEN_HEADER, name.encode())]}
+        added = [(TOKEN_HEADER, name.encode()), (REMOTE_HEADER, b"1" if remote else b"0")]
+        scope = {**scope, "headers": [*headers, *added]}
         self.active[name] = self.active.get(name, 0) + 1
         try:
             if scope.get("method") == "POST":
@@ -265,6 +300,7 @@ async def serve_gateway(
     lan_directory=None,
     lan_recheck=None,
     resolver=None,
+    remote_switch=None,
 ):
     """Run until the context exits. HTTP and the device listener bind 127.0.0.1.
 
@@ -273,6 +309,9 @@ async def serve_gateway(
     """
     if host != "127.0.0.1":
         raise ValueError("MCP HTTP binds 127.0.0.1 only")
+    if allowed_hosts and request_log is None:
+        # A tunnel is only allowed when every call through it is recorded.
+        raise OperatorError("--allowed-host requires --request-log")
     if simulator_config and not simulator:
         raise OperatorError("--simulator-config requires --simulator")
     if credentials is None and lan_listen is not None:
@@ -314,6 +353,7 @@ async def serve_gateway(
             host="127.0.0.1",
             port=device_port,
             reserved_ids=[sim.device_id] if sim else [],
+            log=log,
         )
 
     def make_lan_server(address):
@@ -391,6 +431,7 @@ async def serve_gateway(
             mcp_tokens=mcp_tokens,
             limits=limits,
             rate_limiter=rate_limiter if rate_limiter is not None else RateLimiter(),
+            remote_switch=remote_switch,
         ) as running:
             follower = None
             if lan_server is not None:
@@ -443,6 +484,7 @@ async def _serve_http(
     mcp_tokens=None,
     limits=None,
     rate_limiter=None,
+    remote_switch=None,
 ):
     mcp = make_server(
         gateway,
@@ -462,7 +504,7 @@ async def _serve_http(
         host="127.0.0.1",
     )
     config = uvicorn.Config(
-        BearerAuth(app, FileTokenVerifier(mcp_token, mcp_tokens), limits, log),
+        BearerAuth(app, FileTokenVerifier(mcp_token, mcp_tokens), limits, log, remote_switch),
         host="127.0.0.1",
         port=port,
         log_level="warning",

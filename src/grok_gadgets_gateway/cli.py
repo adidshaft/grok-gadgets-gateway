@@ -22,9 +22,12 @@ from .operator import (
     mcp_token_path,
     mcp_tokens_path,
     read_mcp_token,
+    remote_enabled,
+    remote_off_path,
     revoke,
     revoke_mcp_token,
     rotate_mcp_token,
+    set_remote,
     write_token_file,
 )
 from .service import MCP_PATH, Limits, gateway_version, serve_gateway
@@ -39,6 +42,7 @@ COMMANDS = (
     "devices",
     "rotate-mcp-token",
     "mcp-token",
+    "remote",
     "serve",
     "stdio",
     "usb-bridge",
@@ -203,6 +207,11 @@ def build_parser():
     for action in (token_issue, token_sub.choices["list"], token_revoke):
         action.add_argument("--mcp-tokens", help=f"token list (default {mcp_tokens_path()})")
 
+    remote = sub.add_parser(
+        "remote", help="kill switch: turn remote (tunnel) access off or on at once"
+    )
+    remote.add_argument("state", choices=["off", "on", "status"])
+
     serve = sub.add_parser("serve", help="run authenticated HTTP MCP and the device listener")
     _simulator_options(serve)
     _credentials_option(serve)
@@ -238,7 +247,8 @@ def build_parser():
         "--allowed-host",
         action="append",
         default=[],
-        help="extra Host header allowed for a tunnel in front of 127.0.0.1",
+        help="extra Host header allowed for a tunnel in front of 127.0.0.1; "
+        "needs --request-log, and remote requests need a named token",
     )
     serve.add_argument(
         "--lan-listen",
@@ -285,6 +295,12 @@ def build_parser():
         "--lan-listen", metavar="ADDRESS[:PORT]", help="also run the Wi-Fi device listener"
     )
     service_install.add_argument("--port", type=int, default=8766, help="loopback MCP HTTP port")
+    service_install.add_argument(
+        "--allowed-host",
+        action="append",
+        default=[],
+        help="tunnel Host header to allow (see serve --allowed-host)",
+    )
     service_install.add_argument(
         "--device-port", type=int, default=8765, help="loopback device port"
     )
@@ -449,6 +465,8 @@ def run(parser, args):
         return 0
     if command == "mcp-token":
         return run_mcp_token(parser, args)
+    if command == "remote":
+        return run_remote(parser, args)
     if command == "serve":
         try:
             asyncio.run(
@@ -466,6 +484,7 @@ def run(parser, args):
                     rate_limiter=RateLimiter(args.calls_per_minute, args.commands_per_minute),
                     request_log=args.request_log,
                     lan_listen=args.lan_listen,
+                    remote_switch=str(remote_off_path()),
                 )
             )
         except OperatorError as exc:
@@ -607,6 +626,13 @@ def run_service(parser, args, service=None):
         if action == "install":
             if not mcp_token_path().is_file():
                 parser.error("the gateway is not set up. Run: grok-gadgets-gateway init")
+            if args.allowed_host:
+                from .service import transport_security
+
+                try:
+                    transport_security(args.allowed_host)
+                except ValueError as exc:
+                    parser.error(str(exc))
             ports = [("127.0.0.1", args.port), ("127.0.0.1", args.device_port)]
             if args.lan_listen:
                 from .lan import lan_dir, parse_lan_address, resolve_lan_host
@@ -620,7 +646,11 @@ def run_service(parser, args, service=None):
                 program,
                 *prefix,
                 *serve_arguments(
-                    args.lan_listen, args.port, args.device_port, service.logs / "requests.jsonl"
+                    args.lan_listen,
+                    args.port,
+                    args.device_port,
+                    service.logs / "requests.jsonl",
+                    args.allowed_host,
                 ),
             ]
             environment = {
@@ -660,6 +690,19 @@ def run_service(parser, args, service=None):
         return 0
     except OperatorError as exc:
         parser.error(str(exc))
+
+
+def run_remote(parser, args):
+    try:
+        if args.state != "status":
+            set_remote(args.state == "on")
+    except OSError as exc:
+        parser.error(f"cannot change {remote_off_path()}: {exc.strerror}")
+    if remote_enabled():
+        print("remote: on (requests through --allowed-host need a named token)")
+    else:
+        print("remote: off (every remote request gets 503; loopback and devices still work)")
+    return 0
 
 
 def run_mcp_token(parser, args):

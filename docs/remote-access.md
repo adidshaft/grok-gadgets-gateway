@@ -39,7 +39,7 @@ This package does not terminate public TLS and it does not speak OAuth. Native r
 
 ## What you may publish
 
-Publish only the MCP port. Point the proxy or tunnel at `127.0.0.1:8766` and leave port 8765 on loopback. The device protocol is unencrypted and is not safe on a shared network.
+Publish only the MCP port. Point the proxy or tunnel at `127.0.0.1:8766` and leave port 8765 on loopback. The device protocol is unencrypted and is not safe on a shared network. If a tunnel is pointed at the device port by mistake, the gateway closes each HTTP connection there and logs `device_http_rejected`.
 
 Pass the public hostname so the Host check accepts the tunnel:
 
@@ -47,7 +47,25 @@ Pass the public hostname so the Host check accepts the tunnel:
 uv run grok-gadgets-gateway serve --allowed-host your-name.example
 ```
 
-That flag adds the hostname, `hostname:*`, and `http`/`https` origins for it. It does not change the bind address. The process still listens on `127.0.0.1` only. Requests with any other Host are rejected.
+That flag adds the hostname, `hostname:*`, and `http`/`https` origins for it. It does not change the bind address. The process still listens on `127.0.0.1` only. Requests with any other Host are rejected. `--allowed-host` needs `--request-log`, so every call through the tunnel is recorded.
+
+## Remote requests
+
+A request is **remote** when its Host is not `127.0.0.1`, `localhost` or `[::1]`, or when it carries `Forwarded`, `X-Forwarded-For`, `X-Forwarded-Host` or `X-Real-IP`. A remote request:
+
+- needs a named token. The local `default` token gets HTTP 403 `named_token_required`;
+- is refused with HTTP 503 `remote_disabled` while the kill switch is off;
+- is marked `"remote":true` in the request log.
+
+## Kill switch
+
+```sh
+grok-gadgets-gateway remote off      # every remote request gets 503 at once
+grok-gadgets-gateway remote status
+grok-gadgets-gateway remote on
+```
+
+`remote off` writes `remote-off` next to `mcp-token`. `serve` checks it on every remote request, so no restart is needed. Loopback clients, `rehearse` and devices keep working. To stop all access, also stop the tunnel and revoke the token.
 
 Keep the bearer token in the connector configuration. A tunnel without that token is not access. Do not put the token in the URL, a screenshot, or a support report.
 
@@ -57,7 +75,7 @@ Keep the bearer token in the connector configuration. A tunnel without that toke
 
 ## What this does not prove
 
-Local tests call `serve` over Streamable HTTP on `127.0.0.1`. They check a missing token, a wrong token, a matching token, a simulator command, the absence of test controls, and a rejected Host. They do not open a public URL and they do not talk to Grok Bot or a board.
+Local tests call `serve` over Streamable HTTP on `127.0.0.1`. They check a missing token, a wrong token, a matching token, a simulator command, the absence of test controls, and a rejected Host. With the tunnel Host, they check missing, invalid and revoked tokens (401), the default token (403), a wrong Host (421), the kill switch (503) and HTTP on the device port. They do not open a public URL and they do not talk to Grok Bot or a board.
 
 ## Security checklist
 
@@ -67,6 +85,8 @@ The public tunnel path remains unverified. The owner tested hardware through loc
 - Publish the MCP port only. Leave device port 8765 on loopback.
 - `mcp-token` and `credentials.json` are mode 0600 and stay out of Git.
 - Pass the tunnel hostname with `--allowed-host`. Any other Host is rejected.
+- Give the remote client its own named token; the `default` token never works remotely.
+- Keep the request log on. `remote off` stops remote access at once.
 - The connector sends `Authorization: Bearer`. The token is not in the URL.
 - Run `init` as the same user that will run `serve`.
 - `init` prints connector JSON and hides the MCP token unless you pass `--show-token`.

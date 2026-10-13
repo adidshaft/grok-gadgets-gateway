@@ -36,6 +36,23 @@ def mcp_tokens_path():
     return config_dir() / "mcp-tokens.json"
 
 
+def remote_off_path():
+    """Kill switch: while this file exists, `serve` refuses every remote request."""
+    return config_dir() / "remote-off"
+
+
+def set_remote(enabled, path=None):
+    path = Path(path or remote_off_path())
+    if enabled:
+        path.unlink(missing_ok=True)
+    else:
+        atomic_write(path, f"{datetime.now(UTC).isoformat()}\n".encode())
+
+
+def remote_enabled(path=None):
+    return not Path(path or remote_off_path()).exists()
+
+
 TOKEN_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 # The single mcp-token file answers to this name in logs and limits.
 DEFAULT_TOKEN_NAME = "default"
