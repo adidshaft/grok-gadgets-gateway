@@ -40,7 +40,9 @@ system files.
 .venv/bin/grok-gadgets-gateway service uninstall
 ```
 
-`status` says whether the service is running. `logs` prints the end of the log; the request log
+`status` says whether the service is running. For the Grok Bot route it also shows the allowed
+host, whether `--oauth` sign-in is on, `remote` on or off, live sign-ins, the last remote call and
+any sign-in flood in the last 24 hours. It never prints a token or a sign-in code. `logs` prints the end of the log; the request log
 is in the same folder. `uninstall` stops the service and removes its file. Your config, CA and
 device tokens stay.
 

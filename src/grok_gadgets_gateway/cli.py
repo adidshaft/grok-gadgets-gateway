@@ -779,6 +779,9 @@ def run_service(parser, args, service=None):
                 state = "not installed"
             pid = f" (pid {report['pid']})" if report["pid"] else ""
             print(f"service: {state}{pid}\nunit: {report['unit']}\nlog: {report['log']}")
+            if report["installed"]:
+                for line in route_status(service):
+                    print(line)
             return 0 if report["running"] or not report["installed"] else 3
         lines = service.tail(args.lines)
         print(f"log: {service.logs / 'gateway.log'}", file=sys.stderr)
@@ -870,6 +873,64 @@ def run_oauth(parser, args):
     except (OperatorError, OSError) as exc:
         parser.error(str(exc))
     return 0
+
+
+def route_status(service, now=None):
+    """Lines for `service status` about the Grok Bot route; never a token or a code."""
+    from datetime import UTC, datetime, timedelta
+    from pathlib import Path
+
+    from .background import option_values
+    from .oauth import sign_ins
+    from .usage import last_record
+
+    command = service.unit_command()
+    hosts = option_values(command, "--allowed-host")
+    logs = option_values(command, "--request-log") or [service.logs / "requests.jsonl"]
+    # The live log last; rotated files (requests.jsonl.1 is the newest) before it.
+    paths = [
+        old
+        for path in logs
+        for old in sorted(Path(path).parent.glob(Path(path).name + ".*"), reverse=True)
+        + [Path(path)]
+        if old.is_file()
+    ]
+    lines = [
+        f"allowed host: {', '.join(hosts) if hosts else 'none (no tunnel route)'}",
+        f"sign-in (--oauth): {'on' if '--oauth' in command else 'off'}",
+        f"remote: {'on' if remote_enabled() else 'off (kill switch)'}",
+    ]
+    try:
+        live = sign_ins()
+    except OperatorError as exc:
+        live, lines = [], [*lines, f"live sign-ins: unreadable ({exc})"]
+    else:
+        names = [
+            f"{name} (until {datetime.fromtimestamp(expires, UTC):%Y-%m-%d})"
+            for name, _, expires in live
+        ]
+        lines.append(f"live sign-ins: {', '.join(names) if names else 'none'}")
+    call = last_record(
+        paths, lambda r: r.get("event") == "mcp_tool_call" and r.get("remote") is True
+    )
+    if call:
+        lines.append(
+            f"last remote call: {call.get('ts', '-')} {call.get('tool', '-')} "
+            f"{call.get('outcome', '-')} as {call.get('token') or '-'}"
+        )
+    else:
+        lines.append("last remote call: none in the request log")
+    flood = last_record(paths, lambda r: r.get("event") == "oauth_flood")
+    now = now or datetime.now(UTC)
+    try:
+        recent = flood and now - datetime.fromisoformat(flood["ts"]) < timedelta(days=1)
+    except (KeyError, TypeError, ValueError):
+        recent = False
+    if recent:
+        lines.append(f"sign-in flood: {flood['ts']} {flood.get('reason', '-')}")
+    else:
+        lines.append("sign-in flood: none in the last 24 hours")
+    return lines
 
 
 def run_remote(parser, args):

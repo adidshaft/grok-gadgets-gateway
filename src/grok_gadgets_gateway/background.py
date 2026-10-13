@@ -59,6 +59,11 @@ def serve_arguments(
     return args
 
 
+def option_values(command, flag):
+    """Every value given to `flag` in an argument list, such as the unit's --allowed-host."""
+    return [value for option, value in zip(command, command[1:]) if option == flag]
+
+
 def unit_text(platform, command, logs, environment=None):
     """The launchd plist or systemd unit for `command` (a list: executable and arguments)."""
     log = logs / "gateway.log"
@@ -198,6 +203,21 @@ class Service:
                 elif key == "MainPID" and value.isdigit() and value != "0":
                     report["pid"] = int(value)
         return report
+
+    def unit_command(self):
+        """The executable and arguments in the installed unit; [] when there is none."""
+        if not self.installed():
+            return []
+        text = self.path.read_text()
+        if self.platform == "macos":
+            try:
+                return list(plistlib.loads(text.encode()).get("ProgramArguments", []))
+            except (plistlib.InvalidFileException, ValueError):
+                return []
+        for line in text.splitlines():
+            if line.startswith("ExecStart="):
+                return shlex.split(line.removeprefix("ExecStart="))
+        return []
 
     def tail(self, lines=40):
         log = self.logs / "gateway.log"
