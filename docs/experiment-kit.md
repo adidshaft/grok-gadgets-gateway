@@ -27,7 +27,7 @@ It contains the parts, wiring, build steps and a results table.
 Start with USB. Then follow [Wi-Fi setup](wifi-devices.md).
 
 Keep the gateway running on the Mac. The Wi-Fi board can use a USB charger; it still needs the gateway computer.
-The owner has not verified an unattended gateway service or an independent second installation.
+The owner verified the [always-on service](always-on.md) on this kit. An independent second installation is not verified.
 
 ## Evidence and limits
 
@@ -35,5 +35,5 @@ The owner has not verified an unattended gateway service or an independent secon
 - [Wi-Fi results](https://github.com/adidshaft/grok-gadgets-esp32-sdk/blob/dev/docs/verification/oled-kit-wifi-2026-10-12.md)
 - [Grok Bot local-command test](https://github.com/adidshaft/grok-gadgets/blob/dev/docs/verification/grok-local-execution-2026-10-12.md)
 
-Grok Bot ran a local `rehearse` command. Native Grok Bot MCP calls and a public tunnel remain unverified.
+Grok Bot ran a local `rehearse` command. On 13 October 2026 it also called the tools natively through an owner-run tunnel with sign-in ([record](https://github.com/adidshaft/grok-gadgets/blob/main/docs/verification/grok-remote-https-2026-10-13.md)).
 Record physical observations separately from gateway acknowledgements. A client name alone does not prove which product sent a request.
