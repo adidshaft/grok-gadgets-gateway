@@ -36,8 +36,8 @@ ok  gadgets_get_state sim-c124: {"rgb": {"r": 0, "g": 120, "b": 255, "on": true}
 Rehearsal passed: these are the calls Grok Bot will make. It does not prove a Grok Bot connection or any physical effect.
 ```
 
-`rehearse` connects with the same bearer token and the same MCP tools that Grok Bot's custom
-MCP connector will use. For your own gadget, name the command and its arguments:
+`rehearse` uses a local bearer token to call the six MCP tools. Grok Bot uses the same tools
+through [OAuth sign-in](tunnel.md#oauth-sign-in-for-grok-bot), not this fixed token. For your own gadget, name the command and its arguments:
 
 ```sh
 .venv/bin/grok-gadgets-gateway rehearse --device desk-lamp --command set.light --args '{"on": true}'

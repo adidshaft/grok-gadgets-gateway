@@ -5,7 +5,7 @@
 - MCP: `http://127.0.0.1:8766/mcp`
 - Devices: `127.0.0.1:8765`
 
-Grok Bot's connector (and `rehearse`) sends `Authorization: Bearer <token>`. The token is the single line in `~/.config/grok-gadgets/mcp-token` (or `$XDG_CONFIG_HOME/grok-gadgets/mcp-token`), mode 0600. `rotate-mcp-token` replaces it and prints `GROK_GADGETS_MCP_TOKEN=...` once on stdout. Update the connector's saved token and reconnect. The server reads the file on each request; no gateway restart is needed.
+Local `rehearse` sends `Authorization: Bearer <token>`. Grok Bot uses OAuth sign-in; the owner’s personal app has no fixed-header form. The token is the single line in `~/.config/grok-gadgets/mcp-token` (or `$XDG_CONFIG_HOME/grok-gadgets/mcp-token`), mode 0600. `rotate-mcp-token` replaces it and prints `GROK_GADGETS_MCP_TOKEN=...` once on stdout. Update the token in your local test configuration and reconnect. The server reads the file on each request; no gateway restart is needed.
 
 For an HTTPS name in front of `serve`, follow the [owner-run TLS tunnel guide](tunnel.md). Grok Bot uses it with [OAuth sign-in](tunnel.md#oauth-sign-in-for-grok-bot).
 
@@ -67,7 +67,7 @@ grok-gadgets-gateway remote on
 
 `remote off` writes `remote-off` next to `mcp-token`. `serve` checks it on every remote request, so no restart is needed. Loopback clients, `rehearse` and devices keep working. To stop all access, also stop the tunnel and revoke the token.
 
-Keep the bearer token in the connector configuration. A tunnel without that token is not access. Do not put the token in the URL, a screenshot, or a support report.
+For fixed-token test tools, keep the token in local configuration. For Grok Bot, use OAuth sign-in. A tunnel alone does not grant access. Do not put the token in the URL, a screenshot, or a support report.
 
 ## Process supervisors
 
@@ -79,15 +79,17 @@ Local tests call `serve` over Streamable HTTP on `127.0.0.1`. They check a missi
 
 ## Security checklist
 
-The owner's tunnel with `--oauth` worked with Grok Bot for one session on 13 October 2026. Leaving it on every day is tracked in [#142](https://github.com/adidshaft/grok-gadgets-gateway/issues/142).
+The owner tested the daily route for one day on 13 October 2026. A second day and another tester are still needed.
+See the [daily record](https://github.com/adidshaft/grok-gadgets/blob/main/docs/verification/daily-route-2026-10-13.md).
 
 - `serve` binds `127.0.0.1` only. There is no flag for a public address.
 - Publish the MCP port only. Leave device port 8765 on loopback.
 - `mcp-token` and `credentials.json` are mode 0600 and stay out of Git.
 - Pass the tunnel hostname with `--allowed-host`. Any other Host is rejected.
-- Give the remote client its own named token; the `default` token never works remotely.
+- For fixed-token remote tests, issue a named token; the `default` token never works remotely.
+- Grok Bot uses the access token from OAuth sign-in. Do not configure a fixed bearer header.
 - Keep the request log on. `remote off` stops remote access at once.
-- The connector sends `Authorization: Bearer`. The token is not in the URL.
+- Grok Bot signs in through OAuth. Fixed-token test tools send `Authorization: Bearer`; never put a token in the URL.
 - Run `init` as the same user that will run `serve`.
 - `init` prints connector JSON and hides the MCP token unless you pass `--show-token`.
 - A local test or `rehearse` run is not a Grok Bot session and not physical proof.
