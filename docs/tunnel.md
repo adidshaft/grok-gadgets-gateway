@@ -168,4 +168,4 @@ The sign-in paths keep the Host check, `remote off` blocks them, and they allow 
 - The token, the log and screenshots of your account stay private.
 - The tunnel is on only while you use it.
 
-A tunnel makes the gateway reachable. Authentication comes from the bearer token, and the limits bound the damage from a leaked one. This is not OAuth; per-person sign-in is [GW-OAUTH-001](https://github.com/adidshaft/grok-gadgets-gateway/issues/71).
+A tunnel makes the gateway reachable. Authentication comes from the named token or the sign-in that you approve, and the limits bound the damage from a leaked one.

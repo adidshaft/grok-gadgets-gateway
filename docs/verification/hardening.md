@@ -3,7 +3,7 @@
 This file records the 2026-10-04 correction checkpoints and their original test counts.
 Use the [README](../../README.md) and [launch verification](launch-docs.md) for current setup.
 
-Local software evidence only: actual Grok Bot, physical C124 and mobile testing remain pending under GW-004.
+Local software evidence only. Later results: the physical OLED kit (12 October 2026) and native Grok Bot calls from Mac and iPhone (13 October 2026, [record](https://github.com/adidshaft/grok-gadgets/blob/main/docs/verification/grok-remote-https-2026-10-13.md)) closed GW-004. C124 hardware is still untested.
 
 ## 2026-10-04 — H1 / HARD-GW-001
 
