@@ -18,6 +18,8 @@ logger = logging.getLogger("grok_gadgets_gateway")
 DEVICE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,63}")
 MAX_REGISTRY_BYTES = 1024 * 1024
 FATAL_CODES = ("unauthorized", "revoked", "stale_session")
+# A tunnel pointed at a device port sends HTTP; devices send JSON lines.
+_HTTP_REQUEST_LINE = re.compile(rb"[A-Z]{3,7} \S+ HTTP/[0-9.]+\r?\n")
 INTERNAL_ERROR = (
     json.dumps({"ok": False, "error": {"code": "internal_error", "message": "Gateway error"}})
     + "\n"
@@ -343,6 +345,10 @@ class DeviceServer:
                         timeout = self.idle_timeout
                     line = await asyncio.wait_for(reader.readline(), timeout=timeout)
                     if not line:
+                        break
+                    if sid is None and _HTTP_REQUEST_LINE.fullmatch(line):
+                        # Device ports are never tunnelled (hub #4); refuse and record it.
+                        self._log("device_http_rejected", peer=peer)
                         break
                     if len(line) > MAX_TCP_FRAME or not line.endswith(b"\n"):
                         raise GatewayError("invalid_request", "Frame exceeds limit or lacks LF")

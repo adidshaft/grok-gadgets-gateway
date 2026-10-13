@@ -48,6 +48,8 @@ def test_serve_arguments_never_add_simulator_or_public_addresses():
         "/logs/requests.jsonl",
     ]
     assert "--simulator" not in serve_arguments()
+    tunnel = serve_arguments(None, 8766, 8765, "/logs/r.jsonl", ["gadgets.example.net"])
+    assert tunnel[5:] == ["--allowed-host", "gadgets.example.net", "--request-log", "/logs/r.jsonl"]
 
 
 def test_launchd_plist(tmp_path):
@@ -187,4 +189,8 @@ def test_cli_install_checks_setup_and_runs_serve(private_home, capsys):
         device_port,
     ]
     assert "--request-log" in args and "--simulator" not in args
+    assert "--allowed-host" not in args
+    with pytest.raises(SystemExit):
+        install("--allowed-host", "bad host")
+    assert "allowed host" in capsys.readouterr().err
     assert plist["EnvironmentVariables"]["XDG_CONFIG_HOME"] == str(private_home / ".config")

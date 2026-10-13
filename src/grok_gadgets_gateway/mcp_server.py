@@ -110,6 +110,16 @@ def token_name(ctx):
     return headers.get("x-grok-gadgets-token") if headers else None
 
 
+def came_remote(ctx):
+    """True when BearerAuth saw a tunnel Host or forwarding header; None on stdio."""
+    try:
+        headers = ctx.headers
+    except (AttributeError, ValueError):
+        return None
+    value = headers.get("x-grok-gadgets-remote") if headers else None
+    return None if value is None else value == "1"
+
+
 def user_agent(ctx):
     try:
         headers = ctx.headers
@@ -228,6 +238,7 @@ def make_server(
                 "transport": request_log.transport,
                 "client": client_name(ctx),
                 "token": token_name(ctx),
+                "remote": came_remote(ctx),
                 "tool": tool,
                 "args_sha256": argument_hash(arguments),
                 "outcome": "ok" if response["ok"] else response["error"]["code"],
