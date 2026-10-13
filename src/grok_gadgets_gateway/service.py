@@ -365,6 +365,13 @@ LAN_FRAMES_PER_SECOND = 30
 LAN_HANDSHAKE_TIMEOUT = 5
 # How often a --lan-listen NAME.local is resolved again, to follow an address change.
 LAN_RECHECK_SECONDS = 30
+# Relay listener limits (hub ADR 009): any peer, so per-address caps sit under global ones.
+RELAY_SESSIONS = 64
+RELAY_PENDING = 32
+RELAY_PENDING_PER_ADDRESS = 4
+RELAY_CONNECTS_PER_MINUTE = 20
+RELAY_FRAMES_PER_SECOND = 30
+RELAY_HANDSHAKE_TIMEOUT = 5
 
 
 class Running:
@@ -374,6 +381,7 @@ class Running:
         self.mcp_port = mcp_port
         self.device_port = device_port
         self.lan = None  # "address:port" when the LAN listener runs.
+        self.relay = None  # "name on address:port" when the relay listener runs.
         self.url = f"http://127.0.0.1:{mcp_port}{MCP_PATH}"
 
     async def wait(self):
@@ -409,6 +417,8 @@ async def serve_gateway(
     lan_listen=None,
     lan_directory=None,
     lan_recheck=None,
+    device_listen=None,
+    device_directory=None,
     resolver=None,
     remote_switch=None,
     usage_hook=None,
@@ -419,6 +429,7 @@ async def serve_gateway(
     """Run until the context exits. HTTP and the device listener bind 127.0.0.1.
 
     `lan_listen` ("address[:port]") adds a TLS device listener on one private address.
+    `device_listen` ("address[:port]") adds the relay device listener on any address.
     `credentials=None` (simulator only) reads no device registry and opens no device port.
     """
     if host != "127.0.0.1":
@@ -435,11 +446,12 @@ async def serve_gateway(
             raise OperatorError("--oauth requires --request-log")
     if simulator_config and not simulator:
         raise OperatorError("--simulator-config requires --simulator")
-    if credentials is None and lan_listen is not None:
-        raise OperatorError(
-            "--lan-listen needs device credentials: run without --simulator, "
-            "or pass --credentials with --simulator"
-        )
+    for flag, value in (("--lan-listen", lan_listen), ("--device-listen", device_listen)):
+        if credentials is None and value is not None:
+            raise OperatorError(
+                f"{flag} needs device credentials: run without --simulator, "
+                "or pass --credentials with --simulator"
+            )
     try:
         config = load_config(simulator_config) if simulator_config else None
         security = transport_security(allowed_hosts)
@@ -457,6 +469,13 @@ async def serve_gateway(
             lan_host, lan_port = parse_lan_address(lan_listen)
             lan = (lan_host, lan_port, server_context(lan_host, lan_directory))
             lan_bind = resolve_lan_host(lan_host, resolver)
+        relay = None
+        if device_listen is not None:
+            from .lan import device_cert_name, device_context, parse_device_listen
+
+            relay_host, relay_port = parse_device_listen(device_listen)
+            relay = (relay_host, relay_port, device_context(device_directory))
+            relay_name = device_cert_name(device_directory)
     except (CredentialError, SimulatorConfigError, ValueError) as exc:
         raise OperatorError(str(exc)) from None
     try:
@@ -494,6 +513,34 @@ async def serve_gateway(
         )
 
     lan_server = make_lan_server(lan_bind) if lan is not None else None
+    relay_server = None
+    if relay is not None:
+        relay_server = DeviceServer(
+            gateway,
+            registry,
+            host=relay[0],
+            port=relay[1],
+            reserved_ids=[sim.device_id] if sim else [],
+            max_sessions=RELAY_SESSIONS,
+            max_pending=RELAY_PENDING,
+            tls=relay[2],
+            log=log,
+            handshake_timeout=RELAY_HANDSHAKE_TIMEOUT,
+            connects_per_minute=RELAY_CONNECTS_PER_MINUTE,
+            frames_per_second=RELAY_FRAMES_PER_SECOND,
+            public=True,
+            pending_per_address=RELAY_PENDING_PER_ADDRESS,
+        )
+
+    def listener_status():
+        report = device_server.status() if device_server else {"enabled": False}
+        if relay_server is not None:
+            report["relay"] = {
+                "name": relay_name,
+                "port": relay_server.port,
+                "connections": len(relay_server.connections),
+            }
+        return report
 
     def lan_label():
         bound = f"{lan_server.host}:{lan_server.port}"
@@ -541,6 +588,14 @@ async def serve_gateway(
                     f"cannot listen on {lan_server.host}:{lan[1]}: {exc.strerror}. "
                     "Use an address or mDNS name of this computer."
                 ) from None
+        if relay_server is not None:
+            try:
+                await relay_server.start()
+            except OSError as exc:
+                raise OperatorError(
+                    f"cannot listen on {relay[0]}:{relay[1]}: {exc.strerror}. "
+                    "Use an address of this host and a free port."
+                ) from None
         async with _serve_http(
             gateway,
             sim,
@@ -557,12 +612,16 @@ async def serve_gateway(
             allowed_hosts=allowed_hosts,
             oauth_issuer=oauth_issuer if oauth else None,
             oauth_directory=oauth_directory,
+            listener_status=listener_status if registry is not None else None,
         ) as running:
             follower = None
             if lan_server is not None:
                 running.lan = lan_label()
                 if is_local_name(lan[0]):
                     follower = asyncio.create_task(follow_address(running))
+            if relay_server is not None:
+                bound = f"{relay_server.host}:{relay_server.port}"
+                running.relay = f"{relay_name} on {bound}" if relay_name else bound
             log.append(
                 {
                     "event": "serve_started",
@@ -572,6 +631,7 @@ async def serve_gateway(
                         f"127.0.0.1:{running.device_port}" if running.device_port else None
                     ),
                     "lan_listener": running.lan,
+                    "relay_listener": running.relay,
                     "simulator": sim.device_id if sim else None,
                 }
             )
@@ -581,6 +641,8 @@ async def serve_gateway(
                 if follower is not None:
                     follower.cancel()
     finally:
+        if relay_server is not None:
+            await relay_server.close()
         if lan_server is not None:
             await lan_server.close()
         if device_server is not None:
@@ -648,7 +710,10 @@ async def _serve_http(
     allowed_hosts=(),
     oauth_issuer=None,
     oauth_directory=None,
+    listener_status=None,
 ):
+    if listener_status is None and device_server is not None:
+        listener_status = device_server.status
     mcp = make_server(
         gateway,
         sim,
@@ -656,7 +721,7 @@ async def _serve_http(
         False,
         request_log=log,
         rate_limiter=rate_limiter,
-        listener_status=device_server.status if device_server else None,
+        listener_status=listener_status,
         http=True,
         usage_hook=usage_hook,
         log_level="WARNING",

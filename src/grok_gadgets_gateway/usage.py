@@ -252,7 +252,14 @@ def calibrate(calls, used, unit, since, until, path=None):
     if not calls:
         raise OperatorError("no tool calls in that window; nothing to calibrate")
     if used < 0:
-        raise OperatorError("--calibrate must be zero or more")
+        raise OperatorError("--calibrate must be more than zero")
+    if used == 0:
+        # A page that rounds to whole percent often shows no change; a zero rate would then
+        # report every later call as free. Nothing is saved.
+        raise OperatorError(
+            "--calibrate 0 would save a zero rate, so nothing was saved. Use a longer window "
+            "until the usage page shows a change"
+        )
     rate = {
         "rate": used / len(calls),
         "unit": unit,
