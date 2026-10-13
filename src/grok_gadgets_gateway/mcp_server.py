@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.types import ToolAnnotations
 
+from . import logfiles
 from .domain import ACK_TIMEOUT_SECONDS
 from .protocol import GatewayError
 from .usage import json_size
@@ -57,22 +58,59 @@ class RequestLog:
     """Redacted structured JSON lines on stderr: never arguments, state, events or tokens.
 
     With `path`, the same lines plus the owner-only detail (non-secret command arguments,
-    reported state, user agent) are appended to a mode-0600 JSONL file.
+    reported state, user agent) are appended to a mode-0600 JSONL file. Both rotate at
+    `max_bytes` and keep `keep` old files (hub ADR 008); `usage` reads the rotated files.
     """
 
-    def __init__(self, transport, stream=None, path=None):
+    def __init__(
+        self,
+        transport,
+        stream=None,
+        path=None,
+        max_bytes=logfiles.MAX_BYTES,
+        keep=logfiles.KEEP,
+        service_log=None,
+    ):
         self.transport = transport
         self.stream = stream if stream is not None else sys.stderr
+        self.path = path
+        self.max_bytes = max_bytes
+        self.keep = keep
+        # The service log, when stderr is that file; it is copied and truncated in place.
+        self.service_log = service_log or logfiles.service_log_of(self.stream)
         self.file = None
         if path is not None:
-            flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0)
-            descriptor = os.open(path, flags, 0o600)
-            os.fchmod(descriptor, 0o600)
-            self.file = os.fdopen(descriptor, "a", encoding="utf-8")
+            self._open()
+
+    def _open(self):
+        flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(self.path, flags, 0o600)
+        os.fchmod(descriptor, 0o600)
+        self.file = os.fdopen(descriptor, "a", encoding="utf-8")
+
+    def _rotate(self):
+        try:
+            if self.file is not None and self.file.tell() >= self.max_bytes:
+                self.file.close()
+                logfiles.shift(self.path, self.keep)
+                os.rename(self.path, f"{self.path}.1")
+                self._open()
+            if self.service_log is not None and self._service_log_size() >= self.max_bytes:
+                logfiles.copy_truncate(self.service_log, self.keep)
+        except OSError:
+            # A failed rotation never stops a tool call; the next write tries again.
+            if self.file is None or self.file.closed:
+                self._open()
+
+    def _service_log_size(self):
+        # The stream's own offset is stale after a truncate; ask the file.
+        return os.fstat(self.stream.fileno()).st_size
 
     def write(self, record, detail=None):
         record = {"ts": datetime.now(UTC).isoformat(), **record}
         print(json.dumps(record, separators=(",", ":")), file=self.stream, flush=True)
+        if self.service_log is not None and self.file is None:
+            self._rotate()
         if self.file is not None:
             self.append({**record, **(detail or {})})
 
@@ -83,6 +121,7 @@ class RequestLog:
         record = {"ts": datetime.now(UTC).isoformat(), **record}
         self.file.write(json.dumps(record, separators=(",", ":"), default=str) + "\n")
         self.file.flush()
+        self._rotate()
 
     def close(self):
         if self.file is not None:

@@ -236,7 +236,7 @@ def build_parser():
         "--log",
         action="append",
         metavar="PATH",
-        help="request log to read (repeatable; default: the service's requests.jsonl)",
+        help="request log to read, with its rotated files (repeatable; default: the service's)",
     )
     usage.add_argument("--since", metavar="ISO", help="from this UTC date or time")
     usage.add_argument("--until", metavar="ISO", help="up to this UTC date or time")
@@ -815,6 +815,9 @@ def run_usage(parser, args):
         if found is None or not found.is_file():
             parser.error("no service request log here; pass --log PATH")
         paths = [found]
+    from .logfiles import rotated
+
+    paths = [old for path in paths for old in rotated(path)] or paths
     try:
         since = parse_time(args.since) if args.since else None
         until = parse_time(args.until, end=True) if args.until else None
@@ -878,23 +881,16 @@ def run_oauth(parser, args):
 def route_status(service, now=None):
     """Lines for `service status` about the Grok Bot route; never a token or a code."""
     from datetime import UTC, datetime, timedelta
-    from pathlib import Path
 
     from .background import option_values
+    from .logfiles import rotated
     from .oauth import sign_ins
     from .usage import last_record
 
     command = service.unit_command()
     hosts = option_values(command, "--allowed-host")
     logs = option_values(command, "--request-log") or [service.logs / "requests.jsonl"]
-    # The live log last; rotated files (requests.jsonl.1 is the newest) before it.
-    paths = [
-        old
-        for path in logs
-        for old in sorted(Path(path).parent.glob(Path(path).name + ".*"), reverse=True)
-        + [Path(path)]
-        if old.is_file()
-    ]
+    paths = [old for path in logs for old in rotated(path)]
     lines = [
         f"allowed host: {', '.join(hosts) if hosts else 'none (no tunnel route)'}",
         f"sign-in (--oauth): {'on' if '--oauth' in command else 'off'}",
