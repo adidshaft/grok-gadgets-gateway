@@ -100,3 +100,5 @@ Rules:
 - When `serve` stops, it prints `Usage hook: N lines sent, M dropped.` A `stdio` request log records the same counts in `stdio_stopped`.
 
 Use `usage` for totals. The hook is for live use; it has no history.
+
+Example: [`examples/usage-hooks/macos-notify.py`](../examples/usage-hooks/macos-notify.py) posts a local macOS notification for each remote call. `service install --usage-hook` passes a hook to the service; see [daily use](daily-use.md#5-notify-on-each-remote-call-optional).

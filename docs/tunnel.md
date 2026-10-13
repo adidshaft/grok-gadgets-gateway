@@ -136,6 +136,8 @@ grok-gadgets-gateway oauth deny K7QX-M2PA  # refuse a request
 
 The sign-in paths keep the Host check, `remote off` blocks them, and they allow 60 requests a minute in total. The gateway accepts at most 20 registered clients and 8 waiting sign-ins.
 
+To leave the route on every day, follow [Leave the Grok Bot route on](daily-use.md).
+
 ## Turn it off and revoke
 
 1. Turn remote access off. Remote requests get 503 at once:
