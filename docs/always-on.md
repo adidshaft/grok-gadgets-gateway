@@ -41,7 +41,7 @@ system files.
 ```
 
 `status` says whether the service is running. `logs` prints the end of the log; the request log
-is in the same folder. `uninstall` stops the service and removes its file. Your config, CA and
+is in the same folder. Both logs rotate at 5 MiB and keep 5 old files. `uninstall` stops the service and removes its file. Your config, CA and
 device tokens stay.
 
 After a restart, the gateway can take a minute or two to start while the computer finishes
