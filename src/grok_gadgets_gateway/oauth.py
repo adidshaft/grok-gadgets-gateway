@@ -21,7 +21,6 @@ from urllib.parse import urlparse
 from mcp.server.auth.provider import (
     AccessToken,
     AuthorizationCode,
-    AuthorizeError,
     RefreshToken,
     RegistrationError,
     TokenError,
@@ -39,6 +38,11 @@ CODE_SECONDS = 300
 REQUEST_SECONDS = 600
 MAX_CLIENTS = 20
 MAX_PENDING = 8
+# Floods (hub ADR 008): a client with no live sign-in is pruned after an hour, and one
+# client keeps at most two waiting sign-ins, so strangers cannot lock the owner out.
+CLIENT_IDLE_SECONDS = 3600
+PENDING_PER_CLIENT = 2
+FLOOD_ALERT_SECONDS = 60
 APPROVE_PATH = "/oauth/approve"
 # No 0/O or 1/I, so a code read off a phone screen is typed correctly.
 _ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -154,8 +158,9 @@ class OwnerApprovedOAuth:
         self.log = log
         self.clock = clock
         self.state = _read_json(self.root / "state.json", {})
-        for key in ("clients", "access", "refresh"):
+        for key in ("clients", "access", "refresh", "registered_at"):
             self.state.setdefault(key, {})
+        self.alerted_at = None
         self.requests = {}  # request id -> pending authorization (memory only)
         self.codes = {}  # authorization code -> AuthorizationCode (memory only)
         # Stale files from an earlier run name requests this process cannot finish.
@@ -176,23 +181,72 @@ class OwnerApprovedOAuth:
         record = self.state["clients"].get(client_id)
         return OAuthClientInformationFull.model_validate(record) if record else None
 
+    def _flood(self, reason):
+        """One `oauth_flood` alert line a minute while a cap is hit."""
+        now = self.clock()
+        if self.alerted_at is None or now - self.alerted_at >= FLOOD_ALERT_SECONDS:
+            self.alerted_at = now
+            self._write("oauth_flood", reason=reason)
+
+    def _clients_in_use(self):
+        now = self.clock()
+        return {
+            record["client_id"]
+            for kind in ("access", "refresh")
+            for record in self.state[kind].values()
+            if record["expires_at"] > now and not _revoked(self.root, record)
+        }
+
+    def _prune_clients(self):
+        """Forget clients with no live sign-in: idle ones, then the oldest when the list is full."""
+        now = self.clock()
+        in_use = self._clients_in_use()
+        registered = self.state["registered_at"]
+        waiting = {request["client_id"] for request in self.requests.values()}
+        # Oldest first; a client in the middle of a sign-in goes last.
+        idle = sorted(
+            (client_id in waiting, registered.get(client_id, 0), client_id)
+            for client_id in self.state["clients"]
+            if client_id not in in_use
+        )
+        removed = [c for busy, at, c in idle if not busy and now - at >= CLIENT_IDLE_SECONDS]
+        spare = len(self.state["clients"]) - len(removed) - (MAX_CLIENTS - 1)
+        removed += [c for _, _, c in idle if c not in removed][: max(spare, 0)]
+        for client_id in removed:
+            self.state["clients"].pop(client_id, None)
+            registered.pop(client_id, None)
+        if spare > 0:
+            self._flood("clients_full")
+        return removed
+
     async def register_client(self, client_info):
-        if len(self.state["clients"]) >= MAX_CLIENTS:
-            raise RegistrationError("invalid_client_metadata", "too many registered clients")
         for uri in client_info.redirect_uris or []:
             parsed = urlparse(str(uri))
             local = parsed.scheme == "http" and parsed.hostname in _LOOPBACK
             if parsed.scheme != "https" and not local:
                 raise RegistrationError("invalid_redirect_uri", "redirect URIs must use https")
+        self._prune_clients()
+        if len(self.state["clients"]) >= MAX_CLIENTS:
+            # Every client holds a live sign-in; the owner revokes one to make room.
+            self._flood("clients_full")
+            raise RegistrationError("invalid_client_metadata", "too many registered clients")
         self.state["clients"][client_info.client_id] = client_info.model_dump(mode="json")
+        self.state["registered_at"][client_info.client_id] = self.clock()
         self._save()
         self._write("oauth_client_registered", client_name=client_info.client_name)
 
     async def authorize(self, client, params):
         now = self.clock()
         self._expire(now)
+        # Drop the oldest waiting sign-in instead of refusing a new one: the owner approves
+        # by code, so a stranger's waiting requests never block the owner's own.
+        mine = [r for r, v in self.requests.items() if v["client_id"] == client.client_id]
+        while len(mine) >= PENDING_PER_CLIENT:
+            self._forget(mine.pop(0))
         if len(self.requests) >= MAX_PENDING:
-            raise AuthorizeError("temporarily_unavailable", "too many pending sign-ins")
+            self._flood("pending_full")
+            while len(self.requests) >= MAX_PENDING:
+                self._forget(next(iter(self.requests)))
         request_id = secrets.token_urlsafe(32)
         code = _code()
         redirect_host = urlparse(str(params.redirect_uri)).hostname
