@@ -194,3 +194,100 @@ def test_cli_install_checks_setup_and_runs_serve(private_home, capsys):
         install("--allowed-host", "bad host")
     assert "allowed host" in capsys.readouterr().err
     assert plist["EnvironmentVariables"]["XDG_CONFIG_HOME"] == str(private_home / ".config")
+
+
+def test_status_shows_the_grok_bot_route(tmp_path, private_home):
+    import json
+    import time
+    from datetime import UTC, datetime
+
+    from grok_gadgets_gateway.cli import route_status
+    from grok_gadgets_gateway.operator import config_dir, set_remote
+
+    log = tmp_path / "requests.jsonl"
+    command = [
+        *COMMAND,
+        "--allowed-host",
+        "gadgets.example.net",
+        "--oauth",
+        "--request-log",
+        str(log),
+    ]
+    for platform in ("macos", "linux"):
+        service = Service(platform, tmp_path / platform, Runner(), uid=501)
+        service.install(command)
+        assert service.unit_command() == command
+
+    # Nothing yet: no sign-in, no call, no flood.
+    assert route_status(service) == [
+        "allowed host: gadgets.example.net",
+        "sign-in (--oauth): on",
+        "remote: on",
+        "live sign-ins: none",
+        "last remote call: none in the request log",
+        "sign-in flood: none in the last 24 hours",
+    ]
+
+    now = time.time()
+    state = {
+        "clients": {"c1": {"client_id": "c1", "client_name": "connector"}},
+        "access": {},
+        "refresh": {
+            "h": {
+                "name": "grok-bot",
+                "client_id": "c1",
+                "issued_at": now,
+                "expires_at": now + 86400,
+            }
+        },
+    }
+    (config_dir() / "oauth").mkdir(parents=True)
+    (config_dir() / "oauth" / "state.json").write_text(json.dumps(state))
+    lines = [
+        {
+            "ts": "2026-10-14T08:00:00+00:00",
+            "event": "mcp_tool_call",
+            "tool": "gadgets_get_state",
+            "outcome": "ok",
+            "token": "grok-bot",
+            "remote": True,
+        },
+        {
+            "ts": "2026-10-14T08:01:00+00:00",
+            "event": "mcp_tool_call",
+            "tool": "gadgets_command",
+            "outcome": "ok",
+            "token": "default",
+            "remote": False,
+        },
+    ]
+    # The remote call is in a rotated file; the flood alert is in the live file.
+    (tmp_path / "requests.jsonl.1").write_text("\n".join(json.dumps(r) for r in lines) + "\n")
+    log.write_text(
+        json.dumps(
+            {"ts": "2026-10-14T09:00:00+00:00", "event": "oauth_flood", "reason": "pending_full"}
+        )
+        + "\n"
+    )
+    set_remote(False)
+    report = route_status(service, now=datetime(2026, 10, 14, 12, tzinfo=UTC))
+    assert report[2] == "remote: off (kill switch)"
+    assert report[3].startswith("live sign-ins: grok-bot (until ")
+    assert (
+        report[4] == "last remote call: 2026-10-14T08:00:00+00:00 gadgets_get_state ok as grok-bot"
+    )
+    assert report[5] == "sign-in flood: 2026-10-14T09:00:00+00:00 pending_full"
+    later = route_status(service, now=datetime(2026, 10, 16, tzinfo=UTC))
+    assert later[5] == "sign-in flood: none in the last 24 hours"
+    assert not any("gga_" in line or "ggr_" in line for line in report)
+
+
+def test_status_of_a_service_without_a_tunnel(tmp_path):
+    from grok_gadgets_gateway.cli import route_status
+
+    service = Service("macos", tmp_path, Runner(), uid=501)
+    service.install(COMMAND)
+    assert route_status(service)[:2] == [
+        "allowed host: none (no tunnel route)",
+        "sign-in (--oauth): off",
+    ]
