@@ -54,6 +54,8 @@ COMMANDS = (
     "device-cert",
     "relay-check",
     "wifi-provision",
+    "factory-provision",
+    "label",
 )
 DESCRIPTION = """Grok Gadgets gateway: the MCP server your Grok Bot will use to reach your gadgets.
 
@@ -397,6 +399,50 @@ def build_parser():
     )
     _credentials_option(provision)
 
+    factory = sub.add_parser(
+        "factory-provision",
+        help="write a gadget's identity over USB once and print its setup label (no Wi-Fi)",
+    )
+    factory.add_argument("serial_port")
+    factory.add_argument("--device", required=True, help="device ID of this board")
+    factory.add_argument(
+        "--gateway",
+        required=True,
+        metavar="NAME[:PORT]",
+        help="the relay's DNS name from device-cert (port 8444 by default; relays set up "
+        "before 14 October 2026 use 8443)",
+    )
+    factory.add_argument(
+        "--ca", metavar="FILE", help="the relay's CA (default: this computer's lan/ca.pem)"
+    )
+    factory.add_argument(
+        "--enroll",
+        action="store_true",
+        help="enroll the device in the registry first if it is not enrolled",
+    )
+    factory.add_argument(
+        "--replace", action="store_true", help="overwrite the board's existing factory identity"
+    )
+    factory.add_argument(
+        "--new-label",
+        action="store_true",
+        help="new passphrase and setup code; the old label stops working",
+    )
+    factory.add_argument(
+        "--label-dir", metavar="DIR", help="where to write the label files (default: labels/)"
+    )
+    factory.add_argument(
+        "--no-relay-check",
+        action="store_true",
+        help="skip the --gateway preflight (DNS-only record, relay CA on the port)",
+    )
+    _credentials_option(factory)
+    label = sub.add_parser("label", help="print a factory-provisioned gadget's setup label again")
+    label.add_argument("device_id")
+    label.add_argument(
+        "--label-dir", metavar="DIR", help="also write the label files here (default: labels/)"
+    )
+
     service = sub.add_parser(
         "service", help="run serve in the background at login: launchd (macOS) or systemd (Linux)"
     )
@@ -657,6 +703,10 @@ def run(parser, args):
         return run_wifi_provision(parser, args)
     if command == "relay-check":
         return run_relay_check(parser, args)
+    if command == "factory-provision":
+        return run_factory_provision(parser, args)
+    if command == "label":
+        return run_label(parser, args)
     if command == "service":
         return run_service(parser, args)
     if command == "rehearse":
@@ -745,6 +795,83 @@ def run_relay_check(parser, args):
     for line in lines:
         print(line)
     print("Relay check passed: Wi-Fi devices can reach the relay with this CA.")
+    return 0
+
+
+def run_factory_provision(parser, args):
+    import serial
+
+    from .label import label_record, label_text, labels_dir, save_record, write_label_files
+    from .lan import ca_pem_text, is_dns_name, parse_gateway_address, read_ca_file
+    from .relay_check import relay_check
+    from .transport import read_registry
+    from .wifi_provision import ProvisionError, factory_frame, factory_provision
+
+    path = args.credentials or credentials_path()
+    try:
+        host, port = parse_gateway_address(args.gateway)
+        ca = read_ca_file(args.ca) if args.ca else ca_pem_text()
+        if is_dns_name(host) and not args.no_relay_check:
+            for line in relay_check(host, port, ca):
+                print(line, file=sys.stderr)
+        record = read_registry(path).get(args.device) if os.path.exists(path) else None
+        if record is None and args.enroll:
+            enroll(args.device, path)
+            print(f"Enrolled {args.device} in {path}.", file=sys.stderr)
+            record = read_registry(path).get(args.device)
+        if record is None:
+            parser.error(
+                f"{args.device} is not enrolled. Run on the relay: enroll {args.device}, "
+                "or pass --enroll"
+            )
+        if record.get("revoked"):
+            parser.error(f"{args.device} is revoked. Run: enroll {args.device} --rotate")
+        values = label_record(args.device, new=args.new_label)
+        frame = factory_frame(
+            record["token"],
+            host,
+            port,
+            ca,
+            values["passphrase"],
+            values["setup_code"],
+            replace=args.replace,
+        )
+    except (OperatorError, CredentialError, ProvisionError) as exc:
+        parser.error(str(exc))
+    try:
+        with serial.Serial(args.serial_port, 115200, timeout=0.1, write_timeout=2) as device:
+            factory_provision(device, args.device, frame)
+    except (serial.SerialException, OSError) as exc:
+        parser.error(f"cannot use {args.serial_port}: {exc}")
+    except ProvisionError as exc:
+        parser.error(str(exc))
+    save_record(values)
+    files = write_label_files(values, args.label_dir or labels_dir())
+    print(label_text(values), end="")
+    print(
+        f"Factory-provisioned {args.device} for {host}:{port}. The board restarts and opens "
+        f"its setup hotspot {values['hotspot']} for 10 minutes.",
+        file=sys.stderr,
+    )
+    print(
+        f"Label files (keep them private): {files['svg']}, {files['png']}, {files['text']}",
+        file=sys.stderr,
+    )
+    return 0
+
+
+def run_label(parser, args):
+    from .label import label_text, labels_dir, load_record, write_label_files
+
+    try:
+        values = load_record(args.device_id)
+    except OperatorError as exc:
+        parser.error(str(exc))
+    if values is None:
+        parser.error(f"no label record for {args.device_id}. Run factory-provision first")
+    files = write_label_files(values, args.label_dir or labels_dir())
+    print(label_text(values), end="")
+    print(f"Label files (keep them private): {files['svg']}, {files['png']}", file=sys.stderr)
     return 0
 
 

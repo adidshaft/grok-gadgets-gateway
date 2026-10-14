@@ -24,6 +24,7 @@ dependencies = [
     "jsonschema==4.26.0",
     "pyserial==3.5",
     "cryptography==50.0.2",
+    "segno==1.6.6",
 ]
 
 [project.urls]
