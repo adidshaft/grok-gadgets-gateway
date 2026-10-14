@@ -52,6 +52,7 @@ COMMANDS = (
     "lan-cert",
     "lan-ca",
     "device-cert",
+    "relay-check",
     "wifi-provision",
 )
 DESCRIPTION = """Grok Gadgets gateway: the MCP server your Grok Bot will use to reach your gadgets.
@@ -323,7 +324,7 @@ def build_parser():
         "--device-listen",
         metavar="ADDRESS[:PORT]",
         help="also run the relay device listener on this address of an always-on host, for "
-        "Wi-Fi devices anywhere (port 8443 by default; any peer; TLS; off unless set; run "
+        "Wi-Fi devices anywhere (port 8444 by default; any peer; TLS; off unless set; run "
         "device-cert first)",
     )
     serve.add_argument(
@@ -351,6 +352,17 @@ def build_parser():
         "name", help="the DNS name that devices connect to, e.g. devices.example.net"
     )
 
+    relay_check = sub.add_parser(
+        "relay-check",
+        help="check a relay device name: a DNS-only record and the relay CA on the port",
+    )
+    relay_check.add_argument(
+        "gateway", metavar="NAME[:PORT]", help="e.g. devices.example.net (port 8444 by default)"
+    )
+    relay_check.add_argument(
+        "--ca", metavar="FILE", help="the relay's lan/ca.pem (default: this computer's CA)"
+    )
+
     provision = sub.add_parser(
         "wifi-provision",
         help="send Wi-Fi settings, the device token and the CA to a Wi-Fi build over USB",
@@ -366,7 +378,8 @@ def build_parser():
     where.add_argument(
         "--gateway",
         metavar="NAME[:PORT]",
-        help="the relay's DNS name from device-cert (port 8443 by default)",
+        help="the relay's DNS name from device-cert (port 8444 by default; relays set up "
+        "before 14 October 2026 use 8443)",
     )
     provision.add_argument(
         "--ca",
@@ -376,6 +389,11 @@ def build_parser():
     )
     provision.add_argument(
         "--factory-reset", action="store_true", help="erase the board's Wi-Fi settings instead"
+    )
+    provision.add_argument(
+        "--no-relay-check",
+        action="store_true",
+        help="skip the --gateway preflight (DNS-only record, relay CA on the port)",
     )
     _credentials_option(provision)
 
@@ -637,6 +655,8 @@ def run(parser, args):
         return run_lan(parser, args)
     if command == "wifi-provision":
         return run_wifi_provision(parser, args)
+    if command == "relay-check":
+        return run_relay_check(parser, args)
     if command == "service":
         return run_service(parser, args)
     if command == "rehearse":
@@ -709,12 +729,38 @@ def run_lan(parser, args):
     return 0
 
 
+def run_relay_check(parser, args):
+    from .lan import ca_pem_text, is_dns_name, parse_gateway_address, read_ca_file
+    from .relay_check import relay_check
+
+    try:
+        host, port = parse_gateway_address(args.gateway)
+        if not is_dns_name(host):
+            parser.error("relay-check takes the relay's public DNS name")
+        ca = read_ca_file(args.ca) if args.ca else ca_pem_text()
+        lines = relay_check(host, port, ca)
+    except OperatorError as exc:
+        print(f"Relay check failed: {exc}", file=sys.stderr)
+        return 1
+    for line in lines:
+        print(line)
+    print("Relay check passed: Wi-Fi devices can reach the relay with this CA.")
+    return 0
+
+
 def run_wifi_provision(parser, args):
     import getpass
 
     import serial
 
-    from .lan import ca_pem_text, parse_gateway_address, parse_lan_address, read_ca_file
+    from .lan import (
+        ca_pem_text,
+        is_dns_name,
+        parse_gateway_address,
+        parse_lan_address,
+        read_ca_file,
+    )
+    from .relay_check import relay_check
     from .transport import read_registry
     from .wifi_provision import (
         ProvisionError,
@@ -739,6 +785,9 @@ def run_wifi_provision(parser, args):
             if record.get("revoked"):
                 parser.error(f"{args.device} is revoked. Run: enroll {args.device} --rotate")
             ca = read_ca_file(args.ca) if args.ca else ca_pem_text()
+            if args.gateway and is_dns_name(host) and not args.no_relay_check:
+                for line in relay_check(host, port, ca):
+                    print(line, file=sys.stderr)
     except (OperatorError, CredentialError, ProvisionError) as exc:
         parser.error(str(exc))
     try:

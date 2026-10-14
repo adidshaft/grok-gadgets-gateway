@@ -12,22 +12,32 @@ Run one relay for your own gadgets only. It has one operator and no accounts.
 
 ```text
 Grok Bot ─HTTPS + OAuth─▶ gadgets.example.net (tunnel) ─▶ 127.0.0.1:8766 /mcp   ┐
-Wi-Fi device ─TLS, outbound─▶ devices.example.net:8443 (relay device listener)  ┘ relay host
+Wi-Fi device ─TLS, outbound─▶ devices.example.net:8444 (relay device listener)  ┘ relay host
 ```
 
 ## What you need
 
 - A Linux host that stays on: a small VPS, or a home Linux box. It needs a public address that
-  devices can reach on TCP port 8443. A home box usually needs a router port forward; review
+  devices can reach on TCP port 8444. A home box usually needs a router port forward; review
   that plan before you open a port.
 - Two names on a domain you control. `gadgets.example.net` goes through your tunnel to `/mcp`.
   `devices.example.net` is a DNS-only record (no proxy) that points at the host's address.
+
+> **Warning: the device name must be DNS only.** If the record for `devices.example.net` is
+> proxied (orange cloud in Cloudflare), devices meet the proxy's certificate instead of the
+> relay's, and every device's CA pin fails. Cloudflare proxies port 8443, so a proxied record
+> can look like it works. `grok-gadgets-gateway relay-check devices.example.net` refuses a
+> proxied record, and `wifi-provision --gateway` runs the same check before it sends anything.
+
+**Port.** New relays use port 8444. A relay set up before 14 October 2026 uses 8443: keep it,
+because its devices store that port. Pass `--device-listen 0.0.0.0:8443` and
+`--gateway devices.example.net:8443` for such a relay.
 - A tunnel client for `gadgets.example.net`. The example uses Cloudflare Tunnel; the same rule
   holds for any provider: one hostname, one target, `http://127.0.0.1:8766`.
 - Your board on firmware that accepts a DNS name for the gateway, and a computer with USB to
   provision it once.
 
-Never publish port 8766, and never send port 8443 through the tunnel.
+Never publish port 8766, and never send the device port through the tunnel.
 
 ## Option A: container (Docker Compose)
 
@@ -62,14 +72,14 @@ Never publish port 8766, and never send port 8443 through the tunnel.
    `init` prints a local bearer token. You do not need it for Grok Bot, which signs in with
    OAuth. Do not paste it anywhere.
 
-4. Start both containers, and open TCP port 8443 in the host's firewall:
+4. Start both containers, and open TCP port 8444 in the host's firewall:
 
    ```sh
    docker compose up -d
    docker compose logs gateway
    ```
 
-   The log shows `Relay TLS device listener devices.example.net on 0.0.0.0:8443`.
+   The log shows `Relay TLS device listener devices.example.net on 0.0.0.0:8444`.
 
 Run every other command inside the running container, for example:
 
@@ -90,7 +100,7 @@ grok-gadgets-gateway init
 grok-gadgets-gateway device-cert devices.example.net
 grok-gadgets-gateway enroll oledkit-0123456789ab
 grok-gadgets-gateway service install --allowed-host gadgets.example.net --oauth \
-  --device-listen 0.0.0.0:8443
+  --device-listen 0.0.0.0:8444
 loginctl enable-linger              # start at boot, without a login
 grok-gadgets-gateway service status
 ```
@@ -138,7 +148,8 @@ From any computer, not the relay host:
 ```sh
 curl -s -o /dev/null -w "%{http_code}\n" https://gadgets.example.net/.well-known/oauth-protected-resource/mcp   # 200
 curl -s -o /dev/null -w "%{http_code}\n" -X POST https://gadgets.example.net/mcp                                 # 401
-curl -s -m 5 http://devices.example.net:8443/ ; echo "exit $?"                                                   # no HTTP answer
+curl -s -m 5 http://devices.example.net:8444/ ; echo "exit $?"                                                   # no HTTP answer
+grok-gadgets-gateway relay-check devices.example.net --ca relay-ca.pem                                           # DNS only, relay CA
 ```
 
 On the host, the request log shows `device_hello` for the board and `mcp_tool_call` lines with
@@ -161,7 +172,7 @@ docker compose exec gateway sh -c 'tail -n 50 /data/logs/requests.jsonl'
 
 - The device port accepts any address. Tokens, TLS and the limits in
   [Wi-Fi devices](wifi-devices.md#relay-listener-devices-on-any-network) protect it.
-- Keep the host's OS updated and allow only SSH and TCP 8443 in.
+- Keep the host's OS updated and allow only SSH and the device port (TCP 8444, or 8443 on older relays) in.
 - Anyone with a shell on the host can approve sign-ins and read device tokens.
 - The relay sees device IDs, commands, reported state and events. The request log file is for
   the operator. It records command arguments, such as the text sent to a display, with secret

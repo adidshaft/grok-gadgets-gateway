@@ -20,6 +20,6 @@ ENV PATH="/app/.venv/bin:$PATH" \
     XDG_CONFIG_HOME=/data/config \
     PYTHONUNBUFFERED=1
 VOLUME ["/data"]
-EXPOSE 8443
+EXPOSE 8444
 ENTRYPOINT ["grok-gadgets-gateway"]
 CMD ["--help"]

@@ -16,7 +16,7 @@ from test_domain import hello
 from test_lan import FakeSerialPort, Log, closed, exchange
 from test_transports import TOKEN, write_credentials
 
-from grok_gadgets_gateway import lan
+from grok_gadgets_gateway import lan, relay_check
 from grok_gadgets_gateway.domain import Gateway
 from grok_gadgets_gateway.operator import OperatorError
 from grok_gadgets_gateway.service import serve_gateway
@@ -79,10 +79,10 @@ async def connect(server, context, *, token=TOKEN):
 @pytest.mark.parametrize(
     ("text", "expected"),
     [
-        ("0.0.0.0", ("0.0.0.0", 8443)),
+        ("0.0.0.0", ("0.0.0.0", 8444)),
         ("203.0.113.7:9443", ("203.0.113.7", 9443)),
         ("[::]:8443", ("::", 8443)),
-        ("[::]", ("::", 8443)),
+        ("[::]", ("::", 8444)),
         ("127.0.0.1:8443", ("127.0.0.1", 8443)),
     ],
 )
@@ -101,7 +101,8 @@ def test_device_listen_refuses_names_and_bad_ports(text):
 @pytest.mark.parametrize(
     ("text", "expected"),
     [
-        (NAME, (NAME, 8443)),
+        (NAME, (NAME, 8444)),
+        (f"{NAME}:8443", (NAME, 8443)),
         ("Devices.Example.NET:9443", (NAME, 9443)),
         ("my-mac.local:8767", ("my-mac.local", 8767)),
         ("192.168.1.20:8767", ("192.168.1.20", 8767)),
@@ -393,6 +394,8 @@ def provision(tmp_path, monkeypatch, capsys, *extra):
     monkeypatch.setattr(builtins, "input", lambda prompt="": answers.pop(0))
     monkeypatch.setattr(getpass, "getpass", lambda prompt="": answers.pop(0))
     monkeypatch.setattr(serial, "Serial", lambda *a, **k: board)
+    monkeypatch.setattr(relay_check, "resolve_all", lambda name: ["203.0.113.7"])
+    monkeypatch.setattr(relay_check, "tls_handshake", lambda name, port, ca: True)
     code = main(["wifi-provision", "/dev/cu.test", "--device", "dev-1", *extra])
     return code, board
 
@@ -401,10 +404,11 @@ def test_wifi_provision_stores_the_relay_name(tmp_path, monkeypatch, capsys):
     code, board = provision(tmp_path, monkeypatch, capsys, "--gateway", NAME)
     assert code == 0
     frame = json.loads(board.written[-1])
-    assert frame["host"] == NAME and frame["port"] == 8443
+    assert frame["host"] == NAME and frame["port"] == 8444
     assert frame["ca"] == lan.ca_pem_text()
     err = capsys.readouterr().err
-    assert f"for {NAME}:8443" in err and "password1" not in err
+    assert f"for {NAME}:8444" in err and "password1" not in err
+    assert f"ok  {NAME} is a DNS-only record" in err
 
 
 def test_wifi_provision_pins_a_relay_ca_from_a_file(tmp_path, monkeypatch, capsys):

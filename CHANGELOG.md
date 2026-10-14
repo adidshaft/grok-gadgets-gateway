@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Relay port and DNS preflight ([#177](https://github.com/adidshaft/grok-gadgets-gateway/issues/177)). New relays default to device port 8444; Cloudflare proxies 8443 as HTTPS. Relays and devices already on 8443 keep it with an explicit `:8443`. `relay-check NAME[:PORT]` refuses a name that resolves to a Cloudflare proxy address, and checks that the port presents a certificate from the relay CA. `wifi-provision --gateway` runs the same check before it sends anything (`--no-relay-check` skips it). The Docker example publishes 8444.
+
 - Both MCP eras ([#175](https://github.com/adidshaft/grok-gadgets-gateway/issues/175)). `rehearse` now calls the six tools with the `initialize` handshake and with the 2026-07-28 revision (`server/discover`); `--protocol legacy|modern|both` picks one, and both is the default. Each `mcp_tool_call` request-log line names the revision in `protocol`. `serve --oauth` metadata states `client_id_metadata_document_supported: false`, so clients keep using registration. `docs/daily-use.md` explains what to do if Grok Bot stops connecting.
 
 ## 0.1.0-alpha.13 — 14 October 2026

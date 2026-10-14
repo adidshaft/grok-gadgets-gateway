@@ -113,7 +113,7 @@ passed through it on 13 October 2026 ([record](https://github.com/adidshaft/grok
 
 | Control | Detail |
 | --- | --- |
-| Any address | `--device-listen` takes one IP address of the host, for example `0.0.0.0:8443` or `[::]:8443`. The default port is 8443. |
+| Any address | `--device-listen` takes one IP address of the host, for example `0.0.0.0:8444` or `[::]:8444`. The default port is 8444. Relays set up before 14 October 2026 keep 8443. |
 | Any peer | Every source address may connect. The token, TLS and the limits protect the port. |
 | TLS and name | The certificate from `device-cert NAME` names one public DNS name only. The device checks the certificate against that name and pins your CA. |
 | Limits | 64 sessions, 32 connections waiting for a hello, 4 waiting per source address, 5 s TLS handshake, 20 new connections a minute per source address, 30 frames a second per session. |
@@ -125,11 +125,12 @@ On the relay host:
 grok-gadgets-gateway init
 grok-gadgets-gateway device-cert devices.example.net
 grok-gadgets-gateway enroll oledkit-0123456789ab
-grok-gadgets-gateway serve --device-listen 0.0.0.0:8443 --request-log ~/grok-gadgets-requests.jsonl
+grok-gadgets-gateway serve --device-listen 0.0.0.0:8444 --request-log ~/grok-gadgets-requests.jsonl
 ```
 
-Point a DNS-only record for `devices.example.net` at the host, and open TCP port 8443 in its
-firewall. `diagnostics` and `service status` show the relay listener.
+Point a DNS-only record for `devices.example.net` at the host, and open TCP port 8444 in its
+firewall. Never proxy this record: a proxy answers with its own certificate and every
+device's CA pin fails. Check it with `grok-gadgets-gateway relay-check devices.example.net`. `diagnostics` and `service status` show the relay listener.
 
 Provision the board over USB on the computer it is plugged into. If the relay was set up on
 another host, copy its `lan/ca.pem` and `credentials.json` to this computer first:
@@ -138,6 +139,10 @@ another host, copy its `lan/ca.pem` and `credentials.json` to this computer firs
 grok-gadgets-gateway wifi-provision /dev/cu.usbmodem101 --device oledkit-0123456789ab \
   --gateway devices.example.net --ca relay-ca.pem --credentials relay-credentials.json
 ```
+
+Before it sends anything, `wifi-provision --gateway` checks that the name is a DNS-only record
+and that the port presents a certificate from the CA. For a relay on port 8443, pass
+`--gateway devices.example.net:8443`.
 
 Delete the copied `credentials.json` afterwards: it holds every device token. The board needs
 firmware that accepts a DNS name for the gateway.
