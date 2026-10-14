@@ -12,7 +12,7 @@ DOCKER = ROOT / "examples" / "docker"
 
 def test_compose_publishes_only_the_device_port():
     text = (DOCKER / "compose.yaml").read_text()
-    assert re.findall(r'^\s+- "(\d+):(\d+)"$', text, re.MULTILINE) == [("8443", "8443")]
+    assert re.findall(r'^\s+- "(\d+):(\d+)"$', text, re.MULTILINE) == [("8444", "8444")]
     assert "8766:" not in text
     # The tunnel client reaches 127.0.0.1:8766 by sharing the gateway's network namespace.
     assert 'network_mode: "service:gateway"' in text
@@ -26,7 +26,7 @@ def test_compose_publishes_only_the_device_port():
 def test_tunnel_example_forwards_only_mcp():
     text = (DOCKER / "cloudflared" / "config.yml.example").read_text()
     assert re.findall(r"service: (\S+)", text) == ["http://127.0.0.1:8766", "http_status:404"]
-    assert "8443" not in text and "8765" not in text
+    assert "8443" not in text and "8444" not in text and "8765" not in text
 
 
 def test_image_build_context_holds_what_the_wheel_needs():

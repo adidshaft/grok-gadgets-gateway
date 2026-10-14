@@ -895,6 +895,25 @@
       ],
       "stage": "planned",
       "evidence": "GitHub #176; filed from the 14 October research."
+    },
+    {
+      "id": "GW-RELAY-004",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Cloudflare proxies port 8443 as HTTPS; a proxied record for the device name breaks every device's CA pin, and 8443 was the default",
+      "acceptance": [
+        "Keep 8443 where already provisioned",
+        "New relays default to 8444",
+        "relay-check refuses a proxied record and checks the relay CA on the port",
+        "wifi-provision --gateway runs the preflight",
+        "Docs warning"
+      ],
+      "labels": [
+        "feature",
+        "gateway",
+        "P1"
+      ],
+      "stage": "review",
+      "evidence": "GitHub #177; tests with stubbed DNS and a local TLS listener. The owner's relay passes --device-listen with :8443 explicitly (read-only check on 14 October), so it is unaffected."
     }
   ]
 }

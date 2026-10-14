@@ -22,7 +22,9 @@ from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 from .operator import OperatorError, atomic_write, config_dir
 
 DEFAULT_LAN_PORT = 8767
-DEFAULT_DEVICE_PORT = 8443
+# 8444, not 8443: Cloudflare proxies 8443 as HTTPS, so a mis-set proxied record would answer
+# there with the wrong certificate. Relays set up before 14 October 2026 keep 8443.
+DEFAULT_DEVICE_PORT = 8444
 # Home-network ranges only. Shared (100.64/10), link-local, loopback and public are refused.
 PRIVATE_NETWORKS = tuple(
     ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
@@ -59,7 +61,7 @@ def _port(text, label):
 def parse_device_listen(text, default_port=DEFAULT_DEVICE_PORT):
     """`ADDRESS[:PORT]` -> (address, port) for the relay listener: any IP address of this host.
 
-    IPv6 goes in brackets, for example [::]:8443. A name is refused: the listener binds an
+    IPv6 goes in brackets, for example [::]:8444. A name is refused: the listener binds an
     address, and the certificate carries the name.
     """
     text = str(text)
@@ -77,8 +79,8 @@ def parse_device_listen(text, default_port=DEFAULT_DEVICE_PORT):
         address = ipaddress.ip_address(host)
     except ValueError:
         raise OperatorError(
-            "--device-listen takes an IP address of this host, for example 0.0.0.0:8443 or "
-            "[::]:8443. The certificate from device-cert carries the public name."
+            "--device-listen takes an IP address of this host, for example 0.0.0.0:8444 or "
+            "[::]:8444. The certificate from device-cert carries the public name."
         ) from None
     return str(address), port
 
