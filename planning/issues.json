@@ -914,6 +914,25 @@
       ],
       "stage": "review",
       "evidence": "GitHub #177; tests with stubbed DNS and a local TLS listener. The owner's relay passes --device-listen with :8443 explicitly (read-only check on 14 October), so it is unaffected."
+    },
+    {
+      "id": "GW-SETUP-001",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Phone-only setup needs the gadget's identity and label values written once at the factory",
+      "acceptance": [
+        "factory-provision writes token, relay, port, CA, passphrase and setup code over USB without Wi-Fi",
+        "Checks the device ID and firmware support first",
+        "Prints the label: hotspot name, passphrase, setup code, QR as text and PNG",
+        "Enrols the device on request",
+        "Tests"
+      ],
+      "labels": [
+        "feature",
+        "gateway",
+        "P1"
+      ],
+      "stage": "review",
+      "evidence": "GitHub #158; tests/test_factory_provision.py with a fake board. No kit test yet."
     }
   ]
 }

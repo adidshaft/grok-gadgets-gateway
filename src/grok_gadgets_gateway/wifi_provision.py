@@ -42,6 +42,45 @@ def provision_frame(ssid, password, token, host, port, ca_pem):
     return line.encode()
 
 
+def factory_frame(token, host, port, ca_pem, passphrase, setup_code, replace=False):
+    """The `factory_provision` console line (hub ADR 010): identity and label values, no Wi-Fi."""
+    frame = {
+        "type": "factory_provision",
+        "token": token,
+        "host": host,
+        "port": port,
+        "ca": ca_pem,
+        "passphrase": passphrase,
+        "setup_code": setup_code,
+    }
+    if replace:
+        frame["replace"] = True
+    line = json.dumps(frame, separators=(",", ":")) + "\n"
+    if len(line.encode()) > MAX_LINE:
+        raise ProvisionError("Factory line exceeds the 4096-byte console limit")
+    return line.encode()
+
+
+def factory_provision(port, device_id, frame):
+    """Check the board's identity and that it supports setup, then send the factory line."""
+    board = check_board(port, device_id)
+    if "factory" not in board:
+        raise ProvisionError(
+            "This firmware has no factory identity (hub ADR 010). Flash a Wi-Fi build from "
+            "ESP32 SDK 0.2.0-alpha.15 or later; nothing sent"
+        )
+    port.write(frame)
+    reply = read_reply(port)
+    if not reply.get("ok"):
+        error = _error(reply)
+        if error.startswith("already_provisioned"):
+            raise ProvisionError(
+                "This board already has a factory identity; pass --replace to write a new one"
+            )
+        raise ProvisionError("Factory provisioning failed: " + error)
+    return reply
+
+
 def read_reply(port, *, timeout=10.0, clock=time.monotonic):
     """Next console line that is a JSON object with an `ok` field; other lines are skipped."""
     deadline = clock() + timeout

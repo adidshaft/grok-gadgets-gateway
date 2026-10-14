@@ -154,6 +154,38 @@ limit is logged once a minute. While any limit refuses connections, the gateway 
 `device_flood` line a minute with a `reason`: `connection_rate`, `pending`,
 `pending_per_address` or `sessions`.
 
+## Factory-provision a gadget for phone setup
+
+A builder prepares a gadget once with a computer. The person who receives it then joins it to
+home Wi-Fi with a phone alone, through the gadget's setup hotspot (hub
+[ADR 010](https://github.com/adidshaft/grok-gadgets/blob/dev/docs/decisions/010-phone-setup.md)).
+The board needs ESP32 SDK firmware with a factory identity (0.2.0-alpha.15 or later).
+
+```sh
+grok-gadgets-gateway factory-provision /dev/cu.usbmodem101 --device oledkit-0123456789ab \
+  --gateway devices.example.net --ca relay-ca.pem --credentials relay-credentials.json
+```
+
+The command:
+
+1. Checks that the relay name is a DNS-only record and that the port presents the relay CA.
+2. Checks that the board on the port is this device and supports a factory identity.
+3. Sends the device token, the relay name and port, and the CA. It adds a new hotspot
+   passphrase and setup code. It sends no Wi-Fi details.
+4. Prints the setup label. It also writes the label as text, a Wi-Fi QR PNG and a printable SVG.
+
+The label shows the hotspot name: `GrokGadget-` and the last four characters of the device
+ID. It also shows the hotspot passphrase with a `WIFI:` QR code, the setup code and the page
+address. The
+label is a secret: anyone with the label and the gadget can set it up again after a reset.
+
+- The device must be enrolled in the registry you pass. `--enroll` enrolls it first; copy the
+  registry back to the relay afterwards, or run `enroll` on the relay instead.
+- A board accepts a factory identity once. `--replace` overwrites it. The label stays the same
+  unless you pass `--new-label`.
+- Records live in `labels/` in the config folder, mode 0600. `grok-gadgets-gateway label ID`
+  prints a lost label again.
+
 ## Limits
 
 - The device has no clock, and its TLS library does not check certificate dates. Rotate
