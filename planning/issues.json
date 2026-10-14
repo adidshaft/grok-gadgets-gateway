@@ -857,6 +857,44 @@
       ],
       "stage": "review",
       "evidence": "GitHub #163; README and current documentation reviewed against the 13 October owner handoff. No new hardware or Grok Bot test. 246 pytest tests; Ruff lint and format passed."
+    },
+    {
+      "id": "GW-COMPAT-001",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Grok Bot's connector backend can move to the MCP 2026-07-28 era and Client ID Metadata Documents at any time; the gateway was untested in that era and its sign-in metadata was silent on CIMD",
+      "acceptance": [
+        "rehearse calls the six tools in the legacy and the 2026-07-28 era",
+        "Sign-in metadata states client_id_metadata_document_supported false",
+        "A CI test per era and the first-success path checks both",
+        "Request log names the MCP revision",
+        "A note on what to do if Grok Bot stops connecting"
+      ],
+      "labels": [
+        "feature",
+        "gateway",
+        "protocol",
+        "P1"
+      ],
+      "stage": "review",
+      "evidence": "GitHub #175; simulator rehearsal passed with 2025-11-25 and 2026-07-28 negotiated. No Grok Bot or hardware test."
+    },
+    {
+      "id": "GW-COMPAT-002",
+      "owner": "grok-gadgets-gateway",
+      "problem": "MCP 2026-07-28 prefers Client ID Metadata Documents; the gateway accepts only dynamic registration",
+      "acceptance": [
+        "Fetch and validate an HTTPS client_id document with SSRF limits and a cache",
+        "Owner approval still decides every sign-in",
+        "Advertise support only after tests pass"
+      ],
+      "labels": [
+        "feature",
+        "gateway",
+        "protocol",
+        "P2"
+      ],
+      "stage": "planned",
+      "evidence": "GitHub #176; filed from the 14 October research."
     }
   ]
 }

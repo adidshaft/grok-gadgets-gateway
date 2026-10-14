@@ -435,6 +435,12 @@ def build_parser():
         "--command", dest="capability", help="command to call (default rgb.set, set to blue)"
     )
     rehearse.add_argument("--args", help="JSON arguments for --command, e.g. '{\"on\": true}'")
+    rehearse.add_argument(
+        "--protocol",
+        choices=("legacy", "modern", "both"),
+        default="both",
+        help="MCP era: legacy initialize, modern 2026-07-28 server/discover, or both (default)",
+    )
     return parser
 
 
@@ -655,6 +661,7 @@ def run(parser, args):
             token,
             args.capability,
             arguments,
+            args.protocol,
         )
     return run_stdio(parser, args)
 

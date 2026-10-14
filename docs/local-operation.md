@@ -95,7 +95,7 @@ grok-gadgets-gateway serve --simulator --request-log ~/grok-gadgets-requests.jso
 
 `stdio --request-log PATH` writes the same lines with `transport` set to `stdio`; its run lines are `stdio_started` and `stdio_stopped`.
 
-The first line of each run is `serve_started`, with the gateway version and the loopback URL. Each `mcp_tool_call` line records the time and the client name and version from MCP `initialize`. It also records the HTTP user agent, tool, device, command capability, outcome, command status and duration. `gadgets_command` lines include the arguments. `gadgets_get_state` lines include the reported state. The last line of a clean stop is `serve_stopped`.
+The first line of each run is `serve_started`, with the gateway version and the loopback URL. Each `mcp_tool_call` line records the time and the client name and version from MCP `initialize` or the request envelope. It records the MCP revision in `protocol`: `2025-11-25` or `2026-07-28`. It also records the HTTP user agent, tool, device, command capability, outcome, command status and duration. `gadgets_command` lines include the arguments. `gadgets_get_state` lines include the reported state. The last line of a clean stop is `serve_stopped`.
 
 The log never contains the bearer token or a device token. Argument values are replaced with `[redacted]` when their capability contract marks them `writeOnly`, or when their key contains `token`, `secret`, `password`, `passwd`, `key` or `credential`. `rehearse` sends the client name `grok-gadgets-rehearse`.
 
