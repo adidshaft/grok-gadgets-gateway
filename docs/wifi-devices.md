@@ -113,7 +113,7 @@ passed through it on 13 October 2026 ([record](https://github.com/adidshaft/grok
 
 | Control | Detail |
 | --- | --- |
-| Any address | `--device-listen` takes one IP address of the host, for example `0.0.0.0:8443` or `[::]:8443`. The default port is 8443. |
+| Any address | `--device-listen` takes one IP address of the host, for example `0.0.0.0:8444` or `[::]:8444`. The default port is 8444. Relays set up before 14 October 2026 keep 8443. |
 | Any peer | Every source address may connect. The token, TLS and the limits protect the port. |
 | TLS and name | The certificate from `device-cert NAME` names one public DNS name only. The device checks the certificate against that name and pins your CA. |
 | Limits | 64 sessions, 32 connections waiting for a hello, 4 waiting per source address, 5 s TLS handshake, 20 new connections a minute per source address, 30 frames a second per session. |
@@ -125,11 +125,12 @@ On the relay host:
 grok-gadgets-gateway init
 grok-gadgets-gateway device-cert devices.example.net
 grok-gadgets-gateway enroll oledkit-0123456789ab
-grok-gadgets-gateway serve --device-listen 0.0.0.0:8443 --request-log ~/grok-gadgets-requests.jsonl
+grok-gadgets-gateway serve --device-listen 0.0.0.0:8444 --request-log ~/grok-gadgets-requests.jsonl
 ```
 
-Point a DNS-only record for `devices.example.net` at the host, and open TCP port 8443 in its
-firewall. `diagnostics` and `service status` show the relay listener.
+Point a DNS-only record for `devices.example.net` at the host, and open TCP port 8444 in its
+firewall. Never proxy this record: a proxy answers with its own certificate and every
+device's CA pin fails. Check it with `grok-gadgets-gateway relay-check devices.example.net`. `diagnostics` and `service status` show the relay listener.
 
 Provision the board over USB on the computer it is plugged into. If the relay was set up on
 another host, copy its `lan/ca.pem` and `credentials.json` to this computer first:
@@ -138,6 +139,10 @@ another host, copy its `lan/ca.pem` and `credentials.json` to this computer firs
 grok-gadgets-gateway wifi-provision /dev/cu.usbmodem101 --device oledkit-0123456789ab \
   --gateway devices.example.net --ca relay-ca.pem --credentials relay-credentials.json
 ```
+
+Before it sends anything, `wifi-provision --gateway` checks that the name is a DNS-only record
+and that the port presents a certificate from the CA. For a relay on port 8443, pass
+`--gateway devices.example.net:8443`.
 
 Delete the copied `credentials.json` afterwards: it holds every device token. The board needs
 firmware that accepts a DNS name for the gateway.
@@ -148,6 +153,38 @@ The relay listener writes the same lines as the LAN listener with a `device_` pr
 limit is logged once a minute. While any limit refuses connections, the gateway writes one
 `device_flood` line a minute with a `reason`: `connection_rate`, `pending`,
 `pending_per_address` or `sessions`.
+
+## Factory-provision a gadget for phone setup
+
+A builder prepares a gadget once with a computer. The person who receives it then joins it to
+home Wi-Fi with a phone alone, through the gadget's setup hotspot (hub
+[ADR 010](https://github.com/adidshaft/grok-gadgets/blob/dev/docs/decisions/010-phone-setup.md)).
+The board needs ESP32 SDK firmware with a factory identity (0.2.0-alpha.15 or later).
+
+```sh
+grok-gadgets-gateway factory-provision /dev/cu.usbmodem101 --device oledkit-0123456789ab \
+  --gateway devices.example.net --ca relay-ca.pem --credentials relay-credentials.json
+```
+
+The command:
+
+1. Checks that the relay name is a DNS-only record and that the port presents the relay CA.
+2. Checks that the board on the port is this device and supports a factory identity.
+3. Sends the device token, the relay name and port, and the CA. It adds a new hotspot
+   passphrase and setup code. It sends no Wi-Fi details.
+4. Prints the setup label. It also writes the label as text, a Wi-Fi QR PNG and a printable SVG.
+
+The label shows the hotspot name: `GrokGadget-` and the last four characters of the device
+ID. It also shows the hotspot passphrase with a `WIFI:` QR code, the setup code and the page
+address. The
+label is a secret: anyone with the label and the gadget can set it up again after a reset.
+
+- The device must be enrolled in the registry you pass. `--enroll` enrolls it first; copy the
+  registry back to the relay afterwards, or run `enroll` on the relay instead.
+- A board accepts a factory identity once. `--replace` overwrites it. The label stays the same
+  unless you pass `--new-label`.
+- Records live in `labels/` in the config folder, mode 0600. `grok-gadgets-gateway label ID`
+  prints a lost label again.
 
 ## Limits
 

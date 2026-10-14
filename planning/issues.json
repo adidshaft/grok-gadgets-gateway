@@ -857,6 +857,82 @@
       ],
       "stage": "review",
       "evidence": "GitHub #163; README and current documentation reviewed against the 13 October owner handoff. No new hardware or Grok Bot test. 246 pytest tests; Ruff lint and format passed."
+    },
+    {
+      "id": "GW-COMPAT-001",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Grok Bot's connector backend can move to the MCP 2026-07-28 era and Client ID Metadata Documents at any time; the gateway was untested in that era and its sign-in metadata was silent on CIMD",
+      "acceptance": [
+        "rehearse calls the six tools in the legacy and the 2026-07-28 era",
+        "Sign-in metadata states client_id_metadata_document_supported false",
+        "A CI test per era and the first-success path checks both",
+        "Request log names the MCP revision",
+        "A note on what to do if Grok Bot stops connecting"
+      ],
+      "labels": [
+        "feature",
+        "gateway",
+        "protocol",
+        "P1"
+      ],
+      "stage": "review",
+      "evidence": "GitHub #175; simulator rehearsal passed with 2025-11-25 and 2026-07-28 negotiated. No Grok Bot or hardware test."
+    },
+    {
+      "id": "GW-COMPAT-002",
+      "owner": "grok-gadgets-gateway",
+      "problem": "MCP 2026-07-28 prefers Client ID Metadata Documents; the gateway accepts only dynamic registration",
+      "acceptance": [
+        "Fetch and validate an HTTPS client_id document with SSRF limits and a cache",
+        "Owner approval still decides every sign-in",
+        "Advertise support only after tests pass"
+      ],
+      "labels": [
+        "feature",
+        "gateway",
+        "protocol",
+        "P2"
+      ],
+      "stage": "planned",
+      "evidence": "GitHub #176; filed from the 14 October research."
+    },
+    {
+      "id": "GW-RELAY-004",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Cloudflare proxies port 8443 as HTTPS; a proxied record for the device name breaks every device's CA pin, and 8443 was the default",
+      "acceptance": [
+        "Keep 8443 where already provisioned",
+        "New relays default to 8444",
+        "relay-check refuses a proxied record and checks the relay CA on the port",
+        "wifi-provision --gateway runs the preflight",
+        "Docs warning"
+      ],
+      "labels": [
+        "feature",
+        "gateway",
+        "P1"
+      ],
+      "stage": "review",
+      "evidence": "GitHub #177; tests with stubbed DNS and a local TLS listener. The owner's relay passes --device-listen with :8443 explicitly (read-only check on 14 October), so it is unaffected."
+    },
+    {
+      "id": "GW-SETUP-001",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Phone-only setup needs the gadget's identity and label values written once at the factory",
+      "acceptance": [
+        "factory-provision writes token, relay, port, CA, passphrase and setup code over USB without Wi-Fi",
+        "Checks the device ID and firmware support first",
+        "Prints the label: hotspot name, passphrase, setup code, QR as text and PNG",
+        "Enrols the device on request",
+        "Tests"
+      ],
+      "labels": [
+        "feature",
+        "gateway",
+        "P1"
+      ],
+      "stage": "review",
+      "evidence": "GitHub #158; tests/test_factory_provision.py with a fake board. No kit test yet."
     }
   ]
 }

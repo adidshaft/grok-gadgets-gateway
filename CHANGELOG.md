@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.1.0-alpha.14 — 14 October 2026
+
+- On 14 October 2026 `factory-provision` wrote the owner's ESP32-S3 OLED kit, and the owner joined it to home Wi-Fi from an iPhone and an Android phone with no computer; it went Online through the relay ([hub record](https://github.com/adidshaft/grok-gadgets/blob/dev/docs/verification/phone-setup-2026-10-14.md)). `relay-check` passed against the owner's relay.
+
+- `factory-provision` and `label` ([#158](https://github.com/adidshaft/grok-gadgets-gateway/issues/158), hub ADR 010). `factory-provision PORT --device ID --gateway NAME[:PORT]` runs the relay preflight, checks the board, and sends the device token, relay name and port, CA, a new hotspot passphrase (16 characters, 80 bits) and setup code (8 characters, 40 bits) with no Wi-Fi details. It prints the setup label and writes it as text, a `WIFI:` QR PNG and a printable SVG; records stay in `labels/`, mode 0600. `--enroll` enrolls a missing device, `--replace` overwrites a board's identity, `--new-label` makes new label values. `label ID` reprints a label. New dependency: `segno` 1.6.6 (BSD-3-Clause) for the QR code.
+
+- Relay port and DNS preflight ([#177](https://github.com/adidshaft/grok-gadgets-gateway/issues/177)). New relays default to device port 8444; Cloudflare proxies 8443 as HTTPS. Relays and devices already on 8443 keep it with an explicit `:8443`. `relay-check NAME[:PORT]` refuses a name that resolves to a Cloudflare proxy address, and checks that the port presents a certificate from the relay CA. `wifi-provision --gateway` runs the same check before it sends anything (`--no-relay-check` skips it). The Docker example publishes 8444.
+
+- Both MCP eras ([#175](https://github.com/adidshaft/grok-gadgets-gateway/issues/175)). `rehearse` now calls the six tools with the `initialize` handshake and with the 2026-07-28 revision (`server/discover`); `--protocol legacy|modern|both` picks one, and both is the default. Each `mcp_tool_call` request-log line names the revision in `protocol`. `serve --oauth` metadata states `client_id_metadata_document_supported: false`, so clients keep using registration. `docs/daily-use.md` explains what to do if Grok Bot stops connecting.
+
 ## 0.1.0-alpha.13 — 14 October 2026
 
 - On 13 October 2026 the owner's ESP32-S3 OLED kit connected to `serve --device-listen` on an always-on Linux server, and Grok Bot on the iPhone, on cellular, showed text on it while the Mac slept. Server reboot, `remote off`, revoke, re-enroll, re-provision and a wrong CA also passed ([hub record](https://github.com/adidshaft/grok-gadgets/blob/dev/docs/verification/mac-free-route-2026-10-13.md)).

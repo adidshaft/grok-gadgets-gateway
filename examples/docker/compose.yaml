@@ -1,9 +1,9 @@
 # The gateway and its tunnel client on one always-on Linux host (hub ADR 009, stage 1).
 #
 #   gateway      /mcp on 127.0.0.1:8766 inside the gateway's network namespace, reached only
-#                through the tunnel; the relay device listener on port 8443 for Wi-Fi devices.
+#                through the tunnel; the relay device listener on port 8444 for Wi-Fi devices.
 #   cloudflared  shares the gateway's network namespace and forwards one hostname to
-#                http://127.0.0.1:8766. It never forwards port 8443.
+#                http://127.0.0.1:8766. It never forwards port 8444.
 #
 # Set MCP_HOST in .env (see .env.example). Guide: docs/relay-host.md.
 name: grok-gadgets-relay
@@ -21,14 +21,14 @@ services:
       - --allowed-host
       - ${MCP_HOST:?set MCP_HOST in .env}
       - --device-listen
-      - 0.0.0.0:8443
+      - 0.0.0.0:8444
       - --request-log
       - /data/logs/requests.jsonl
     volumes:
       - gateway-data:/data
     ports:
       # Devices only. The MCP port 8766 is never published.
-      - "8443:8443"
+      - "8444:8444"
     healthcheck:
       test:
         - CMD
