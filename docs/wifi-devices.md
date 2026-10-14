@@ -49,7 +49,7 @@ name, for example `my-mac.local`. On macOS, `scutil --get LocalHostName` prints 
 `serve` binds the name's current private address and checks it again every 30 seconds. When the
 address changes, it moves the Wi-Fi listener and logs `lan_rebound`. The board needs firmware
 that looks up `.local` names.
-The released ESP32 SDK v0.2.0-alpha.12 supports these names.
+ESP32 SDK v0.2.0-alpha.12 and later support these names.
 Use an IPv4 address only with older firmware that does not support name lookup.
 
 When the board shows **Online**, you can [run the gateway as a background service](always-on.md)
