@@ -653,8 +653,11 @@ async def serve_gateway(
 
 def _oauth_routes(issuer, directory, log):
     """The SDK's OAuth routes, protected-resource metadata and the owner approval page."""
+    from mcp.server.auth.handlers.metadata import MetadataHandler
     from mcp.server.auth.routes import (
+        build_metadata,
         build_resource_metadata_url,
+        cors_middleware,
         create_auth_routes,
         create_protected_resource_routes,
     )
@@ -668,15 +671,28 @@ def _oauth_routes(issuer, directory, log):
     provider = OwnerApprovedOAuth(issuer, directory, log)
     issuer_url = AnyHttpUrl(provider.issuer)
     resource = AnyHttpUrl(provider.issuer + MCP_PATH)
+    registration = ClientRegistrationOptions(
+        enabled=True, valid_scopes=[SCOPE], default_scopes=[SCOPE]
+    )
+    revocation = RevocationOptions(enabled=True)
+    # Say plainly that sign-in uses dynamic registration and not Client ID Metadata Documents
+    # (an HTTPS URL as client_id), so a 2026-era client keeps falling back to registration.
+    metadata = build_metadata(issuer_url, None, registration, revocation)
+    metadata.client_id_metadata_document_supported = False
+    well_known = Route(
+        "/.well-known/oauth-authorization-server",
+        endpoint=cors_middleware(MetadataHandler(metadata).handle, ["GET", "OPTIONS"]),
+        methods=["GET", "OPTIONS"],
+    )
+    sdk_routes = create_auth_routes(
+        provider,
+        issuer_url,
+        client_registration_options=registration,
+        revocation_options=revocation,
+    )
     routes = [
-        *create_auth_routes(
-            provider,
-            issuer_url,
-            client_registration_options=ClientRegistrationOptions(
-                enabled=True, valid_scopes=[SCOPE], default_scopes=[SCOPE]
-            ),
-            revocation_options=RevocationOptions(enabled=True),
-        ),
+        well_known,
+        *(r for r in sdk_routes if r.path != well_known.path),
         *create_protected_resource_routes(
             resource, [issuer_url], scopes_supported=[SCOPE], resource_name="Grok Gadgets gateway"
         ),

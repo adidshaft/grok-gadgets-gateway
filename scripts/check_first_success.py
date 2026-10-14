@@ -104,6 +104,8 @@ def main():
             check(rehearsed.returncode == 0, "rehearse exits 0")
             output = rehearsed.stdout
             check("six tools Grok Bot will use" in output, "the gateway offers the six tools")
+            check("(legacy MCP, 2025-11-25)" in output, "the legacy initialize era passes")
+            check("(modern MCP, 2026-07-28)" in output, "the 2026-07-28 server/discover era passes")
             check("sim-c124 (simulated)" in output, "the simulated light sim-c124 is listed")
             check(
                 "rgb.set" in output and "-> executed" in output,

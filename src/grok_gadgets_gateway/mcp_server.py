@@ -141,6 +141,14 @@ def client_name(ctx):
     return f"{info.name}/{info.version}" if info.version else info.name
 
 
+def protocol_version(ctx):
+    """The MCP revision this request speaks, e.g. 2025-11-25 (initialize) or 2026-07-28."""
+    try:
+        return ctx.session.protocol_version
+    except (AttributeError, ValueError):
+        return None
+
+
 def token_name(ctx):
     """Name of the bearer token that authenticated this HTTP request; None on stdio."""
     try:
@@ -282,6 +290,7 @@ def make_server(
                 "request_id": request_id,
                 "transport": request_log.transport if request_log else transport_name(ctx),
                 "client": client_name(ctx),
+                "protocol": protocol_version(ctx),
                 "token": token_name(ctx),
                 "remote": came_remote(ctx),
                 "tool": tool,

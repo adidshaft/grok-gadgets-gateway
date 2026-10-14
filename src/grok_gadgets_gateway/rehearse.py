@@ -1,4 +1,9 @@
-"""Rehearse a Grok Bot session against a running `serve`: the same six tools, called locally."""
+"""Rehearse a Grok Bot session against a running `serve`: the same six tools, called locally.
+
+Grok Bot's connector backend may speak either MCP era: the `initialize` handshake used on
+13 October 2026 (legacy) or the 2026-07-28 revision, where every request is self-contained and
+the session opens with `server/discover` (modern). `--protocol` picks one; `both` runs each.
+"""
 
 import asyncio
 import json
@@ -21,6 +26,7 @@ TOOLS = {
 }
 BLUE = {"r": 0, "g": 120, "b": 255, "on": True}
 CLIENT_NAME = "grok-gadgets-rehearse"
+PROTOCOLS = ("legacy", "modern")
 
 
 def _client_info():
@@ -48,10 +54,14 @@ async def _call(session, tool, arguments=None):
     return value
 
 
-async def rehearse(port, token, device_id=None, out=print, capability=None, arguments=None):
+async def rehearse(
+    port, token, device_id=None, out=print, capability=None, arguments=None, protocol="legacy"
+):
     """Call the tools Grok Bot will call. Returns the final state of the commanded gadget."""
+    if protocol not in PROTOCOLS:
+        raise ValueError(f"protocol must be one of {PROTOCOLS}")
     try:
-        return await _rehearse(port, token, device_id, out, capability, arguments)
+        return await _rehearse(port, token, device_id, out, capability, arguments, protocol)
     except Exception as exc:  # The MCP client wraps step failures in exception groups.
         failure = _find(exc, RehearsalError)
         if failure is None or failure is exc:
@@ -77,7 +87,16 @@ def _pick(devices, device_id, capability):
     raise RehearsalError(f"no gadget {device_id} is connected")
 
 
-async def _rehearse(port, token, device_id, out, capability, arguments):
+async def _open(session, protocol):
+    """Start the session the way the chosen era does; return the negotiated version."""
+    if protocol == "modern":
+        await session.discover()
+    else:
+        await session.initialize()
+    return session.protocol_version
+
+
+async def _rehearse(port, token, device_id, out, capability, arguments, protocol):
     url = f"http://127.0.0.1:{port}{MCP_PATH}"
     headers = {"Authorization": "Bearer " + token}
     # The MCP SDK's default timeouts: 30 s per request, 300 s for the event stream.
@@ -87,11 +106,11 @@ async def _rehearse(port, token, device_id, out, capability, arguments):
         streamable_http_client(url, http_client=http) as (read, write),
         ClientSession(read, write, client_info=_client_info()) as session,
     ):
-        await session.initialize()
+        negotiated = await _open(session, protocol)
         names = {tool.name for tool in (await session.list_tools()).tools}
         if not TOOLS <= names:
             raise RehearsalError("the gateway does not offer the six gadgets tools")
-        out(f"ok  {url} offers the six tools Grok Bot will use")
+        out(f"ok  {url} offers the six tools Grok Bot will use ({protocol} MCP, {negotiated})")
 
         devices = (await _call(session, "gadgets_list_devices"))["devices"]
         for device in devices:
@@ -132,18 +151,25 @@ def _find(exc, kind):
     return None
 
 
-def main(port, token_path_text, device_id, read_token, capability=None, arguments=None):
+def main(
+    port, token_path_text, device_id, read_token, capability=None, arguments=None, protocol="both"
+):
     token = read_token(token_path_text)
-    try:
-        asyncio.run(rehearse(port, token, device_id, print, capability, arguments))
-    except Exception as exc:  # noqa: BLE001 - any failure becomes one plain message
-        failure = _find(exc, RehearsalError)
-        if failure is None:
-            failure = f"no authenticated gateway answers on 127.0.0.1:{port}; start `serve` first"
-        print(f"Rehearsal failed: {failure}")
-        return 1
+    eras = PROTOCOLS if protocol == "both" else (protocol,)
+    for era in eras:
+        try:
+            asyncio.run(rehearse(port, token, device_id, print, capability, arguments, era))
+        except Exception as exc:  # noqa: BLE001 - any failure becomes one plain message
+            failure = _find(exc, RehearsalError)
+            if failure is None:
+                failure = (
+                    f"no authenticated gateway answers {era} MCP on 127.0.0.1:{port}; "
+                    "start `serve` first"
+                )
+            print(f"Rehearsal failed: {failure}")
+            return 1
     print(
-        "Rehearsal passed: these are the calls Grok Bot will make. It does not prove a Grok Bot "
-        "connection or any physical effect."
+        f"Rehearsal passed ({', '.join(eras)} MCP): these are the calls Grok Bot will make. "
+        "It does not prove a Grok Bot connection or any physical effect."
     )
     return 0

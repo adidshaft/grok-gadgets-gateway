@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Both MCP eras ([#175](https://github.com/adidshaft/grok-gadgets-gateway/issues/175)). `rehearse` now calls the six tools with the `initialize` handshake and with the 2026-07-28 revision (`server/discover`); `--protocol legacy|modern|both` picks one, and both is the default. Each `mcp_tool_call` request-log line names the revision in `protocol`. `serve --oauth` metadata states `client_id_metadata_document_supported: false`, so clients keep using registration. `docs/daily-use.md` explains what to do if Grok Bot stops connecting.
+
 ## 0.1.0-alpha.13 — 14 October 2026
 
 - On 13 October 2026 the owner's ESP32-S3 OLED kit connected to `serve --device-listen` on an always-on Linux server, and Grok Bot on the iPhone, on cellular, showed text on it while the Mac slept. Server reboot, `remote off`, revoke, re-enroll, re-provision and a wrong CA also passed ([hub record](https://github.com/adidshaft/grok-gadgets/blob/dev/docs/verification/mac-free-route-2026-10-13.md)).
