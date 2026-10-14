@@ -849,8 +849,9 @@ def run_factory_provision(parser, args):
     files = write_label_files(values, args.label_dir or labels_dir())
     print(label_text(values), end="")
     print(
-        f"Factory-provisioned {args.device} for {host}:{port}. The board restarts and opens "
-        f"its setup hotspot {values['hotspot']} for 10 minutes.",
+        f"Factory-provisioned {args.device} for {host}:{port}. The board restarts. Without "
+        f"home Wi-Fi it opens its setup hotspot {values['hotspot']} for 10 minutes; a board "
+        "that still has Wi-Fi settings keeps them until a factory reset.",
         file=sys.stderr,
     )
     print(

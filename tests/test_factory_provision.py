@@ -106,7 +106,11 @@ def test_factory_provision_writes_the_identity_and_prints_the_label(tmp_path, mo
     )
     assert "Wi-Fi:       GrokGadget-89AB" in out and label.grouped(frame["setup_code"]) in out
     assert frame["token"] not in out + err
-    assert f"ok  {NAME} is a DNS-only record" in err and "GrokGadget-89AB for 10 minutes" in err
+    assert (
+        f"ok  {NAME} is a DNS-only record" in err
+        and "GrokGadget-89AB for 10 minutes" in err
+        and "until a factory reset" in err
+    )
     assert (tmp_path / "grok-gadgets" / "labels" / f"{DEVICE}-label.svg").exists()
 
     # Running it again keeps the same label; the board refuses without --replace.
