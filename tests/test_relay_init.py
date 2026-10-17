@@ -27,6 +27,7 @@ def test_systemd_files_hold_the_hosts_and_no_secret(tmp_path):
         assert f"grok-gadgets-gateway=={relay_init.gateway_release()}" in text
         assert 'GATEWAY="${GATEWAY:-grok-gadgets-gateway==' in text
         assert "ufw allow 8444/tcp" in text and "8443" not in text
+        assert "ufw allow 22/tcp" in text and "ufw allow OpenSSH" not in text
         assert MCP in text and DEVICES in text and "--accounts" in text
         assert "service install" in text and "enable-linger" in text
     # No secret is ever written: tunnel credentials and tokens go by hand.
@@ -190,3 +191,12 @@ def test_relay_check_cli_exit_code(monkeypatch, capsys, mcp_url, tmp_path, priva
     assert main(["relay-check", target, "--mcp", mcp_url + "x"]) == 1
     assert "FAIL" in capsys.readouterr().out
     silent.close()
+
+
+def test_linger_hint_only_when_not_lingering(monkeypatch):
+    import getpass
+
+    from grok_gadgets_gateway import cli
+
+    monkeypatch.setattr(getpass, "getuser", lambda: "no-such-user-for-linger-test")
+    assert cli._lingering() is False

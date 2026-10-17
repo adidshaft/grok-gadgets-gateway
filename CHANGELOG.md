@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `relay init` opens SSH as `22/tcp`, so the setup script also runs on a minimal Ubuntu image without the OpenSSH firewall profile. `service install` gives the `enable-linger` hint only when the user does not linger yet ([#165](https://github.com/adidshaft/grok-gadgets-gateway/issues/165), clean-room run).
 - `builder report` ([#164](https://github.com/adidshaft/grok-gadgets-gateway/issues/164), hub ADR 013). On the relay host it shows each gadget as counts: online, last seen, calls a day, error outcomes, firmware version and last update result, claimed, and the operator's name for it. It reads the request log with its rotated files, `firmware/status.json` and `oauth/accounts.json`. It never shows tokens, arguments, state, addresses, account IDs, codes or other accounts' names. `--days`, `--json`, `--log`.
 
 - Batches ([#162](https://github.com/adidshaft/grok-gadgets-gateway/issues/162), hub ADR 013). `enroll --batch IDS.csv --out DIR` (or `--count N --prefix P` for Linux gadgets) enrolls every device, writes one mode-0600 token file each, makes setup labels with a printable `labels/print.html` (`--no-labels` to skip) and a `batch.csv` with no secret. It refuses devices that are already enrolled and a folder in use. `factory-provision PORT --batch DIR` reads the board's ID, sends its row's token and label, marks the row and deletes the token file. `factory-provision PORT --read-id` prints a board's ID for the CSV.

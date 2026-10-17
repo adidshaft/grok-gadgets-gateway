@@ -1353,7 +1353,7 @@ def run_service(parser, args, service=None):
                 "Check it: grok-gadgets-gateway service status",
                 file=sys.stderr,
             )
-            if service.platform == "linux":
+            if service.platform == "linux" and not _lingering():
                 print(
                     "To start it at boot without a login, run: loginctl enable-linger",
                     file=sys.stderr,
@@ -1788,6 +1788,13 @@ async def _serve(credentials, mcp_token, **kwargs):
         await asyncio.wait({running.task, stopping}, return_when=asyncio.FIRST_COMPLETED)
         stopping.cancel()
     print("Gateway stopped; device sessions closed.", file=sys.stderr)
+
+
+def _lingering():
+    """True when systemd starts this user's services at boot (loginctl enable-linger)."""
+    import getpass
+
+    return Path("/var/lib/systemd/linger", getpass.getuser()).exists()
 
 
 def main(argv=None):
