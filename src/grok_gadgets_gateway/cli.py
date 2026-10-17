@@ -8,6 +8,7 @@ import os
 import signal
 import sys
 from importlib.metadata import version
+from pathlib import Path
 
 from .domain import Gateway
 from .mcp_server import RateLimiter, RequestLog, make_server
@@ -58,6 +59,7 @@ COMMANDS = (
     "factory-provision",
     "label",
     "firmware",
+    "builder",
 )
 DESCRIPTION = """Grok Gadgets gateway: the MCP server your Grok Bot will use to reach your gadgets.
 
@@ -340,6 +342,19 @@ def build_parser():
     fw_remove = fw_sub.add_parser("remove", help="delete a stored update and withdraw it")
     fw_remove.add_argument("board")
     fw_remove.add_argument("version")
+
+    builder = sub.add_parser("builder", help="builder tools for a relay (hub ADR 013)")
+    builder_sub = builder.add_subparsers(dest="builder_command", metavar="ACTION", required=True)
+    report = builder_sub.add_parser(
+        "report", help="your gadgets as counts: last seen, calls, errors, firmware, claimed"
+    )
+    report.add_argument(
+        "--log", action="append", help="request log (default: this host's service log)"
+    )
+    report.add_argument("--days", type=int, default=7, help="calls window in days (default 7)")
+    report.add_argument("--firmware-dir", help="firmware store (default: config firmware/)")
+    report.add_argument("--accounts", help="accounts file (default: oauth/accounts.json)")
+    report.add_argument("--json", action="store_true")
 
     remote = sub.add_parser(
         "remote", help="kill switch: turn remote (tunnel) access off or on at once"
@@ -776,6 +791,8 @@ def run(parser, args):
         return run_accounts(parser, args)
     if command == "firmware":
         return run_firmware(parser, args)
+    if command == "builder":
+        return run_builder_report(parser, args)
     if command == "usage":
         return run_usage(parser, args)
     if command == "serve":
@@ -1345,6 +1362,39 @@ def run_usage(parser, args):
         print(json.dumps(summary, indent=2))
     else:
         print(format_summary(summary))
+    return 0
+
+
+def run_builder_report(parser, args):
+    """Counts only; never tokens, arguments, state, addresses, accounts or codes (ADR 013)."""
+    from .firmware import firmware_dir
+    from .logfiles import rotated
+    from .oauth import oauth_dir
+    from .report import build_report, format_report
+    from .usage import default_log
+
+    paths = args.log
+    if not paths:
+        found = default_log()
+        if found is None or not found.is_file():
+            parser.error("no service request log here; pass --log PATH")
+        paths = [found]
+    for path in paths:
+        if not Path(path).is_file():
+            parser.error(f"no request log at {path}")
+    if args.days < 1:
+        parser.error("--days must be 1 or more")
+    files = [old for path in paths for old in rotated(path)] or paths
+    try:
+        report = build_report(
+            files,
+            firmware_dir=args.firmware_dir or firmware_dir(),
+            accounts_path=args.accounts or (oauth_dir() / "accounts.json"),
+            days=args.days,
+        )
+    except OperatorError as exc:
+        parser.error(str(exc))
+    print(json.dumps(report, indent=2) if args.json else format_report(report))
     return 0
 
 
