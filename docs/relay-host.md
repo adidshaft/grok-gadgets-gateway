@@ -39,6 +39,36 @@ because its devices store that port. Pass `--device-listen 0.0.0.0:8443` and
 
 Never publish port 8766, and never send the device port through the tunnel.
 
+## Start here: `relay init`
+
+`relay init` writes the files for a new relay into a new folder. They hold no secret.
+
+```sh
+grok-gadgets-gateway relay init --mcp-host gadgets.example.net \
+  --device-host devices.example.net --out my-relay
+```
+
+- `setup-relay.sh` sets up a fresh Ubuntu 24.04 host as root. It opens SSH and TCP 8444,
+  installs the tunnel client and this gateway release, and installs the relay as a user
+  service with accounts.
+- `cloud-init.yaml` runs that script when the host first starts. Paste it as the host's user
+  data.
+- `NEXT-STEPS.md` lists what is left by hand: the DNS-only record, the tunnel, the CA copy and
+  the preflight.
+
+`--mode compose` writes Docker Compose files instead. `--no-accounts` makes a relay for one
+operator. The two options below describe the same setup step by step.
+
+When the host is up, run the preflight from your computer. Every line must start with `ok`:
+
+```sh
+grok-gadgets-gateway relay-check devices.example.net --ca relay-ca.pem \
+  --mcp https://gadgets.example.net/mcp
+```
+
+It checks five things: a DNS-only record, the open port, the relay's CA (with its SHA-256
+fingerprint), that the device port refuses HTTP, and that `/mcp` asks for a sign-in.
+
 ## Option A: container (Docker Compose)
 
 `examples/docker/` holds a Dockerfile and a compose file. The gateway container runs

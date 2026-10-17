@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `relay init` ([#165](https://github.com/adidshaft/grok-gadgets-gateway/issues/165), hub ADR 013). It writes `setup-relay.sh`, `cloud-init.yaml` and `NEXT-STEPS.md` for a fresh Ubuntu host: firewall (SSH and 8444), the pinned tunnel client and gateway release, `init`, `device-cert` and the user service with `--oauth --accounts --device-listen 0.0.0.0:8444`. `--mode compose` adds Compose files. No generated file holds a secret; it refuses port 8443 and one name for both roles. `relay-check NAME --mcp URL` runs the full preflight: DNS only, port open, the relay CA with its SHA-256 fingerprint, the device port refuses HTTP, and `/mcp` answers 401 with its metadata 200. Each line says ok or FAIL, and later checks still run.
+
 - Sign-in refresh is visible in the request log ([#211](https://github.com/adidshaft/grok-gadgets-gateway/issues/211)). New lines: `oauth_access_expired` once per expired access token, `oauth_token_refreshed` when a refresh token is exchanged, and `oauth_refresh_rejected` with `reason` (`unknown`, `expired`, `revoked` or `client`). None of them holds a token.
 
 ## 0.1.0-alpha.16 — 17 October 2026

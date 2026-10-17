@@ -58,6 +58,7 @@ COMMANDS = (
     "factory-provision",
     "label",
     "firmware",
+    "relay",
 )
 DESCRIPTION = """Grok Gadgets gateway: the MCP server your Grok Bot will use to reach your gadgets.
 
@@ -330,6 +331,20 @@ def build_parser():
     fw_remove.add_argument("board")
     fw_remove.add_argument("version")
 
+    relay = sub.add_parser("relay", help="set up a new relay host (hub ADR 013)")
+    relay_sub = relay.add_subparsers(dest="relay_command", metavar="ACTION", required=True)
+    relay_init = relay_sub.add_parser(
+        "init", help="write cloud-init, a setup script and next steps for a new relay (no secrets)"
+    )
+    relay_init.add_argument("--mcp-host", required=True, help="Grok Bot's name, via the tunnel")
+    relay_init.add_argument("--device-host", required=True, help="the gadgets' DNS-only name")
+    relay_init.add_argument("--mode", choices=("systemd", "compose"), default="systemd")
+    relay_init.add_argument("--port", type=int, default=8444, help="device port (default 8444)")
+    relay_init.add_argument(
+        "--no-accounts", action="store_true", help="one operator only, no claim codes"
+    )
+    relay_init.add_argument("--out", required=True, metavar="DIR", help="a new folder")
+
     remote = sub.add_parser(
         "remote", help="kill switch: turn remote (tunnel) access off or on at once"
     )
@@ -426,6 +441,12 @@ def build_parser():
     )
     relay_check.add_argument(
         "--ca", metavar="FILE", help="the relay's lan/ca.pem (default: this computer's CA)"
+    )
+    relay_check.add_argument(
+        "--mcp",
+        metavar="URL",
+        help="also check every preflight item, with Grok Bot's URL "
+        "(https://gadgets.example.net/mcp): open port, refuses HTTP, 401 and metadata",
     )
 
     provision = sub.add_parser(
@@ -756,6 +777,26 @@ def run(parser, args):
         return run_accounts(parser, args)
     if command == "firmware":
         return run_firmware(parser, args)
+    if command == "relay":
+        from .relay_init import write_files
+
+        try:
+            files = write_files(
+                args.out,
+                mcp_host=args.mcp_host,
+                device_host=args.device_host,
+                mode=args.mode,
+                port=args.port,
+                accounts=not args.no_accounts,
+            )
+        except OperatorError as exc:
+            parser.error(str(exc))
+        print(
+            f"Wrote {len(files)} files to {args.out}. Start with "
+            f"{os.path.join(args.out, 'NEXT-STEPS.md')}. They hold no secret.",
+            file=sys.stderr,
+        )
+        return 0
     if command == "usage":
         return run_usage(parser, args)
     if command == "serve":
@@ -919,13 +960,23 @@ def run_lan(parser, args):
 
 def run_relay_check(parser, args):
     from .lan import ca_pem_text, is_dns_name, parse_gateway_address, read_ca_file
-    from .relay_check import relay_check
+    from .relay_check import full_check, relay_check
 
     try:
         host, port = parse_gateway_address(args.gateway)
         if not is_dns_name(host):
             parser.error("relay-check takes the relay's public DNS name")
         ca = read_ca_file(args.ca) if args.ca else ca_pem_text()
+        if args.mcp:
+            results = full_check(host, port, ca, mcp_url=args.mcp)
+            for _ok, line in results:
+                print(line)
+            failed = sum(1 for ok, _ in results if not ok)
+            if failed:
+                print(f"Relay check: {failed} of {len(results)} items failed.")
+                return 1
+            print(f"Relay check passed: all {len(results)} items.")
+            return 0
         lines = relay_check(host, port, ca)
     except OperatorError as exc:
         print(f"Relay check failed: {exc}", file=sys.stderr)
