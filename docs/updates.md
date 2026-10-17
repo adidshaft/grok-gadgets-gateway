@@ -1,9 +1,9 @@
 # Signed firmware updates
 
-The relay can send a new firmware image to a gadget over the gadget's own TLS connection. The
-gadget checks a signature made with the builder's key before it downloads anything, checks the
-image before it makes it bootable, and goes back to the previous image by itself when the new
-one does not come Online. Design: [hub ADR 012](https://github.com/adidshaft/grok-gadgets/blob/dev/docs/decisions/012-signed-updates.md).
+The relay can send a new firmware image to a gadget over the gadget's own TLS connection. Before it
+downloads anything, the gadget checks a signature made with the builder's key. It checks the
+image before it makes it bootable. When the new image does not come Online, the gadget goes
+back to the previous image by itself. Design: [hub ADR 012](https://github.com/adidshaft/grok-gadgets/blob/dev/docs/decisions/012-signed-updates.md).
 
 Only gadgets whose firmware holds your public key ask for updates. Released firmware up to
 ESP32 SDK 0.2.0-alpha.16 does not; flash an update-capable image over USB once.
@@ -22,8 +22,8 @@ grok-gadgets-gateway firmware keygen --out ~/grok-keys/builder.key
 ```
 
 This writes `builder.key` (mode 0600) and `builder.pub.pem`, and prints the key ID. Back up
-the private key offline. **If you lose it, gadgets that trust only that key can be updated
-only with a cable.** Never commit it, copy it to the relay or paste it into a chat.
+the private key offline. **If you lose it, a cable is the only way to update gadgets that
+trust only that key.** Never commit it, copy it to the relay or paste it into a chat.
 
 Compile `builder.pub.pem` into your firmware (see the ESP32 SDK guide). Give the relay a copy
 of the public key.
@@ -73,8 +73,8 @@ assign it again.
 
 `update_offered`, `update_started`, `update_progress` (25, 50 and 75 %), `update_verified`,
 `update_applied`, `update_rejected`, `update_failed`, `update_reverted`, `update_busy` and
-`update_withdrawn`, each with `device`, `version` and, when there is one, `reason`. No line
-holds image bytes or key material.
+`update_withdrawn`. Each line has `device`, `version` and, when there is one, `reason`. No
+line holds image bytes or key material.
 
 ## Limits
 
@@ -91,8 +91,8 @@ holds image bytes or key material.
 grok-gadgets-gateway rehearse --update
 ```
 
-It signs updates with throwaway keys in a temporary directory and delivers them to a
-simulated gadget on a private relay: a good update applied after a restart, an image signed
-with another key refused, an image with one changed byte refused, and an image that never
-goes Online reverted. It proves the relay side only, not that a real gadget writes, verifies
+It signs updates with throwaway keys in a temporary directory. It delivers them to a
+simulated gadget on a private relay. A good update is applied after a restart. The gadget
+refuses an image signed with another key and an image with one changed byte. An image that
+never goes Online reverts. It proves the relay side only, not that a real gadget writes, verifies
 or boots an image.
