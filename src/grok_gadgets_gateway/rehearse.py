@@ -280,10 +280,9 @@ async def _sign_in(stack, url, code):
             done = await web.post(
                 page_url.split("?")[0], data={"request": request_id, "code": code}
             )
-            link = re.search(r'href="([^"]+)"', done.text)
-            if link is None:
+            if done.status_code != 302:
                 raise RehearsalError("the sign-in page refused the code")
-            query = parse_qs(urlparse(link.group(1).replace("&amp;", "&")).query)
+            query = parse_qs(urlparse(done.headers["location"]).query)
             result.update({k: v[0] for k, v in query.items()})
 
     async def callback():

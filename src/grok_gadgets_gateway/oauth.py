@@ -395,7 +395,7 @@ class OwnerApprovedOAuth:
         headers = {k.lower().encode(): v.encode() for k, v in request.headers.items()}
         who = caller(request.scope, headers)
         try:
-            account, recovery = self.accounts.sign_in_code(text, caller=who)
+            account, _ = self.accounts.sign_in_code(text, caller=who)
         except ClaimRejected as exc:
             pending["wrong"] = pending.get("wrong", 0) + 1
             if exc.limited or pending["wrong"] >= REQUEST_WRONG_MAX:
@@ -406,14 +406,10 @@ class OwnerApprovedOAuth:
             return self._code_page(request_id, pending, f"<strong>{exc}</strong> ", 200)
         self._forget(request_id)
         target = self._grant(pending, account, account, now)
-        if recovery is None:  # A link code: the account exists and keeps its recovery code.
-            return _page(f'Done. <a href="{html.escape(target)}">Continue to Grok Bot</a>')
-        return _page(
-            "Done. Save this recovery code somewhere safe. It is shown only once. "
-            "You need it to sign in again after 30 days without use, or from a new app:"
-            f"<pre>{recovery}</pre>"
-            f'<a href="{html.escape(target)}">Continue to Grok Bot</a>'
-        )
+        # Straight back to Grok Bot, as the operator approval does: a phone's sign-in sheet
+        # finishes only on this redirect, never on a link. The person gets a recovery code
+        # later from gadgets_share action=recovery_code (hub ADR 011 §6).
+        return RedirectResponse(target, status_code=302, headers=_NO_STORE)
 
     async def load_authorization_code(self, client, authorization_code):
         value = self.codes.get(authorization_code)

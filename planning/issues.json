@@ -1010,6 +1010,23 @@
       ],
       "stage": "review",
       "evidence": "GitHub #180; tests/test_transfer.py, tests/test_rehearse_accounts.py, sign-in flood test; 367 passed. No relay, kit or Grok Bot test yet."
+    },
+    {
+      "id": "GW-CLAIM-005",
+      "owner": "grok-gadgets-gateway",
+      "problem": "After a right code the phone's sign-in sheet never handed the authorization code back to Grok Bot",
+      "acceptance": [
+        "A right code answers with the same 302 redirect as the operator approval",
+        "Recovery code from gadgets_share action=recovery_code, replacing the old one",
+        "Tests"
+      ],
+      "labels": [
+        "bug",
+        "gateway",
+        "P1"
+      ],
+      "stage": "review",
+      "evidence": "GitHub #196; relay log 17 Oct 10:10:37Z oauth_sign_in_approved with no oauth_token_issued; tests updated; 367 passed."
     }
   ]
 }

@@ -151,7 +151,10 @@ people use the relay (hub ADR 011). Then:
 
 - A gadget with SDK firmware that supports claim codes shows `Code XXXX-XXXX` while nobody
   owns it. The person adds the relay in their Grok Bot and types that code on the sign-in
-  page. The relay creates their account, gives them the gadget and shows a recovery code once.
+  page. The relay creates their account, gives them the gadget and hands the sign-in straight
+  back to Grok Bot. They then ask Grok Bot for a recovery code (`gadgets_share
+  action=recovery_code`) and keep it: it signs them in again after 30 days without use or on a
+  new phone. Asking again replaces the old code.
 - The shared bearer tokens (`mcp-token` and named tokens) stop working on `/mcp`. Only
   sign-ins with an account call tools.
 - Your own `oauth approve CODE --name NAME` still works and signs in to the operator
