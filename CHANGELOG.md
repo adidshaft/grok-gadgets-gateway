@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.1.0-alpha.15 — 17 October 2026
+
+- On 17 October 2026 two people, each with Grok Bot on their own iPhone, used one relay in accounts mode and the owner's ESP32-S3 OLED kit: claim by the code on the screen, isolation of list, state, commands and events, share and revoke, wrong and expired codes, a flood, and a transfer after a reset that stayed pending until the old owner removed it. The owner's sign-in and kit kept working through the migration ([hub record](https://github.com/adidshaft/grok-gadgets/blob/dev/docs/verification/claim-2026-10-17.md)). Two sign-in fixes came from that run (#196, #198).
+
 - Gadget names and rooms in accounts mode ([#202](https://github.com/adidshaft/grok-gadgets-gateway/issues/202)). `gadgets_name` gives a gadget a plain name and an optional room, private to the caller's account (up to 32 characters, unique among their gadgets). Every tool accepts the name in place of `device_id`, only among the caller's own gadgets. `gadgets_list_devices` adds `name`, `room` and a one-line `summary` such as "Desk display, Office, online, yours". The server now has the title Grok Gadgets and instructions that tell Grok Bot to ask for the code on the display, name the gadget after a claim, use names and offer a recovery code once. A pending transfer answers `transfer_pending` instead of the share message. Names go when a gadget is unclaimed or changes hands; line `gadget_named`.
 
 - A code refused by a wrong-code limit now writes `claim_limited` (reason and caller or account), at most once a minute per key ([#200](https://github.com/adidshaft/grok-gadgets-gateway/issues/200)). `service install` right after `service uninstall` no longer reports the device port as in use while only closed connections linger.
