@@ -338,11 +338,12 @@ async def rehearse_accounts(out=print, directory=None):
     from .accounts import Accounts
     from .operator import atomic_write
     from .service import serve_gateway
+    from .transport import digest
 
     with tempfile.TemporaryDirectory() as temporary:
         root = Path(directory or temporary)
         credentials = root / "credentials.json"
-        devices = {d: {"token": t, "revoked": False} for d, t in ACCOUNT_GADGETS.items()}
+        devices = {d: {"sha256": digest(t), "revoked": False} for d, t in ACCOUNT_GADGETS.items()}
         atomic_write(credentials, json.dumps({"devices": devices}).encode())
         atomic_write(root / "mcp-token", b"rehearsal-only-mcp-token\n")
         Accounts(root / "oauth" / "accounts.json").open([])  # gadgets enrolled after setup
