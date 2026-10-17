@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Batches ([#162](https://github.com/adidshaft/grok-gadgets-gateway/issues/162), hub ADR 013). `enroll --batch IDS.csv --out DIR` (or `--count N --prefix P` for Linux gadgets) enrolls every device, writes one mode-0600 token file each, makes setup labels with a printable `labels/print.html` (`--no-labels` to skip) and a `batch.csv` with no secret. It refuses devices that are already enrolled and a folder in use. `factory-provision PORT --batch DIR` reads the board's ID, sends its row's token and label, marks the row and deletes the token file. `factory-provision PORT --read-id` prints a board's ID for the CSV.
+
 - Sign-in refresh is visible in the request log ([#211](https://github.com/adidshaft/grok-gadgets-gateway/issues/211)). New lines: `oauth_access_expired` once per expired access token, `oauth_token_refreshed` when a refresh token is exchanged, and `oauth_refresh_rejected` with `reason` (`unknown`, `expired`, `revoked` or `client`). None of them holds a token.
 
 ## 0.1.0-alpha.16 — 17 October 2026

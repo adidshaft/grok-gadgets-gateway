@@ -1117,6 +1117,24 @@
       ],
       "stage": "review",
       "evidence": "GitHub #209; tests/test_firmware.py (26 tests, written first); rehearse --update passed; full suite 402 passed. No kit or relay test yet."
+    },
+    {
+      "id": "GW-BUILD-001",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Each gadget is enrolled and labelled one at a time",
+      "acceptance": [
+        "enroll --batch CSV or --count with --prefix",
+        "One-time token files, labels and a secret-free batch.csv",
+        "factory-provision --batch and --read-id",
+        "Tests"
+      ],
+      "labels": [
+        "feature",
+        "gateway",
+        "P2"
+      ],
+      "stage": "review",
+      "evidence": "GitHub #162; tests/test_batch.py (written first). Not yet run on a real relay or board."
     }
   ]
 }

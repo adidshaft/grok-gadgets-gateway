@@ -136,13 +136,41 @@ once. A lost token file is no problem: run `enroll DEVICE --rotate --token-file 
 relay and provision again. After provisioning, power the board from a USB charger. It shows **Online** when
 the relay accepts it.
 
+## Prepare many gadgets at once
+
+A batch enrolls many gadgets and prints their setup labels in one step. An ESP32 board's ID
+comes from its chip, so first read each board's ID over USB and list them in a CSV:
+
+```sh
+grok-gadgets-gateway factory-provision /dev/cu.usbmodem101 --read-id    # prints oledkit-…
+printf 'device_id\noledkit-0123456789ab\noledkit-0123456789ac\n' > ids.csv
+grok-gadgets-gateway enroll --batch ids.csv --out batch-1
+```
+
+For Linux gadgets, which choose their own IDs, use a count and a prefix:
+
+```sh
+grok-gadgets-gateway enroll --count 3 --prefix lamp- --out batch-2 --no-labels
+```
+
+The folder holds one token file for each gadget in `tokens/` (mode 0600, shown nowhere else). It also holds the setup labels in `labels/` (`print.html` prints them all) and `batch.csv`. The CSV lists
+the devices and their files, never a secret. Then provision each board from the batch. The
+command reads the board's ID, sends that row's token and label, and deletes the token file:
+
+```sh
+grok-gadgets-gateway factory-provision /dev/cu.usbmodem101 --gateway devices.example.net \
+  --batch batch-1
+```
+
+Keep the batch folder off shared drives and out of chats until every row says
+`provisioned: yes`. A Linux gadget takes its token file with `--token-file` instead.
+
 ## Connect Grok Bot
 
 Ask Grok Bot to add `https://gadgets.example.net/mcp` as a Remote HTTPS server with OAuth
 sign-in, and approve the code on the relay with `oauth approve`. The hub guide
 [Connect your Grok Bot](https://github.com/adidshaft/grok-gadgets/blob/main/docs/getting-started/connect-grok-bot.md)
-has the exact chat text. If Grok Bot already lists `grok-gadgets` for the Mac, ask it to replace
-that server; the hostname can stay the same if the tunnel moved with it.
+has the exact chat text. If Grok Bot already lists `grok-gadgets` for the Mac, ask it to replace that server. The hostname can stay the same if the tunnel moved with it.
 
 ## Accounts: other people claim their own gadgets
 
@@ -152,9 +180,7 @@ people use the relay (hub ADR 011). Then:
 - A gadget with SDK firmware that supports claim codes shows `Code XXXX-XXXX` while nobody
   owns it. The person adds the relay in their Grok Bot and types that code on the sign-in
   page. The relay creates their account, gives them the gadget and hands the sign-in straight
-  back to Grok Bot. They then ask Grok Bot for a recovery code (`gadgets_share
-  action=recovery_code`) and keep it: it signs them in again after 30 days without use or on a
-  new phone. Asking again replaces the old code.
+  back to Grok Bot. They then ask Grok Bot for a recovery code (`gadgets_share action=recovery_code`) and keep it. It signs them in again after 30 days without use, or on a new phone. Asking again replaces the old code.
 - The shared bearer tokens (`mcp-token` and named tokens) stop working on `/mcp`. Only
   sign-ins with an account call tools.
 - Your own `oauth approve CODE --name NAME` still works and signs in to the operator
@@ -164,10 +190,7 @@ people use the relay (hub ADR 011). Then:
 - Every tool answers only for the caller's own gadgets and shares. Another account's gadget,
   command or event looks exactly like one that does not exist. The operator account sees
   only its own gadgets.
-- Three more tools: `gadgets_claim` adds a gadget by its code or accepts a share code;
-  `gadgets_remove` unclaims a gadget (its shares end and it shows a new code) or drops a
-  share; `gadgets_share` makes a 10-minute, one-use share code (`use` or `view`), lists and
-  revokes shares, or makes a link code that signs a second app in to the same account.
+- Three more tools: `gadgets_claim` adds a gadget by its code or accepts a share code. `gadgets_remove` unclaims a gadget (its shares end and it shows a new code) or drops a share. `gadgets_share` makes a 10-minute, one-use share code (`use` or `view`), and lists and revokes shares. It also makes a link code that signs a second app in to the same account.
 - **Handing a gadget on.** A BOOT reset never changes the owner on the relay. After a reset
   and a phone re-join, the gadget shows a transfer code for 10 minutes. The new person enters
   it on the sign-in page or with `gadgets_claim`: the transfer is pending, and the old owner
@@ -184,12 +207,9 @@ people use the relay (hub ADR 011). Then:
   `accounts unclaim DEVICE`, `accounts assign DEVICE ACCOUNT`, and `accounts link ACCOUNT`,
   which prints a 10-minute code that signs a new app in to that account. Use it when someone
   lost their recovery code. `oauth revoke ACCOUNT` ends every sign-in of an account.
-- `rehearse --accounts` runs the whole flow on a private, temporary relay with two simulated
-  gadgets: two sign-ins, isolation, a share and its revocation, and a transfer. It uses no
+- `rehearse --accounts` runs the whole flow on a private, temporary relay with two simulated gadgets. It covers two sign-ins, isolation, a share and its revocation, and a transfer. It uses no
   configuration of this computer.
-- Codes live in memory only. Wrong codes are limited: 5 per sign-in, 20 an hour per address
-  and 200 an hour for the relay, after which code entry closes for 10 minutes with a
-  `claim_flood` line. `account_created`, `device_claimed` and `claim_rejected` lines record
+- Codes live in memory only. The relay limits wrong codes: 5 per sign-in, 20 an hour per address and 200 an hour for the relay. After that, code entry closes for 10 minutes with a `claim_flood` line. `account_created`, `device_claimed` and `claim_rejected` lines record
   claims without codes.
 
 ## Daily check
