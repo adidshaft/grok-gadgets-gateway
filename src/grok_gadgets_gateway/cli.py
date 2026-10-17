@@ -204,7 +204,18 @@ def build_parser():
     init.add_argument("--port", type=int, default=8766, help="HTTP port in the settings")
 
     enroll_cmd = sub.add_parser("enroll", help="issue a device token for a device ID")
-    enroll_cmd.add_argument("device_id")
+    enroll_cmd.add_argument("device_id", nargs="?")
+    enroll_cmd.add_argument(
+        "--batch", metavar="IDS.csv", help="enroll every device_id in this CSV (hub ADR 013)"
+    )
+    enroll_cmd.add_argument("--count", type=int, help="make N device IDs (Linux gadgets)")
+    enroll_cmd.add_argument("--prefix", help="device ID prefix for --count, e.g. lamp-")
+    enroll_cmd.add_argument(
+        "--out", metavar="DIR", help="new folder for the batch: token files, labels, batch.csv"
+    )
+    enroll_cmd.add_argument(
+        "--no-labels", action="store_true", help="no setup labels (gadgets without a hotspot)"
+    )
     enroll_cmd.add_argument(
         "--rotate",
         action="store_true",
@@ -493,10 +504,15 @@ def build_parser():
         help="write a gadget's identity over USB once and print its setup label (no Wi-Fi)",
     )
     factory.add_argument("serial_port")
-    factory.add_argument("--device", required=True, help="device ID of this board")
+    factory.add_argument("--device", help="device ID of this board (not with --batch)")
+    factory.add_argument(
+        "--batch", metavar="DIR", help="use this board's row of an enroll --batch folder"
+    )
+    factory.add_argument(
+        "--read-id", action="store_true", help="only print the board's device ID, for a batch CSV"
+    )
     factory.add_argument(
         "--gateway",
-        required=True,
         metavar="NAME[:PORT]",
         help="the relay's DNS name from device-cert (port 8444 by default; relays set up "
         "before 14 October 2026 use 8443)",
@@ -717,7 +733,11 @@ def run(parser, args):
             parser.error(str(exc))
         print(settings, end="")
         return 0
+    if command == "enroll" and (args.batch or args.count is not None):
+        return run_enroll_batch(parser, args)
     if command == "enroll":
+        if args.device_id is None:
+            parser.error("enroll needs a device ID, or --batch IDS.csv or --count N with --out")
         try:
             token = enroll(args.device_id, args.credentials, rotate=args.rotate)
             if args.token_file:
@@ -1004,14 +1024,72 @@ def provisioning_token(parser, args, path, *, enroll_new=False):
     )
 
 
+def run_enroll_batch(parser, args):
+    from .batch import count_ids, make_batch, read_ids
+
+    if args.device_id or args.rotate or args.token_file:
+        parser.error("a batch takes no device ID, --rotate or --token-file")
+    if not args.out:
+        parser.error("a batch needs --out DIR, a new folder")
+    if args.batch and args.count is not None:
+        parser.error("use --batch or --count, not both")
+    if args.count is not None and not args.prefix:
+        parser.error("--count needs --prefix, for example --prefix lamp-")
+    try:
+        ids = read_ids(args.batch) if args.batch else count_ids(args.count, args.prefix)
+        rows = make_batch(ids, args.out, credentials=args.credentials, labels=not args.no_labels)
+    except (OperatorError, CredentialError, OSError) as exc:
+        parser.error(str(exc))
+    print(
+        f"Enrolled {len(rows)} gadget{'s' if len(rows) != 1 else ''} in {args.out}: one token "
+        "file each in tokens/ (shown nowhere else), "
+        + ("setup labels in labels/ (print.html prints them all), " if not args.no_labels else "")
+        + "and batch.csv. Keep the folder private until every gadget is provisioned.",
+        file=sys.stderr,
+    )
+    return 0
+
+
 def run_factory_provision(parser, args):
     import serial
 
-    from .label import label_record, label_text, labels_dir, save_record, write_label_files
+    from .batch import batch_token, mark_provisioned
+    from .label import (
+        label_record,
+        label_text,
+        labels_dir,
+        load_record,
+        save_record,
+        write_label_files,
+    )
     from .lan import ca_pem_text, is_dns_name, parse_gateway_address, read_ca_file
     from .relay_check import relay_check
-    from .wifi_provision import ProvisionError, factory_frame, factory_provision
+    from .wifi_provision import ProvisionError, factory_frame, factory_provision, status
 
+    if args.read_id or args.batch:
+        if args.device:
+            parser.error("--read-id and --batch read the device ID from the board")
+        try:
+            with serial.Serial(args.serial_port, 115200, timeout=0.1, write_timeout=2) as device:
+                board_id = status(device).get("device_id")
+        except (serial.SerialException, OSError) as exc:
+            parser.error(f"cannot use {args.serial_port}: {exc}")
+        except ProvisionError as exc:
+            parser.error(str(exc))
+        if not isinstance(board_id, str):
+            parser.error("the board did not report a device ID")
+        if args.read_id:
+            print(board_id)
+            return 0
+        args.device = board_id
+        if args.token_file or args.rotate or args.enroll:
+            parser.error("--batch takes the token from the batch folder")
+        try:
+            _row, args.token_file = batch_token(args.batch, board_id)
+        except OperatorError as exc:
+            parser.error(str(exc))
+    if not args.device or not args.gateway:
+        parser.error("factory-provision needs --device (or --batch) and --gateway")
     path = args.credentials or credentials_path()
     try:
         host, port = parse_gateway_address(args.gateway)
@@ -1020,7 +1098,15 @@ def run_factory_provision(parser, args):
             for line in relay_check(host, port, ca):
                 print(line, file=sys.stderr)
         token, commit = provisioning_token(parser, args, path, enroll_new=args.enroll)
-        values = label_record(args.device, new=args.new_label)
+        if args.batch:
+            # The label printed with the batch, wherever the batch was made (hub ADR 013 §2).
+            values = load_record(args.device, Path(args.batch) / "labels")
+            if values is None:
+                parser.error(
+                    f"the batch has no label for {args.device}; make it without --no-labels"
+                )
+        else:
+            values = label_record(args.device, new=args.new_label)
         frame = factory_frame(
             token,
             host,
@@ -1044,6 +1130,8 @@ def run_factory_provision(parser, args):
     except (OperatorError, CredentialError) as exc:
         parser.error(f"The board has its new token, but the registry was not updated: {exc}")
     save_record(values)
+    if args.batch:
+        mark_provisioned(args.batch, args.device)
     files = write_label_files(values, args.label_dir or labels_dir())
     print(label_text(values), end="")
     print(

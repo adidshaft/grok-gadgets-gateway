@@ -1135,6 +1135,24 @@
       ],
       "stage": "review",
       "evidence": "GitHub #164; tests/test_report.py (written first). Not yet run on a real relay."
+    },
+    {
+      "id": "GW-BUILD-001",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Each gadget is enrolled and labelled one at a time",
+      "acceptance": [
+        "enroll --batch CSV or --count with --prefix",
+        "One-time token files, labels and a secret-free batch.csv",
+        "factory-provision --batch and --read-id",
+        "Tests"
+      ],
+      "labels": [
+        "feature",
+        "gateway",
+        "P2"
+      ],
+      "stage": "review",
+      "evidence": "GitHub #162; tests/test_batch.py (written first). Not yet run on a real relay or board."
     }
   ]
 }
