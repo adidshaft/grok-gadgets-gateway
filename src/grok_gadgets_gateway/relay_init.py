@@ -99,7 +99,9 @@ for _ in $(seq 1 30); do [ -d "$RUNTIME" ] && break; sleep 1; done
 as_relay() {{ su - "$RELAY_USER" -c "export XDG_RUNTIME_DIR=$RUNTIME; $1"; }}
 
 as_relay "curl -LsSf https://astral.sh/uv/{UV_VERSION}/install.sh | sh"
-as_relay "~/.local/bin/uv tool install grok-gadgets-gateway=={release}"
+# GATEWAY may name a reviewed wheel to try a candidate; the default is this release.
+GATEWAY="${{GATEWAY:-grok-gadgets-gateway=={release}}}"
+as_relay "~/.local/bin/uv tool install $GATEWAY"
 GW="~/.local/bin/grok-gadgets-gateway"
 # init prints a local bearer token: keep it out of the cloud-init log.
 as_relay "$GW init --client http > /dev/null"

@@ -25,6 +25,7 @@ def test_systemd_files_hold_the_hosts_and_no_secret(tmp_path):
     assert cloud.startswith("#cloud-config\n") and "setup-relay.sh" in cloud
     for text in (script, cloud):
         assert f"grok-gadgets-gateway=={relay_init.gateway_release()}" in text
+        assert 'GATEWAY="${GATEWAY:-grok-gadgets-gateway==' in text
         assert "ufw allow 8444/tcp" in text and "8443" not in text
         assert MCP in text and DEVICES in text and "--accounts" in text
         assert "service install" in text and "enable-linger" in text
