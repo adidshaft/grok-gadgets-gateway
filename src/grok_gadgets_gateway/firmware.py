@@ -513,6 +513,12 @@ class Updates:
         if state == "applied" and self._applied(device, version):
             return {"ok": True}  # Already logged from the hello.
         self._log(f"update_{state}", device, version, reason=reason)
+        previous = self.results.get(device, {})
+        if state == "rejected" and (previous.get("version"), previous.get("status")) == (
+            version,
+            "reverted",
+        ):
+            return {"ok": True}  # The gadget refuses a version it reverted; keep `reverted`.
         assigned = self._assignments().get(device) or {}
         self._save(
             device,
