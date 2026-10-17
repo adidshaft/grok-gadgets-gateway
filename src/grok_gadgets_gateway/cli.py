@@ -1036,6 +1036,10 @@ def provisioning_token(parser, args, path, *, enroll_new=False):
     from .transport import digest, read_registry
 
     record = read_registry(path).get(args.device) if os.path.exists(path) else None
+    if getattr(args, "batch", None):
+        # A batch comes from the relay that enrolled it. This computer's own gateway may hold
+        # an older, unrelated enrollment for the same ID, so it is not the reference here.
+        record = None
     if args.token_file:
         token = read_device_token_file(args.token_file)
         if record is not None:

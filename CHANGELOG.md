@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `factory-provision --batch` trusts the batch's token, not this computer's own registry. A Mac that also runs a gateway refused the kit's batch token because it held an older enrollment for the same ID (owner dry run, [#162](https://github.com/adidshaft/grok-gadgets-gateway/issues/162)).
 - `relay-check --mcp` sends its own user agent. A tunnel's edge refused Python's default one with 403, so the check failed on a correct route (owner dry run, [#165](https://github.com/adidshaft/grok-gadgets-gateway/issues/165)).
 - The `relay init` setup script gives the relay user the SSH keys that reach root, so `scp grokgadgets@HOST:…` in NEXT-STEPS works ([#165](https://github.com/adidshaft/grok-gadgets-gateway/issues/165), owner dry run).
 - `relay init` opens SSH as `22/tcp`, so the setup script also runs on a minimal Ubuntu image without the OpenSSH firewall profile. `service install` gives the `enable-linger` hint only when the user does not linger yet ([#165](https://github.com/adidshaft/grok-gadgets-gateway/issues/165), clean-room run).
