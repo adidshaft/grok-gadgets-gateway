@@ -22,8 +22,8 @@ grok-gadgets-gateway firmware keygen --out ~/grok-keys/builder.key
 ```
 
 This writes `builder.key` (mode 0600) and `builder.pub.pem`, and prints the key ID. Back up
-the private key offline. **If you lose it, a cable is the only way to update gadgets that
-trust only that key.** Never commit it, copy it to the relay or paste it into a chat.
+the private key offline. If you lose it, a cable is the only way to update gadgets that
+trust only that key. Never commit it, copy it to the relay or paste it into a chat.
 
 Compile `builder.pub.pem` into your firmware (see the ESP32 SDK guide). Give the relay a copy
 of the public key.
