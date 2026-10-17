@@ -147,10 +147,13 @@ def check_refuses_http(name, port, timeout=3.0):
 
 def check_mcp(url, timeout=10.0):
     """`/mcp` asks for a sign-in (401) and its protected-resource metadata answers (200)."""
+    from importlib.metadata import version
     from urllib.error import HTTPError, URLError
     from urllib.parse import urlsplit
     from urllib.request import Request, urlopen
 
+    # A tunnel's edge may refuse Python's default user agent (403), so name the check.
+    agent = {"User-Agent": f"grok-gadgets-gateway/{version('grok-gadgets-gateway')} relay-check"}
     parts = urlsplit(url)
     metadata = f"{parts.scheme}://{parts.netloc}/.well-known/oauth-protected-resource{parts.path}"
 
@@ -163,9 +166,11 @@ def check_mcp(url, timeout=10.0):
         except (URLError, OSError):
             return None
 
-    meta = status(Request(metadata))
+    meta = status(Request(metadata, headers=agent))
     post = status(
-        Request(url, data=b"{}", method="POST", headers={"Content-Type": "application/json"})
+        Request(
+            url, data=b"{}", method="POST", headers={**agent, "Content-Type": "application/json"}
+        )
     )
     if meta == 200 and post == 401:
         return True, f"ok  {url} answers 401 without a sign-in, and its sign-in metadata 200"

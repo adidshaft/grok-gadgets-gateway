@@ -28,6 +28,7 @@ def test_systemd_files_hold_the_hosts_and_no_secret(tmp_path):
         assert 'GATEWAY="${GATEWAY:-grok-gadgets-gateway==' in text
         assert "ufw allow 8444/tcp" in text and "8443" not in text
         assert "ufw allow 22/tcp" in text and "ufw allow OpenSSH" not in text
+        assert "/root/.ssh/authorized_keys" in text
         assert MCP in text and DEVICES in text and "--accounts" in text
         assert "service install" in text and "enable-linger" in text
     # No secret is ever written: tunnel credentials and tokens go by hand.
@@ -87,11 +88,24 @@ def test_relay_init_cli(tmp_path, capsys):
 
 
 class _Mcp(BaseHTTPRequestHandler):
+    """Like the tunnel's edge, it refuses Python's default user agent with 403."""
+
+    def _blocked(self):
+        if self.headers.get("User-Agent", "").startswith("Python-urllib"):
+            self.send_response(403)
+            self.end_headers()
+            return True
+        return False
+
     def do_GET(self):
+        if self._blocked():
+            return
         self.send_response(200 if self.path == "/.well-known/oauth-protected-resource/mcp" else 404)
         self.end_headers()
 
     def do_POST(self):
+        if self._blocked():
+            return
         self.send_response(401)
         self.end_headers()
 

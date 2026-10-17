@@ -132,6 +132,11 @@ def test_factory_provision_from_a_batch(config, monkeypatch, capsys):
     record = label.load_record(KIT)
     # factory-provision runs on another computer: its own label store does not have the record.
     label.record_path(KIT).unlink()
+    # Its own gateway may hold an older enrollment for the same ID: the batch's token wins.
+    creds = config / "grok-gadgets" / "credentials.json"
+    data = json.loads(creds.read_text())
+    data["devices"][KIT]["sha256"] = digest("an-older-token-on-this-computer")
+    creds.write_text(json.dumps(data))
     assert stat.S_IMODE((out / "labels" / f"{KIT}.json").stat().st_mode) == 0o600
     status = json.dumps({"ok": True, "device_id": KIT, "factory": False}).encode() + b"\n"
     ok = json.dumps({"ok": True, "device_id": KIT, "restarting": True}).encode() + b"\n"

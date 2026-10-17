@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `factory-provision --batch` trusts the batch's token, not this computer's own registry. A Mac that also runs a gateway refused the kit's batch token because it held an older enrollment for the same ID (owner dry run, [#162](https://github.com/adidshaft/grok-gadgets-gateway/issues/162)).
+- `relay-check --mcp` sends its own user agent. A tunnel's edge refused Python's default one with 403, so the check failed on a correct route (owner dry run, [#165](https://github.com/adidshaft/grok-gadgets-gateway/issues/165)).
+- The `relay init` setup script gives the relay user the SSH keys that reach root, so `scp grokgadgets@HOST:…` in NEXT-STEPS works ([#165](https://github.com/adidshaft/grok-gadgets-gateway/issues/165), owner dry run).
 - `relay init` opens SSH as `22/tcp`, so the setup script also runs on a minimal Ubuntu image without the OpenSSH firewall profile. `service install` gives the `enable-linger` hint only when the user does not linger yet ([#165](https://github.com/adidshaft/grok-gadgets-gateway/issues/165), clean-room run).
 - `builder report` ([#164](https://github.com/adidshaft/grok-gadgets-gateway/issues/164), hub ADR 013). On the relay host it shows each gadget as counts: online, last seen, calls a day, error outcomes, firmware version and last update result, claimed, and the operator's name for it. It reads the request log with its rotated files, `firmware/status.json` and `oauth/accounts.json`. It never shows tokens, arguments, state, addresses, account IDs, codes or other accounts' names. `--days`, `--json`, `--log`.
 
