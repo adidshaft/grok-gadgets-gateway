@@ -144,6 +144,26 @@ sign-in, and approve the code on the relay with `oauth approve`. The hub guide
 has the exact chat text. If Grok Bot already lists `grok-gadgets` for the Mac, ask it to replace
 that server; the hostname can stay the same if the tunnel moved with it.
 
+## Accounts: other people claim their own gadgets
+
+Add `--accounts` to `serve --oauth` (or `service install --oauth --accounts`) when other
+people use the relay (hub ADR 011). Then:
+
+- A gadget with SDK firmware that supports claim codes shows `Code XXXX-XXXX` while nobody
+  owns it. The person adds the relay in their Grok Bot and types that code on the sign-in
+  page. The relay creates their account, gives them the gadget and shows a recovery code once.
+- The shared bearer tokens (`mcp-token` and named tokens) stop working on `/mcp`. Only
+  sign-ins with an account call tools.
+- Your own `oauth approve CODE --name NAME` still works and signs in to the operator
+  account.
+- On the first start in accounts mode, every enrolled device and every live sign-in, such as
+  `grok-bot`, joins the operator account. Back up the config directory first.
+- `accounts list` shows the accounts and how many gadgets each owns, never a code.
+- Codes live in memory only. Wrong codes are limited: 5 per sign-in, 20 an hour per address
+  and 200 an hour for the relay, after which code entry closes for 10 minutes with a
+  `claim_flood` line. `account_created`, `device_claimed` and `claim_rejected` lines record
+  claims without codes.
+
 ## Daily check
 
 From any computer, not the relay host:

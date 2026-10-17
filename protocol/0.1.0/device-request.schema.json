@@ -148,6 +148,13 @@
         },
         "device": {
           "$ref": "#/$defs/device"
+        },
+        "claim": {
+          "enum": [
+            "ready",
+            "after_setup"
+          ],
+          "description": "Optional (hub ADR 011): the gadget can show a claim code. after_setup marks the first hello after a reset and a phone re-join."
         }
       },
       "required": [

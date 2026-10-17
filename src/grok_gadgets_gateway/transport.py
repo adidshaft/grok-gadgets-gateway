@@ -228,6 +228,7 @@ class DeviceServer:
         clock=time.monotonic,
         public=False,
         pending_per_address=None,
+        claims=None,
     ):
         # Loopback is plain TCP. Any other address is the opt-in LAN listener: a private
         # address, TLS only, private peers only (hub ADR 005). `public` is the relay listener:
@@ -241,6 +242,8 @@ class DeviceServer:
             if tls is None or not is_private(host):
                 raise ValueError("Only loopback, or a private LAN address with TLS, is allowed")
         self.public = public
+        # Accounts mode (hub ADR 011): claim fields for gadgets that opt in, else None.
+        self.claims = claims
         self.prefix = "device" if public else "lan"
         self.pending_per_address = pending_per_address
         self.pending_peers = {}  # Pending task -> source address, for the per-address cap.
@@ -474,6 +477,8 @@ class DeviceServer:
                         if peer is not None:
                             self._event("hello", peer=peer, device=did)
                         response = {"ok": True, "session_id": sid, "protocol_version": VERSION}
+                        if self.claims is not None:
+                            response.update(self.claims.hello(did, message.get("claim"), sid) or {})
                     else:
                         try:
                             self.credentials.check(did, token)
@@ -482,6 +487,9 @@ class DeviceServer:
                                 self._event("auth_rejected", peer=peer, device=did, code=exc.code)
                             raise
                         response = self.gateway.handle(did, sid, message)
+                        polled = message["type"] == "poll" and response.get("ok")
+                        if self.claims is not None and polled:
+                            response.update(self.claims.poll(did) or {})
                 except GatewayError as exc:
                     response = exc.response()
                 except (ValueError, asyncio.LimitOverrunError):
@@ -505,6 +513,8 @@ class DeviceServer:
                 self._event("disconnected", peer=peer, device=did)
             try:
                 if did is not None and sid is not None:
+                    if self.claims is not None:
+                        self.claims.disconnect(did, sid)
                     self.gateway.disconnect(did, sid)
             finally:
                 try:

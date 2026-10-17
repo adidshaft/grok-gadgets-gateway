@@ -952,6 +952,26 @@
       ],
       "stage": "review",
       "evidence": "GitHub #161; tests/test_hashed_tokens.py (13 tests) and updated provisioning tests; 326 passed. No relay or kit test yet."
+    },
+    {
+      "id": "GW-CLAIM-001",
+      "owner": "grok-gadgets-gateway",
+      "problem": "The relay has one tenant; sign-ins carry only an approved name",
+      "acceptance": [
+        "serve --oauth --accounts with oauth/accounts.json",
+        "Account minted when a sign-in is approved with a claim code; carried by the refresh-token family, never client_id",
+        "Claim code in the hello reply only after the gadget opts in; fresh code in poll replies",
+        "Recovery code shown once; shared bearer tokens refused",
+        "CLI approve kept for the operator account; migration of enrolled devices and live sign-ins",
+        "Attempt limits and flood line; tests"
+      ],
+      "labels": [
+        "feature",
+        "gateway",
+        "P1"
+      ],
+      "stage": "review",
+      "evidence": "GitHub #159; tests/test_accounts.py and tests/test_claim_sign_in.py with the SDK OAuth client and a TCP device; 345 passed. No relay or Grok Bot test yet."
     }
   ]
 }

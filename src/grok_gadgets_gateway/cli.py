@@ -274,6 +274,10 @@ def build_parser():
     oauth_revoke = oauth_sub.add_parser("revoke", help="end every sign-in with this name at once")
     oauth_revoke.add_argument("name")
 
+    accounts = sub.add_parser("accounts", help="see the accounts of serve --oauth --accounts")
+    accounts_sub = accounts.add_subparsers(dest="accounts_command", required=True)
+    accounts_sub.add_parser("list", help="list accounts and how many gadgets each owns")
+
     remote = sub.add_parser(
         "remote", help="kill switch: turn remote (tunnel) access off or on at once"
     )
@@ -335,6 +339,12 @@ def build_parser():
         action="store_true",
         help="let Grok Bot sign in with OAuth at https://ALLOWED-HOST; you approve each sign-in "
         "with: grok-gadgets-gateway oauth approve CODE",
+    )
+    serve.add_argument(
+        "--accounts",
+        action="store_true",
+        help="with --oauth: each person signs in with the code their gadget shows and gets an "
+        "account (hub ADR 011); the first start gives enrolled devices to the operator account",
     )
     _request_log_option(serve)
     _usage_hook_option(serve)
@@ -490,6 +500,9 @@ def build_parser():
     )
     service_install.add_argument(
         "--oauth", action="store_true", help="let Grok Bot sign in (see serve --oauth)"
+    )
+    service_install.add_argument(
+        "--accounts", action="store_true", help="accounts and claim codes (see serve --accounts)"
     )
     service_install.add_argument(
         "--device-port", type=int, default=8765, help="loopback device port"
@@ -674,6 +687,8 @@ def run(parser, args):
         return run_remote(parser, args)
     if command == "oauth":
         return run_oauth(parser, args)
+    if command == "accounts":
+        return run_accounts(parser, args)
     if command == "usage":
         return run_usage(parser, args)
     if command == "serve":
@@ -698,6 +713,7 @@ def run(parser, args):
                     remote_switch=str(remote_off_path()),
                     usage_hook=usage_hook,
                     oauth=args.oauth,
+                    accounts=args.accounts,
                 )
             )
         except OperatorError as exc:
@@ -1024,6 +1040,8 @@ def run_service(parser, args, service=None):
                 parser.error("the gateway is not set up. Run: grok-gadgets-gateway init")
             if args.oauth and len(args.allowed_host) != 1:
                 parser.error("--oauth needs exactly one --allowed-host: the tunnel name")
+            if args.accounts and not args.oauth:
+                parser.error("--accounts needs --oauth: accounts are created at sign-in")
             if args.usage_hook is not None:
                 import shlex
 
@@ -1066,6 +1084,7 @@ def run_service(parser, args, service=None):
                     args.oauth,
                     args.usage_hook,
                     args.device_listen,
+                    args.accounts,
                 ),
             ]
             environment = {
@@ -1154,6 +1173,28 @@ def run_usage(parser, args):
         print(json.dumps(summary, indent=2))
     else:
         print(format_summary(summary))
+    return 0
+
+
+def run_accounts(parser, args):
+    """Read-only view of `oauth/accounts.json`: never a code or a hash."""
+    from .oauth import oauth_dir
+
+    path = oauth_dir() / "accounts.json"
+    try:
+        data = json.loads(path.read_text())
+    except FileNotFoundError:
+        print("No accounts yet: start serve --oauth --accounts.", file=sys.stderr)
+        return 0
+    except (OSError, ValueError):
+        parser.error(f"{path} is damaged")
+    owned = {}
+    for record in data.get("devices", {}).values():
+        owned[record["owner"]] = owned.get(record["owner"], 0) + 1
+    for account in sorted(data.get("accounts", {})):
+        role = "operator" if account == data.get("operator") else "-"
+        count = owned.get(account, 0)
+        print(f"{account}  {role}  {count} gadget{'' if count == 1 else 's'}")
     return 0
 
 

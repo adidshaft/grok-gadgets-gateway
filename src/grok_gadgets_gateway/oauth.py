@@ -8,9 +8,14 @@ ever typed into a web page or a chat.
 
 `serve` owns `state.json` and `requests/`; the CLI writes only `approved/` and `revoked/`,
 so the two processes never write the same file. Tokens are stored as SHA-256 hashes.
+
+In accounts mode (`serve --oauth --accounts`, hub ADR 011) the page also takes the code a
+gadget shows, or a recovery code. Each token record then carries its account, and a refresh
+copies it, so the refresh-token family carries the account; the `client_id` never does.
 """
 
 import hashlib
+import html
 import json
 import os
 import secrets
@@ -29,6 +34,7 @@ from mcp.server.auth.provider import (
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 from starlette.responses import HTMLResponse, RedirectResponse
 
+from .accounts import REQUEST_WRONG_MAX, ClaimRejected, normal_code
 from .operator import DEFAULT_TOKEN_NAME, TOKEN_NAME, OperatorError, atomic_write, config_dir
 
 SCOPE = "gadgets"
@@ -150,8 +156,9 @@ def _revoked(root, record):
 class OwnerApprovedOAuth:
     """OAuthAuthorizationServerProvider whose only consent step is the owner's CLI approval."""
 
-    def __init__(self, issuer, directory=None, log=None, clock=time.time):
+    def __init__(self, issuer, directory=None, log=None, clock=time.time, accounts=None):
         self.issuer = issuer.rstrip("/")
+        self.accounts = accounts
         self.root = _private_dir(Path(directory or oauth_dir()))
         for sub in ("requests", "approved", "revoked"):
             _private_dir(self.root / sub)
@@ -163,9 +170,21 @@ class OwnerApprovedOAuth:
         self.alerted_at = None
         self.requests = {}  # request id -> pending authorization (memory only)
         self.codes = {}  # authorization code -> AuthorizationCode (memory only)
+        self.code_accounts = {}  # authorization code -> account (accounts mode)
         # Stale files from an earlier run name requests this process cannot finish.
         for path in [*(self.root / "requests").glob("*"), *(self.root / "approved").glob("*")]:
             path.unlink(missing_ok=True)
+        if accounts is not None:
+            # Migration (ADR 011 §11): live sign-ins from before accounts mode, such as the
+            # operator's grok-bot, join the operator account and keep working.
+            changed = False
+            for kind in ("access", "refresh"):
+                for record in self.state[kind].values():
+                    if "account" not in record:
+                        record["account"] = accounts.operator
+                        changed = True
+            if changed:
+                self._save()
 
     def _write(self, event, **fields):
         if self.log is not None:
@@ -298,6 +317,8 @@ class OwnerApprovedOAuth:
             )
         params = pending["params"]
         decision = _read_json(self.root / "approved" / pending["code"], None)
+        if decision is None and self.accounts is not None:
+            return self._code_page(request_id, pending)
         if decision is None:
             return _page(
                 "Approve this sign-in on the computer that runs the gateway:"
@@ -313,6 +334,13 @@ class OwnerApprovedOAuth:
                 str(params.redirect_uri), error="access_denied", state=params.state
             )
             return RedirectResponse(target, status_code=302, headers=_NO_STORE)
+        account = self.accounts.operator if self.accounts is not None else None
+        target = self._grant(pending, decision["name"], account, now)
+        return RedirectResponse(target, status_code=302, headers=_NO_STORE)
+
+    def _grant(self, pending, name, account, now):
+        """Issue the authorization code for an approved request; returns the redirect URL."""
+        params = pending["params"]
         code = secrets.token_urlsafe(32)
         self.codes[code] = AuthorizationCode(
             code=code,
@@ -323,11 +351,71 @@ class OwnerApprovedOAuth:
             redirect_uri=params.redirect_uri,
             redirect_uri_provided_explicitly=params.redirect_uri_provided_explicitly,
             resource=params.resource,
-            subject=decision["name"],
+            subject=name,
         )
-        self._write("oauth_sign_in_approved", code=pending["code"], token=decision["name"])
-        target = construct_redirect_uri(str(params.redirect_uri), code=code, state=params.state)
-        return RedirectResponse(target, status_code=302, headers=_NO_STORE)
+        if account is not None:
+            self.code_accounts[code] = account
+        self._write("oauth_sign_in_approved", code=pending["code"], token=name)
+        return construct_redirect_uri(str(params.redirect_uri), code=code, state=params.state)
+
+    def _code_page(self, request_id, pending, message="", status=200):
+        return _page(
+            f"{message}Type the code on your gadget's display, or your recovery code."
+            f'<form method="post" action="{APPROVE_PATH}">'
+            f'<input type="hidden" name="request" value="{html.escape(request_id)}">'
+            '<input name="code" autocomplete="off" autocapitalize="characters" '
+            'spellcheck="false" aria-label="Code" placeholder="Code">'
+            '<button type="submit">Continue</button></form>'
+            "<small>Relay operator: approve with "
+            f"<code>grok-gadgets-gateway oauth approve {pending['code']} --name NAME</code>, "
+            "then press Continue with the field empty.</small>",
+            status=status,
+        )
+
+    async def code_submitted(self, request):
+        """POST /oauth/approve (accounts mode): check a claim or recovery code (ADR 011 §4)."""
+        from .service import caller
+
+        now = self.clock()
+        self._expire(now)
+        form = await request.form()
+        request_id = str(form.get("request", ""))
+        pending = self.requests.get(request_id)
+        if pending is None or self.accounts is None:
+            return _page(
+                "This sign-in has expired or is unknown. Start the sign-in again from Grok Bot.",
+                status=400,
+            )
+        decision = _read_json(self.root / "approved" / pending["code"], None)
+        text = str(form.get("code", "")).strip()
+        if decision is not None or not text:
+            if decision is None:
+                return self._code_page(request_id, pending)
+            return await self.approve_page(_QueryOnly(request_id))
+        headers = {k.lower().encode(): v.encode() for k, v in request.headers.items()}
+        who = caller(request.scope, headers)
+        code = normal_code(text)
+        try:
+            if code is not None and len(code) == 19:
+                account, recovery = self.accounts.recover(code, caller=who)
+            else:
+                account, recovery = self.accounts.claim_new_account(text, caller=who)
+        except ClaimRejected as exc:
+            pending["wrong"] = pending.get("wrong", 0) + 1
+            if exc.limited or pending["wrong"] >= REQUEST_WRONG_MAX:
+                self._forget(request_id)
+                return _page(
+                    f"{html.escape(str(exc))} Start the sign-in again from Grok Bot.", status=400
+                )
+            return self._code_page(request_id, pending, f"<strong>{exc}</strong> ", 200)
+        self._forget(request_id)
+        target = self._grant(pending, account, account, now)
+        return _page(
+            "Done. Save this recovery code somewhere safe. It is shown only once. "
+            "You need it to sign in again after 30 days without use, or from a new app:"
+            f"<pre>{recovery}</pre>"
+            f'<a href="{html.escape(target)}">Continue to Grok Bot</a>'
+        )
 
     async def load_authorization_code(self, client, authorization_code):
         value = self.codes.get(authorization_code)
@@ -337,13 +425,16 @@ class OwnerApprovedOAuth:
 
     async def exchange_authorization_code(self, client, authorization_code):
         self.codes.pop(authorization_code.code, None)
-        return self._issue(client, authorization_code.subject, authorization_code.scopes)
+        account = self.code_accounts.pop(authorization_code.code, None)
+        return self._issue(client, authorization_code.subject, authorization_code.scopes, account)
 
-    def _issue(self, client, name, scopes):
+    def _issue(self, client, name, scopes, account=None):
         now = self.clock()
         access = "gga_" + secrets.token_urlsafe(32)
         refresh = "ggr_" + secrets.token_urlsafe(32)
         base = {"name": name, "client_id": client.client_id, "scopes": scopes, "issued_at": now}
+        if account is not None:
+            base["account"] = account
         self.state["access"][_digest(access)] = {**base, "expires_at": now + ACCESS_SECONDS}
         self.state["refresh"][_digest(refresh)] = {
             **base,
@@ -384,7 +475,9 @@ class OwnerApprovedOAuth:
         if record is None:
             raise TokenError("invalid_grant", "refresh token is not valid")
         self.state["access"].pop(record.get("access"), None)
-        return self._issue(client, record["name"], scopes or record["scopes"])
+        return self._issue(
+            client, record["name"], scopes or record["scopes"], record.get("account")
+        )
 
     async def load_access_token(self, token):
         record = self._live("access", token)
@@ -415,12 +508,26 @@ class OwnerApprovedOAuth:
         record = self._live("access", token) if token.startswith("gga_") else None
         return record["name"] if record else None
 
+    async def verify_account(self, token):
+        """The account of a live access token (accounts mode); None otherwise."""
+        record = self._live("access", token) if token.startswith("gga_") else None
+        return record.get("account") if record else None
+
+
+class _QueryOnly:
+    """The part of a request that approve_page reads, for a form post that finishes it."""
+
+    def __init__(self, request_id):
+        self.query_params = {"request": request_id}
+
 
 _NO_STORE = {"Cache-Control": "no-store"}
 _HEADERS = {
     **_NO_STORE,
     "X-Frame-Options": "DENY",
-    "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
+    "Content-Security-Policy": (
+        "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'"
+    ),
     "Referrer-Policy": "no-referrer",
 }
 

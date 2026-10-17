@@ -29,6 +29,19 @@ explains them. The wire format is 0.1.0.
 - Each hello gets a fresh gateway session. `boot_id` distinguishes a device reboot. A replaced
   session cannot write.
 
+## Claim fields (accounts mode, hub ADR 011)
+
+- A gadget that can show a claim code adds `"claim": "ready"` to its hello, or
+  `"claim": "after_setup"` in the first hello after a reset and a phone re-join.
+- Only then, and only on a relay that runs `serve --oauth --accounts`, does the hello reply
+  carry `claimed` (true or false) and, while unclaimed, `claim_code` (`XXXX-XXXX`, valid 10
+  minutes while the session lives).
+- A poll reply carries the same fields only when one of them changed, for example a fresh
+  code after 10 minutes or `claimed: true` after a claim.
+- A gadget without the hello field gets the replies it got before. A relay before this change
+  answers the field with `invalid_request`: send the hello again without it until the next
+  boot.
+
 ## Capabilities and schemas
 
 - Capabilities are string names. `rgb.set` has the canonical strict arguments
