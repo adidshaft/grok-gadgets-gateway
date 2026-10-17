@@ -115,7 +115,11 @@ async def test_request_log_is_off_by_default_and_rejects_an_unwritable_path(tmp_
         credentials, mcp_token, port=free_port(), device_port=free_port(), log_stream=io.StringIO()
     ):
         pass
-    assert sorted(path.name for path in tmp_path.iterdir()) == ["credentials.json", "mcp-token"]
+    assert sorted(path.name for path in tmp_path.iterdir()) == [
+        "credentials.json",
+        "credentials.json.pre-hash",
+        "mcp-token",
+    ]
 
 
 async def test_stdio_request_log_records_calls(tmp_path):

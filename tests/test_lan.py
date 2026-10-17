@@ -511,7 +511,7 @@ def provision_cli(tmp_path, monkeypatch, opener, answers):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     if not (tmp_path / "grok-gadgets" / "credentials.json").exists():
         assert main(["init", "--client", "http"]) == 0
-        assert main(["enroll", "dev-1"]) == 0
+        assert main(["enroll", "dev-1", "--token-file", str(tmp_path / "dev.token")]) == 0
     prompts = []
 
     def ask(prompt=""):
@@ -525,7 +525,18 @@ def provision_cli(tmp_path, monkeypatch, opener, answers):
     monkeypatch.setattr(getpass, "getpass", ask)
     monkeypatch.setattr(serial, "Serial", opener)
     with pytest.raises(SystemExit) as stopped:
-        main(["wifi-provision", "/dev/cu.test", "--device", "dev-1", "--lan", ADDRESS])
+        main(
+            [
+                "wifi-provision",
+                "/dev/cu.test",
+                "--device",
+                "dev-1",
+                "--lan",
+                ADDRESS,
+                "--token-file",
+                str(tmp_path / "dev.token"),
+            ]
+        )
     return stopped.value.code, prompts
 
 

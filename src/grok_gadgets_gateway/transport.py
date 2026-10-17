@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+import hashlib
 import hmac
 import json
 import logging
@@ -64,8 +65,20 @@ def _no_constants(_value):
     raise CredentialError("invalid", "Credential file contains NaN or Infinity")
 
 
+SHA256_HEX = re.compile(r"[0-9a-f]{64}")
+
+
+def digest(token):
+    """SHA-256 of a device token, as stored in the registry (GW-CLAIM-003, hub ADR 011)."""
+    return hashlib.sha256(token.encode("utf-8", "surrogatepass")).hexdigest()
+
+
 def parse_registry(data):
-    """Strictly parse `{"devices": {id: {"token": str>=16, "revoked": bool}}}`."""
+    """Strictly parse `{"devices": {id: {"sha256": hex, "revoked": bool}}}`.
+
+    A record from before GW-CLAIM-003 holds the plain `"token"` (16-256 characters) instead;
+    `Credentials.validate` rewrites such a registry as hashes on the first start.
+    """
     try:
         value = json.loads(
             data.decode("utf-8"), object_pairs_hook=_unique_object, parse_constant=_no_constants
@@ -82,9 +95,17 @@ def parse_registry(data):
             raise CredentialError("invalid", "Credential file has an invalid device ID")
         if not isinstance(record, dict):
             raise CredentialError("invalid", "Each device entry must be an object")
-        token = record.get("token")
-        if not isinstance(token, str) or not 16 <= len(token) <= 256:
-            raise CredentialError("invalid", "Each device token must be a 16-256 character string")
+        if ("token" in record) == ("sha256" in record):
+            raise CredentialError("invalid", 'Each device needs one "sha256" (or a plain "token")')
+        if "sha256" in record:
+            if not isinstance(record["sha256"], str) or not SHA256_HEX.fullmatch(record["sha256"]):
+                raise CredentialError("invalid", 'Each "sha256" must be 64 lower-case hex digits')
+        else:
+            token = record["token"]
+            if not isinstance(token, str) or not 16 <= len(token) <= 256:
+                raise CredentialError(
+                    "invalid", "Each device token must be a 16-256 character string"
+                )
         if type(record.get("revoked", False)) is not bool:
             raise CredentialError("invalid", '"revoked" must be true or false')
     return devices
@@ -124,7 +145,18 @@ class Credentials:
         self._good_at = None
 
     def validate(self):
-        """Load once at startup; raises CredentialError with an operator-safe message."""
+        """Load once at startup; raises CredentialError with an operator-safe message.
+
+        A registry that still holds plain tokens is rewritten as hashes first.
+        """
+        from .operator import migrate_registry
+
+        if migrate_registry(self.path):
+            logger.warning(
+                "Device tokens are now stored as hashes; the old file is %s.pre-hash. "
+                "Delete it once the gadgets connect.",
+                self.path,
+            )
         self._good, self._good_at = read_registry(self.path), self.clock()
         self.status = "ok"
         return len(self._good)
@@ -151,9 +183,14 @@ class Credentials:
     def check(self, device_id, token):
         devices = self._current()
         record = devices.get(device_id)
-        # Compare bytes so non-ASCII input cannot raise only for enrolled IDs.
-        expected = record["token"].encode() if record else b"\0" * 32
-        supplied = token.encode("utf-8", "surrogatepass") if isinstance(token, str) else b""
+        # Compare two digests so the time taken never depends on the token or the device.
+        if record is None:
+            expected = b"\0" * 32
+        elif "sha256" in record:
+            expected = bytes.fromhex(record["sha256"])
+        else:
+            expected = bytes.fromhex(digest(record["token"]))
+        supplied = bytes.fromhex(digest(token)) if isinstance(token, str) else b"\1" * 32
         if not hmac.compare_digest(expected, supplied) or record is None:
             raise GatewayError("unauthorized", "Device credentials rejected")
         if record.get("revoked", False):

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Device tokens are stored as SHA-256 hashes ([#161](https://github.com/adidshaft/grok-gadgets-gateway/issues/161), hub ADR 011). `enroll` stores the hash and shows the token once (or writes `--token-file`). On the first start of `serve` or `stdio`, a registry with plain tokens is rewritten as hashes; revocations are kept and the old file stays as `credentials.json.pre-hash` (mode 0600). Device checks compare two SHA-256 digests in constant time, also for an unknown device. `wifi-provision` and `factory-provision` take `--token-file`, which needs no copy of the relay's registry, or `--rotate`, which stores the new hash only after the board confirms; `factory-provision --enroll` also enrolls only after the board confirms. A registry with plain tokens still provisions before it is migrated.
+
 ## 0.1.0-alpha.14 — 14 October 2026
 
 - On 14 October 2026 `factory-provision` wrote the owner's ESP32-S3 OLED kit, and the owner joined it to home Wi-Fi from an iPhone and an Android phone with no computer; it went Online through the relay ([hub record](https://github.com/adidshaft/grok-gadgets/blob/dev/docs/verification/phone-setup-2026-10-14.md)). `relay-check` passed against the owner's relay.

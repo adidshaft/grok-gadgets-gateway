@@ -66,7 +66,8 @@ Never publish port 8766, and never send the device port through the tunnel.
    docker compose build
    docker compose run --rm gateway init
    docker compose run --rm gateway device-cert devices.example.net
-   docker compose run --rm gateway enroll oledkit-0123456789ab
+   docker compose run --rm gateway enroll oledkit-0123456789ab \
+     --token-file /data/config/grok-gadgets/oledkit.token
    ```
 
    `init` prints a local bearer token. You do not need it for Grok Bot, which signs in with
@@ -98,7 +99,7 @@ boot.
 uv tool install grok-gadgets-gateway==0.1.0a14
 grok-gadgets-gateway init
 grok-gadgets-gateway device-cert devices.example.net
-grok-gadgets-gateway enroll oledkit-0123456789ab
+grok-gadgets-gateway enroll oledkit-0123456789ab --token-file oledkit.token
 grok-gadgets-gateway service install --allowed-host gadgets.example.net --oauth \
   --device-listen 0.0.0.0:8444
 loginctl enable-linger              # start at boot, without a login
@@ -110,27 +111,29 @@ Run the tunnel client as a system service with its own instructions, forwarding 
 
 ## Provision the board
 
-The board is on USB at your computer, and the relay's CA and tokens are on the host. Copy two
-files to the computer, provision, then delete them. With the container:
+The board is on USB at your computer, and the relay's CA and the token file are on the host.
+The relay's `credentials.json` keeps only token hashes. Copy two files to the computer,
+provision, then delete them. With the container:
 
 ```sh
 docker compose cp gateway:/data/config/grok-gadgets/lan/ca.pem ./relay-ca.pem
-docker compose cp gateway:/data/config/grok-gadgets/credentials.json ./relay-credentials.json
+docker compose cp gateway:/data/config/grok-gadgets/oledkit.token ./oledkit.token
 ```
 
-With the user service, the files are `~/.config/grok-gadgets/lan/ca.pem` and
-`~/.config/grok-gadgets/credentials.json`. Move them to your computer, for example with `scp`.
-Then, on the computer with the board:
+With the user service, the files are `~/.config/grok-gadgets/lan/ca.pem` and the
+`oledkit.token` you wrote with `enroll`. Move them to your computer, for example with `scp`,
+and delete the token file on the host. Then, on the computer with the board:
 
 ```sh
 grok-gadgets-gateway wifi-provision /dev/cu.usbmodem101 --device oledkit-0123456789ab \
-  --gateway devices.example.net --ca relay-ca.pem --credentials relay-credentials.json
-rm relay-credentials.json relay-ca.pem
+  --gateway devices.example.net --ca relay-ca.pem --token-file oledkit.token
+rm oledkit.token relay-ca.pem
 ```
 
 The command asks for the Wi-Fi name and password in your terminal and sends them only to the
-board. They never reach the relay. `relay-credentials.json` holds every device token; delete
-it at once. After provisioning, power the board from a USB charger. It shows **Online** when
+board. They never reach the relay. The token file is the device's credential; delete it at
+once. A lost token file is no problem: run `enroll DEVICE --rotate --token-file FILE` on the
+relay and provision again. After provisioning, power the board from a USB charger. It shows **Online** when
 the relay accepts it.
 
 ## Connect Grok Bot
