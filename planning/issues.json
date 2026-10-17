@@ -1027,6 +1027,23 @@
       ],
       "stage": "review",
       "evidence": "GitHub #196; relay log 17 Oct 10:10:37Z oauth_sign_in_approved with no oauth_token_issued; tests updated; 367 passed."
+    },
+    {
+      "id": "GW-CLAIM-006",
+      "owner": "grok-gadgets-gateway",
+      "problem": "form-action 'self' blocks the redirect from the code page to Grok Bot's callback",
+      "acceptance": [
+        "No form-action directive on the sign-in page",
+        "Regression test on the form page header",
+        "Browser check against a local relay"
+      ],
+      "labels": [
+        "bug",
+        "gateway",
+        "P1"
+      ],
+      "stage": "review",
+      "evidence": "GitHub #198; relay 17 Oct 10:44:07Z account_linked, no oauth_token_issued; Chromium console CSP error with the old header; callback reached with the fix; 368 passed."
     }
   ]
 }

@@ -519,9 +519,9 @@ _NO_STORE = {"Cache-Control": "no-store"}
 _HEADERS = {
     **_NO_STORE,
     "X-Frame-Options": "DENY",
-    "Content-Security-Policy": (
-        "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'"
-    ),
+    # No form-action: browsers apply it to the redirect after the code form, and the sign-in
+    # must end with a redirect to Grok Bot's callback on another site (GW-CLAIM-006).
+    "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
     "Referrer-Policy": "no-referrer",
 }
 
