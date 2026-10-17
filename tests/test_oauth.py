@@ -56,7 +56,7 @@ def oauth_server(tmp_path, port, **extra):
     )
 
 
-def signed_in_client(url, folder, decision="grok-bot", seen=None):
+def signed_in_client(url, folder, decision="grok-bot", seen=None, accounts_mode=False):
     """The SDK OAuth client; its browser step approves (or denies) through the CLI functions."""
     result = {}
 
@@ -67,7 +67,9 @@ def signed_in_client(url, folder, decision="grok-bot", seen=None):
             approve_page = first.headers["location"]
             waiting = await browser.get(approve_page)
             assert waiting.status_code == 200
-            assert "oauth approve" in waiting.text and 'http-equiv="refresh"' in waiting.text
+            assert "oauth approve" in waiting.text
+            # Accounts mode shows a code form, which an automatic reload would clear.
+            assert ('http-equiv="refresh"' in waiting.text) is not accounts_mode
             code = CODE.search(waiting.text).group()
             assert [r["code"] for r in pending_requests(folder)] == [code]
             if seen is not None:
