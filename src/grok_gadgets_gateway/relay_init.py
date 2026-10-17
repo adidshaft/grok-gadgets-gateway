@@ -70,7 +70,7 @@ export DEBIAN_FRONTEND=noninteractive
 
 apt-get update -q
 apt-get install -y -q curl ufw ca-certificates
-ufw allow OpenSSH
+ufw allow 22/tcp  # SSH; the OpenSSH profile is missing on minimal images
 ufw allow {port}/tcp
 ufw --force enable
 """
