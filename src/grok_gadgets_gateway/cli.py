@@ -2,6 +2,7 @@
 
 import argparse
 import asyncio
+import hmac
 import json
 import os
 import signal
@@ -392,6 +393,17 @@ def build_parser():
     provision.add_argument(
         "--factory-reset", action="store_true", help="erase the board's Wi-Fi settings instead"
     )
+    provision_token = provision.add_mutually_exclusive_group()
+    provision_token.add_argument(
+        "--token-file",
+        metavar="FILE",
+        help="the device token from enroll --token-file (the registry keeps only its hash)",
+    )
+    provision_token.add_argument(
+        "--rotate",
+        action="store_true",
+        help="send a new token; the registry stores it after the board confirms",
+    )
     provision.add_argument(
         "--no-relay-check",
         action="store_true",
@@ -422,6 +434,17 @@ def build_parser():
     )
     factory.add_argument(
         "--replace", action="store_true", help="overwrite the board's existing factory identity"
+    )
+    factory_token = factory.add_mutually_exclusive_group()
+    factory_token.add_argument(
+        "--token-file",
+        metavar="FILE",
+        help="the device token from enroll --token-file (the registry keeps only its hash)",
+    )
+    factory_token.add_argument(
+        "--rotate",
+        action="store_true",
+        help="send a new token; the registry stores it after the board confirms",
     )
     factory.add_argument(
         "--new-label",
@@ -798,13 +821,63 @@ def run_relay_check(parser, args):
     return 0
 
 
+def provisioning_token(parser, args, path, *, enroll_new=False):
+    """The token a provisioning line carries, and what to store once the board confirms.
+
+    The registry keeps only hashes (GW-CLAIM-003), so the token comes from `--token-file`,
+    or `--rotate` (or `--enroll` for a new device) makes one that is stored after the board
+    confirms. A registry from before the change still holds the plain token.
+    """
+    from .operator import new_device_token, read_device_token_file
+    from .transport import digest, read_registry
+
+    record = read_registry(path).get(args.device) if os.path.exists(path) else None
+    if args.token_file:
+        token = read_device_token_file(args.token_file)
+        if record is not None:
+            expected = record.get("sha256") or digest(record["token"])
+            if not hmac.compare_digest(expected, digest(token)):
+                parser.error(
+                    f"{args.token_file} does not match the token enrolled for {args.device}"
+                )
+            if record.get("revoked"):
+                parser.error(f"{args.device} is revoked. Run: enroll {args.device} --rotate")
+        return token, lambda: None
+    if args.rotate:
+        if record is None:
+            parser.error(f"{args.device} is not enrolled. Run: enroll {args.device}")
+        token = new_device_token()
+        return token, lambda: enroll(args.device, path, rotate=True, token=token)
+    if record is None and enroll_new:
+        token = new_device_token()
+
+        def add():
+            enroll(args.device, path, token=token)
+            print(f"Enrolled {args.device} in {path}.", file=sys.stderr)
+
+        return token, add
+    if record is None:
+        parser.error(
+            f"{args.device} is not enrolled. Run on the relay: enroll {args.device} "
+            "--token-file FILE, then pass --token-file FILE"
+            + (", or pass --enroll" if enroll_new is not None else "")
+        )
+    if record.get("revoked"):
+        parser.error(f"{args.device} is revoked. Run: enroll {args.device} --rotate")
+    if "token" in record:
+        return record["token"], lambda: None
+    parser.error(
+        f"The registry keeps only a hash of {args.device}'s token. Pass --token-file FILE "
+        f"(from enroll {args.device} --token-file FILE), or --rotate to send a new token"
+    )
+
+
 def run_factory_provision(parser, args):
     import serial
 
     from .label import label_record, label_text, labels_dir, save_record, write_label_files
     from .lan import ca_pem_text, is_dns_name, parse_gateway_address, read_ca_file
     from .relay_check import relay_check
-    from .transport import read_registry
     from .wifi_provision import ProvisionError, factory_frame, factory_provision
 
     path = args.credentials or credentials_path()
@@ -814,21 +887,10 @@ def run_factory_provision(parser, args):
         if is_dns_name(host) and not args.no_relay_check:
             for line in relay_check(host, port, ca):
                 print(line, file=sys.stderr)
-        record = read_registry(path).get(args.device) if os.path.exists(path) else None
-        if record is None and args.enroll:
-            enroll(args.device, path)
-            print(f"Enrolled {args.device} in {path}.", file=sys.stderr)
-            record = read_registry(path).get(args.device)
-        if record is None:
-            parser.error(
-                f"{args.device} is not enrolled. Run on the relay: enroll {args.device}, "
-                "or pass --enroll"
-            )
-        if record.get("revoked"):
-            parser.error(f"{args.device} is revoked. Run: enroll {args.device} --rotate")
+        token, commit = provisioning_token(parser, args, path, enroll_new=args.enroll)
         values = label_record(args.device, new=args.new_label)
         frame = factory_frame(
-            record["token"],
+            token,
             host,
             port,
             ca,
@@ -845,6 +907,10 @@ def run_factory_provision(parser, args):
         parser.error(f"cannot use {args.serial_port}: {exc}")
     except ProvisionError as exc:
         parser.error(str(exc))
+    try:
+        commit()
+    except (OperatorError, CredentialError) as exc:
+        parser.error(f"The board has its new token, but the registry was not updated: {exc}")
     save_record(values)
     files = write_label_files(values, args.label_dir or labels_dir())
     print(label_text(values), end="")
@@ -889,7 +955,6 @@ def run_wifi_provision(parser, args):
         read_ca_file,
     )
     from .relay_check import relay_check
-    from .transport import read_registry
     from .wifi_provision import (
         ProvisionError,
         check_board,
@@ -907,11 +972,7 @@ def run_wifi_provision(parser, args):
             else:
                 parser.error("--lan ADDRESS[:PORT] or --gateway NAME[:PORT] is required")
             path = args.credentials or credentials_path()
-            record = read_registry(path).get(args.device)
-            if record is None:
-                parser.error(f"{args.device} is not enrolled. Run: enroll {args.device}")
-            if record.get("revoked"):
-                parser.error(f"{args.device} is revoked. Run: enroll {args.device} --rotate")
+            token, commit = provisioning_token(parser, args, path, enroll_new=None)
             ca = read_ca_file(args.ca) if args.ca else ca_pem_text()
             if args.gateway and is_dns_name(host) and not args.no_relay_check:
                 for line in relay_check(host, port, ca):
@@ -933,13 +994,17 @@ def run_wifi_provision(parser, args):
             except (EOFError, KeyboardInterrupt):
                 print(file=sys.stderr)
                 parser.error("Cancelled; nothing was sent to the board.")
-            frame = provision_frame(ssid, password, record["token"], host, port, ca)
+            frame = provision_frame(ssid, password, token, host, port, ca)
             del password
             provision(device, args.device, frame)
     except (serial.SerialException, OSError) as exc:
         parser.error(f"cannot use {args.serial_port}: {exc}")
     except ProvisionError as exc:
         parser.error(str(exc))
+    try:
+        commit()
+    except (OperatorError, CredentialError) as exc:
+        parser.error(f"The board has its new token, but the registry was not updated: {exc}")
     print(
         f"Provisioned {args.device} for {host}:{port}. The board restarts and joins Wi-Fi; "
         "you can now power it from a USB charger.",

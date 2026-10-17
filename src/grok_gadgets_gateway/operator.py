@@ -11,7 +11,7 @@ import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
-from .transport import DEVICE_ID, CredentialError, read_registry
+from .transport import DEVICE_ID, CredentialError, digest, read_registry
 
 
 class OperatorError(ValueError):
@@ -89,6 +89,31 @@ def update_devices(path, mutate):
     atomic_write(path, _dump_devices(devices))
 
 
+def migrate_registry(path):
+    """Rewrite plain device tokens as SHA-256 hashes (GW-CLAIM-003). True if it changed.
+
+    The old file is kept once as `credentials.json.pre-hash`, mode 0600, so the operator can
+    roll back; it is never overwritten. Revocation flags are kept.
+    """
+    path = Path(path)
+    devices = read_registry(path)
+    if not any("token" in record for record in devices.values()):
+        return False
+    backup = path.with_name(path.name + ".pre-hash")
+    if not backup.exists():
+        atomic_write(backup, path.read_bytes())
+    hashed = {
+        device_id: (
+            {"sha256": digest(record["token"]), "revoked": record.get("revoked", False)}
+            if "token" in record
+            else record
+        )
+        for device_id, record in devices.items()
+    }
+    atomic_write(path, _dump_devices(hashed))
+    return True
+
+
 def init_config():
     """Create the config directory, an empty registry, and an MCP token if missing."""
     directory = config_dir()
@@ -106,12 +131,20 @@ def init_config():
     return created
 
 
-def enroll(device_id, path=None, *, rotate=False):
-    """Issue a device token. rotate=True replaces an enrolled device's token, same identity."""
+def new_device_token():
+    return secrets.token_urlsafe(32)
+
+
+def enroll(device_id, path=None, *, rotate=False, token=None):
+    """Issue a device token. rotate=True replaces an enrolled device's token, same identity.
+
+    The registry keeps only the token's SHA-256 hash; the token is returned once. `token`
+    stores a token made earlier, for example one a board has just confirmed.
+    """
     if not isinstance(device_id, str) or not DEVICE_ID.fullmatch(device_id):
         raise OperatorError("Device ID must match [A-Za-z0-9][A-Za-z0-9._:-]{0,63}")
     path = Path(path) if path else credentials_path()
-    token = secrets.token_urlsafe(32)
+    token = token or new_device_token()
 
     def add(devices):
         if device_id in devices and not rotate:
@@ -123,9 +156,27 @@ def enroll(device_id, path=None, *, rotate=False):
             raise OperatorError(
                 f"{device_id} is not enrolled. Run: grok-gadgets-gateway enroll {device_id}"
             )
-        devices[device_id] = {"token": token, "revoked": False}
+        devices[device_id] = {"sha256": digest(token), "revoked": False}
 
     update_devices(path, add)
+    return token
+
+
+def read_device_token_file(path):
+    """A device token from `enroll --token-file`: mode 0600, one 16-256 character token."""
+    path = Path(path)
+    try:
+        mode = path.stat().st_mode
+        if mode & (stat.S_IRWXG | stat.S_IRWXO):
+            raise OperatorError(f"{path} must have mode 0600")
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        raise OperatorError(f"{path} does not exist") from None
+    except (OSError, UnicodeError):
+        raise OperatorError(f"{path} cannot be read") from None
+    token = text.strip()
+    if not 16 <= len(token) <= 256 or any(char.isspace() for char in token):
+        raise OperatorError(f"{path} must contain one 16-256 character device token")
     return token
 
 

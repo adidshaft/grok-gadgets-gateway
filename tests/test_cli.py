@@ -3,6 +3,8 @@ import sys
 
 import pytest
 
+from grok_gadgets_gateway.transport import digest
+
 
 def gateway(*args, env=None, timeout=10):
     return subprocess.run(
@@ -89,7 +91,7 @@ def test_init_enroll_devices_revoke_and_rotate_are_atomic(tmp_path):
     assert listed.stdout == "atoms3-lite-1\n" and token not in listed.stdout
 
     stored = json.loads(credentials.read_text())
-    assert stored["devices"]["atoms3-lite-1"]["token"] == token
+    assert stored["devices"]["atoms3-lite-1"] == {"sha256": digest(token), "revoked": False}
     assert stored["devices"]["atoms3-lite-1"]["revoked"] is False
     revoked = gateway("revoke", "atoms3-lite-1", env=env)
     assert revoked.returncode == 0 and token not in revoked.stdout + revoked.stderr
@@ -219,13 +221,15 @@ def test_enroll_rotate_and_token_file(tmp_path):
     token = token_file.read_text().strip()
     assert (token_file.stat().st_mode & 0o777) == 0o600
     assert token not in first.stderr
-    assert json.loads(registry.read_text())["devices"]["lamp"]["token"] == token
+    assert json.loads(registry.read_text())["devices"]["lamp"]["sha256"] == digest(token)
     again = gateway("enroll", "lamp", env=env)
     assert again.returncode == 2 and "enroll lamp --rotate" in again.stderr
     rotated = gateway("enroll", "lamp", "--rotate", "--token-file", str(token_file), env=env)
     assert rotated.returncode == 0 and "old token stops working" in rotated.stderr
     new = token_file.read_text().strip()
-    assert new != token and json.loads(registry.read_text())["devices"]["lamp"]["token"] == new
+    assert new != token and json.loads(registry.read_text())["devices"]["lamp"]["sha256"] == digest(
+        new
+    )
     missing = gateway("enroll", "ghost", "--rotate", env=env)
     assert missing.returncode == 2 and "enroll ghost" in missing.stderr
 

@@ -933,6 +933,25 @@
       ],
       "stage": "review",
       "evidence": "GitHub #158; tests/test_factory_provision.py with a fake board. No kit test yet."
+    },
+    {
+      "id": "GW-CLAIM-003",
+      "owner": "grok-gadgets-gateway",
+      "problem": "credentials.json holds plain device tokens; provisioning reads them from there",
+      "acceptance": [
+        "Registry keeps SHA-256 hashes only; enroll shows the token once",
+        "Migration on first start keeps revocations and a 0600 backup",
+        "Constant-time digest comparison, also for unknown devices",
+        "factory-provision and wifi-provision work with --token-file or --rotate; hash stored after the board confirms",
+        "Tests"
+      ],
+      "labels": [
+        "feature",
+        "gateway",
+        "P1"
+      ],
+      "stage": "review",
+      "evidence": "GitHub #161; tests/test_hashed_tokens.py (13 tests) and updated provisioning tests; 326 passed. No relay or kit test yet."
     }
   ]
 }

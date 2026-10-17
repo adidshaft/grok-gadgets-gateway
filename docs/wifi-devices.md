@@ -60,14 +60,14 @@ so it comes back after a reboot.
 Provisioning needs the USB data cable once. Stop any `usb-bridge` for the board first.
 
 ```sh
-uv run grok-gadgets-gateway enroll oledkit-0123456789ab        # once per device
+uv run grok-gadgets-gateway enroll oledkit-0123456789ab --token-file dev.token   # once
 uv run grok-gadgets-gateway wifi-provision /dev/cu.usbmodem101 \
-  --device oledkit-0123456789ab --lan 192.168.1.20
+  --device oledkit-0123456789ab --lan 192.168.1.20 --token-file dev.token
 ```
 
 The command asks for the Wi-Fi name and the password. The password prompt does not echo.
 The command first checks that the board reports the same device ID. It then sends one line:
-the Wi-Fi settings, the device token from the credential file, the listener address and the
+the Wi-Fi settings, the device token from `--token-file`, the listener address and the
 CA certificate. It prints only the board's answer. It never prints, logs or saves the password
 or the token. The board stores them in its NVS and restarts.
 
@@ -82,6 +82,12 @@ After provisioning, power the board from any USB charger.
   attempts and shows "Token rejected".
 - `enroll DEVICE --rotate` issues a new token and clears the revocation. Provision the new
   token with `wifi-provision` over USB.
+- The registry keeps only a SHA-256 hash of each token (gateway 0.1.0-alpha.15 and later). When `serve`
+  or `stdio` starts, it rewrites a registry with plain tokens as hashes. The old file stays as
+  `credentials.json.pre-hash` (mode 0600) until you delete it. `wifi-provision` and
+  `factory-provision` take the token from `--token-file`, or send a new one with `--rotate` and
+  store its hash after the board confirms. `factory-provision --enroll` enrolls a new device the
+  same way.
 - `wifi-provision PORT --device DEVICE --factory-reset` erases the board's Wi-Fi settings.
   Holding BOOT for 10 seconds does the same on the board. Also revoke the device's token.
 - `lan-ca rotate` replaces the CA and removes the listener certificate. Run `lan-cert`,
@@ -124,7 +130,7 @@ On the relay host:
 ```sh
 grok-gadgets-gateway init
 grok-gadgets-gateway device-cert devices.example.net
-grok-gadgets-gateway enroll oledkit-0123456789ab
+grok-gadgets-gateway enroll oledkit-0123456789ab --token-file oledkit.token
 grok-gadgets-gateway serve --device-listen 0.0.0.0:8444 --request-log ~/grok-gadgets-requests.jsonl
 ```
 
@@ -133,18 +139,19 @@ firewall. Never proxy this record: a proxy answers with its own certificate and 
 device's CA pin fails. Check it with `grok-gadgets-gateway relay-check devices.example.net`. `diagnostics` and `service status` show the relay listener.
 
 Provision the board over USB on the computer it is plugged into. If the relay was set up on
-another host, copy its `lan/ca.pem` and `credentials.json` to this computer first:
+another host, copy its `lan/ca.pem` and the token file from `enroll --token-file` to this
+computer first. The relay's `credentials.json` keeps only token hashes, so it is no use here:
 
 ```sh
 grok-gadgets-gateway wifi-provision /dev/cu.usbmodem101 --device oledkit-0123456789ab \
-  --gateway devices.example.net --ca relay-ca.pem --credentials relay-credentials.json
+  --gateway devices.example.net --ca relay-ca.pem --token-file oledkit.token
 ```
 
 Before it sends anything, `wifi-provision --gateway` checks that the name is a DNS-only record
 and that the port presents a certificate from the CA. For a relay on port 8443, pass
 `--gateway devices.example.net:8443`.
 
-Delete the copied `credentials.json` afterwards: it holds every device token. The board needs
+Delete the copied token file afterwards: it is the device's credential. The board needs
 firmware that accepts a DNS name for the gateway.
 
 The relay listener writes the same lines as the LAN listener with a `device_` prefix:
@@ -163,7 +170,7 @@ The board needs ESP32 SDK firmware with a factory identity (0.2.0-alpha.15 or la
 
 ```sh
 grok-gadgets-gateway factory-provision /dev/cu.usbmodem101 --device oledkit-0123456789ab \
-  --gateway devices.example.net --ca relay-ca.pem --credentials relay-credentials.json
+  --gateway devices.example.net --ca relay-ca.pem --token-file oledkit.token
 ```
 
 The command:
