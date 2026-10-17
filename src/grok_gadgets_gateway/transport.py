@@ -229,6 +229,7 @@ class DeviceServer:
         public=False,
         pending_per_address=None,
         claims=None,
+        updates=None,
     ):
         # Loopback is plain TCP. Any other address is the opt-in LAN listener: a private
         # address, TLS only, private peers only (hub ADR 005). `public` is the relay listener:
@@ -244,6 +245,8 @@ class DeviceServer:
         self.public = public
         # Accounts mode (hub ADR 011): claim fields for gadgets that opt in, else None.
         self.claims = claims
+        # Signed updates (hub ADR 012): offers and chunks for gadgets that opt in, else None.
+        self.updates = updates
         self.prefix = "device" if public else "lan"
         self.pending_per_address = pending_per_address
         self.pending_peers = {}  # Pending task -> source address, for the per-address cap.
@@ -479,6 +482,8 @@ class DeviceServer:
                         response = {"ok": True, "session_id": sid, "protocol_version": VERSION}
                         if self.claims is not None:
                             response.update(self.claims.hello(did, message.get("claim"), sid) or {})
+                        if self.updates is not None:
+                            response.update(self.updates.hello(did, message, sid))
                     else:
                         try:
                             self.credentials.check(did, token)
@@ -486,10 +491,17 @@ class DeviceServer:
                             if peer is not None:
                                 self._event("auth_rejected", peer=peer, device=did, code=exc.code)
                             raise
-                        response = self.gateway.handle(did, sid, message)
+                        if message["type"] in ("update_chunk", "update_status"):
+                            if self.updates is None:
+                                raise GatewayError("invalid_request", "Updates are not served here")
+                            response = self.updates.handle(did, sid, message)
+                        else:
+                            response = self.gateway.handle(did, sid, message)
                         polled = message["type"] == "poll" and response.get("ok")
                         if self.claims is not None and polled:
                             response.update(self.claims.poll(did) or {})
+                        if self.updates is not None and polled:
+                            response.update(self.updates.poll(did, sid))
                 except GatewayError as exc:
                     response = exc.response()
                 except (ValueError, asyncio.LimitOverrunError):
@@ -515,6 +527,8 @@ class DeviceServer:
                 if did is not None and sid is not None:
                     if self.claims is not None:
                         self.claims.disconnect(did, sid)
+                    if self.updates is not None:
+                        self.updates.disconnect(did, sid)
                     self.gateway.disconnect(did, sid)
             finally:
                 try:

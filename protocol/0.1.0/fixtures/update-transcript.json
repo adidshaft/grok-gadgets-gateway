@@ -1,0 +1,98 @@
+{
+  "description": "Hub ADR 012: a gadget at 0.2.0-test.1 takes the signed update 0.2.0-test.2 for board host-test. Request i is answered by reply i. public_key verifies manifest; the image is the base64 chunks in order. The private key is not published.",
+  "public_key": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEprMMSjqJ6LeC/5SffWf4dT/ffPIF\nCJe0nd72mJed29uA28oB47sErwcIFcS/0GuoQrMfYbHfGlAOCUHBl4rJVA==\n-----END PUBLIC KEY-----\n",
+  "key_id": "1127a5dee0661006",
+  "image_sha256": "62adcb2fce8904f8ede10becf7506802e08000bf23c674dc9f2f8af36a8fe8ea",
+  "requests": [
+    {
+      "type": "hello",
+      "protocol_version": "0.1.0",
+      "update": "ready",
+      "device": {
+        "device_id": "update-gadget-1",
+        "model": "Host test gadget",
+        "firmware_version": "0.2.0-test.1",
+        "boot_id": "boot-1",
+        "simulated": true,
+        "capabilities": [
+          "state"
+        ],
+        "state": {}
+      }
+    },
+    {
+      "type": "update_status",
+      "version": "0.2.0-test.2",
+      "status": "started"
+    },
+    {
+      "type": "update_chunk",
+      "version": "0.2.0-test.2",
+      "offset": 0
+    },
+    {
+      "type": "update_chunk",
+      "version": "0.2.0-test.2",
+      "offset": 1024
+    },
+    {
+      "type": "update_chunk",
+      "version": "0.2.0-test.2",
+      "offset": 2048
+    },
+    {
+      "type": "update_status",
+      "version": "0.2.0-test.2",
+      "status": "verified"
+    },
+    {
+      "type": "poll"
+    },
+    {
+      "type": "update_status",
+      "version": "0.2.0-test.2",
+      "status": "reverted",
+      "reason": "not_online"
+    }
+  ],
+  "replies": [
+    {
+      "ok": true,
+      "session_id": "session-1",
+      "protocol_version": "0.1.0",
+      "update": {
+        "version": "0.2.0-test.2",
+        "size": 2500,
+        "chunk": 1024,
+        "manifest": "eyJib2FyZCI6Imhvc3QtdGVzdCIsImZvcm1hdCI6Imdyb2stZ2FkZ2V0cy11cGRhdGUvMSIsImtleV9pZCI6IjExMjdhNWRlZTA2NjEwMDYiLCJtaW5fcHJvdG9jb2wiOiIwLjEuMCIsInNoYTI1NiI6IjYyYWRjYjJmY2U4OTA0ZjhlZGUxMGJlY2Y3NTA2ODAyZTA4MDAwYmYyM2M2NzRkYzlmMmY4YWYzNmE4ZmU4ZWEiLCJzaXplIjoyNTAwLCJ2ZXJzaW9uIjoiMC4yLjAtdGVzdC4yIn0=",
+        "signature": "MEQCICqdnaciTYmOgbUP/X0jqzJFPTQdiI8nNZbN+dpl52VzAiBZy4Ym3YuHvYt0QoFXZH4gSeQsqEK8xJ0oYNecnp2fLw=="
+      }
+    },
+    {
+      "ok": true
+    },
+    {
+      "ok": true,
+      "data": "kpsTOuEbShQpqFkOBgxESsvOFAXmLxy6W5wCWB/vY5DS9AJLVjy9f5vBH7fuvlaKoPHZACI787nJPJlqh9qlK+UrT4ao6uS2R8+dJIwqAw83QlSXlR4F9hFwQ4AZbJAH8ID9sBpRyLUW0XoAZgRh6KIAGvj1ZeOzzSQvL8+bPPcVLMzw9b8YxTiv29EOochlAvn/JpB+WZ5RqL1kOn4c7FxUsPv/eHpfdosYm5+diKxIhXthaWp9SIbIUbmGzMfDMejnYcx7LM0o4kSUDQTSGhQSXVduVHLghXWV3CZd8WHnsN44St8QemEiWJu+g0OV976uz2LET32XaCbIiy57Z2YvUc8CMqMPRy1Tb+n1ewNxe5v5AmT2HnHeG964z48C2l3zeL3dFKKRa0/WqXaH70/mDp41Nc69HzaMQyNajZXlsAvmRuqoYWVDheQNZkiztGV69y+jVLRfdUNezdhjBzZfRaO05mErQGqI48CIJddGXTJ02mieO3K/lEyw7DLxRqrLYB/gr/hytGjUKNP36HES5Yi9CNtX4EB3AubrtRVb0XLAfLvXqHTywW0PMOTeA9CZYhwZcmgduFvS9eQ6YkovwhxFWCOjJ1KqyAviGIlxuSectQlPs0ePJs9fb357Jnr8ufFiElAVT93jWW8CNWjQcB3gHBITW3ir8rjeYCu0Z3VdBS71E14MJ+8HyYNrGh8PvEgy25rQzDUXg7MWVrTJyjdw2h2TfbZxTLfJG+mXgOaiyPEwkc2ojc8dH/SrvnSDMGKNK2zVIJ5G6W5kJYQoZPsEXDbRC3sF73jvu23t13raGiJaLehvP5AGYPOlb7+hZBXd8CXJICJNQAOkDKCVnKbrszLcGzzOKQfSlbZoOiByKF3Q3AxKVGHb/Jd45WlbSD5ygOxMKVTDOIgV4lh4Se6BA4lx1qlFf+1IGcPfvz/ld6KO3DXFsgWHNheE9K6hymevAPr9qusvgEtH4dQna0H8Udy+LrXYG+fpJr7Dja5evytdOT/6KCQwA4E7dGCtQBcXuHLOc/ZaNb+oWFTkB6TLlKwc8I5pmCdupmRgCHtZWc9JkAcNv7Tyifa8EJ3qoTEWDSioGyjArZITgi7NLRQWdWSHCjQf0x8paM9VQHyBJa4BtrBKfUEXK+mhw0RlOdrDizpsROsKXYgDeJDzCzmKOooPqXFrF0vCSdole+0srYOMdR5EMOt+DoX6FnVR2i/IPADTKE1Wqr1Iqls1FqqHnoZvZweXV5p5eCJbM0vYdzddnuU7rfvFnqBsom+7Ya53yNh/EAseB5lgH1f2h8WXGmNJOE/0zcrNgFoTdkOQVb4ttmx+TicVmIGB5h1YBWk3eKnwObw+Xwzs6Q=="
+    },
+    {
+      "ok": true,
+      "data": "6n07IcIkUs2AuBwEoqEGFeQb+Ha63s83UqN4UJWnkOC56pXGTJMzTLInTBdRnldj6Lxy4D4vs/7B7wznehwcj3pVZMf12qKeteIQRYvIUSZkip1g4xaM2lbJqbqTKbQcOqESqdHt/Jhmn2zb/Iab37k+RWFvHH+xigWAMJp/TaHf+vHtirU3QMF9SiR/R5EVfoRiokIrnLQQrL2JzbYmlq+aatjeTPZw57gFAG9wMN+NekRensgQeGNUDM5uT58d65IDAd8KROYD8yVI5tI6t7gEaougWzv/URueE+gaISyabMt9XP4X8zoQpHbkQqRT3g2hnc3swC85EnwDYmBwcJCyycJttDCAdomb0H5DRJbFTHcwQR6xePR24Hw2ZKXDHH9c+az6BXWrp0ADxGY9vUTZq2roXWietBc/4egCcw4kIk4u9/Wtl5fh2UHOpgV6csabaEpUd5ct5Vnv7SUrk1LxW1QGjY3OJ+TriKTkb409c5lhKArdzuQfyugjUSC/ByB3cnI9tZuy4+CwvlpWxwf1dekMSzxMNmPQGIipUwnb3jhZ89pccoMFM3bcbqmZ8NmuO59rN1RbVPEtRP5PbrBn8zGdYmwtSYgv0oY7iC0FxJXnP/3heD3SIdaSQMGiNfhOrXEtd1JvAwM50VXKEAW/zU5zwx1O+qdUdBAxEV0bLcbr/D6m8uqCc8WUVG2nPNMgw6SsGrfs73wBDS6afOhTVdQSFFHRDChErMarA8ZUuu4/19FFk911biFQrtYZVDF22oYttleIps4DNvKa9zydJ8I4thnlaVqJXXeTfdGw4UN6SrTr3CYjb66MZiW/+mK/LG6GsEqeT0bbrFLZEXkwBoJZkJNu8TqzRBcN0z+oSS2gpDgLc7xvc/2/QanVLl8YbQRn1luAOP6QKBRg3XZGzU4h1PiqKJJ06MDLDJjmaVSFfN0y6eLdnkenAPO4D2dpT2WY+H8YxSEXG59egER1BAyMd0YN3gAbpdlJF1/eRQQ3EjyPEzexYWL7d928NMshEW1ycAzADMQR8ZNJ5ZQ+k/ie/MT8lkCQpflhYVLSRsZlUV/wpUBPgRV8OEqXzuqbRNKRbxRph3ddo5/JsUlrFpdigJurxGtMYM5wseh12vyG1KCiC2I5WKlU7evvQIEVwJm1HorKu5ZcYqPf32lg6pE324x3Ii0QkSiKAOma+12qoZP8dJZEnuKL3W/8wd1DWwZyqKwU5Zql7c4W77bbbck4Rnzna6hjPg5MHIRmlGxq4aNLrKMCVoOXHHtsA69+XVUmejMoOC8NSdrKE4X0JGDj2pSocGnLhPnzyvUduGRRcXxvXocYGdH6Gu2ZWVs8gfw1UwtYN5hluzXycA=="
+    },
+    {
+      "ok": true,
+      "data": "qv5C4q3zcLcz1KADBr9e2NP9U/YdA6P4kNEqacMeJw/1aTZOLvuciul/Wa+P8kS9/I+M2C7wURNmXnrFgaOzcXA8Owl6rVJMu8WLuOk+s+uYRYwxEe6K37DdmOUrPnHk5D/25O8MxNPZhRKZqi37c/+sw044fbTfJhc7Aww5Zwl2md3kWNbfa4nybZQuHM7kvFlefxB6Y9gCAlhmvHH9aNri6GWXlg3kV7RDqEdgm9EEUnAmHWsB6JWrtxDnOOG/yiuE54BxM5zn52l9/ApYCq8yNWvDBpgG7doBAwX3l7OnCatOzlgweu2Cb1k/E+FNYmNJF1cDuh1NOvE9TOWjzet3Bp0lNlqj5pZXbzLBV4sNsjbhw8jLTOUztRdYER7gSKFdN+724RLXJQXuj8KUK5WG6rGRvng3+TSdGyyi5QSyx722i5N9A350nGQZ+xIQ9RA+b2fHtb5dopbMA21HQ/itco8fcF01t3ECWPnqzHEjcxxjyt9hCRcjOFqSrlQbwHHjygrrMlD2T08Uvc6zkNgJkjgUr8dE3rXBFT80glVixhzjQKN0ZZagxb8aFr2tvjl9H9cQGhEhjssv/qGKNO8Ak/o="
+    },
+    {
+      "ok": true
+    },
+    {
+      "ok": true,
+      "commands": [],
+      "update": null
+    },
+    {
+      "ok": true
+    }
+  ]
+}

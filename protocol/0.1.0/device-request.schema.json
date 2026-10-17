@@ -155,6 +155,10 @@
             "after_setup"
           ],
           "description": "Optional (hub ADR 011): the gadget can show a claim code. after_setup marks the first hello after a reset and a phone re-join."
+        },
+        "update": {
+          "const": "ready",
+          "description": "Optional (hub ADR 012): the gadget can take signed updates. Only then may replies carry update fields."
         }
       },
       "required": [
@@ -260,6 +264,73 @@
         "command_id",
         "status",
         "state"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "description": "Hub ADR 012: ask for one chunk of the offered update.",
+      "properties": {
+        "type": {
+          "const": "update_chunk"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9A-Za-z][0-9A-Za-z.+_-]{0,31}$(?![\\s\\S])"
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 8388607
+        }
+      },
+      "required": [
+        "type",
+        "version",
+        "offset"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "description": "Hub ADR 012: report what happened to an update.",
+      "properties": {
+        "type": {
+          "const": "update_status"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9A-Za-z][0-9A-Za-z.+_-]{0,31}$(?![\\s\\S])"
+        },
+        "status": {
+          "enum": [
+            "started",
+            "verified",
+            "rejected",
+            "failed",
+            "applied",
+            "reverted"
+          ]
+        },
+        "reason": {
+          "enum": [
+            "signature",
+            "board",
+            "version",
+            "size",
+            "protocol",
+            "sha256",
+            "write",
+            "link",
+            "not_online",
+            "boot"
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "version",
+        "status"
       ],
       "additionalProperties": false
     }
