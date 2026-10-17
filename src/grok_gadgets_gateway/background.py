@@ -119,6 +119,10 @@ def unit_text(platform, command, logs, environment=None):
 def port_free(host, port):
     family = socket.AF_INET6 if ":" in str(host) else socket.AF_INET
     with socket.socket(family) as probe:
+        # The gateway's listeners set SO_REUSEADDR (asyncio does), so connections a just-stopped
+        # gateway left in TIME_WAIT must not count as "in use"; a live listener still does.
+        if sys.platform != "win32":  # There it would let the probe share a live port.
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             probe.bind((host, port))
         except OSError:

@@ -89,6 +89,7 @@ class Accounts:
         self.wrong = {}  # caller or account -> deque of wrong-code times
         self.relay_wrong = deque()
         self.closed_until = 0.0
+        self.limited_at = {}  # caller or account -> when its claim_limited line was written
         self.alerted_at = None
 
     # --- storage ---
@@ -328,11 +329,21 @@ class Accounts:
             self._flood()
             raise ClaimRejected("closed", limited=True)
         if caller is not None and len(self._window(("caller", caller))) >= CALLER_WRONG_PER_HOUR:
-            raise ClaimRejected("caller_limit", limited=True)
+            self._limited("caller_limit", ("caller", caller), caller=caller)
         if account is not None and len(self._window(("account", account))) >= (
             ACCOUNT_WRONG_PER_HOUR
         ):
-            raise ClaimRejected("account_limit", limited=True)
+            self._limited("account_limit", ("account", account), account=account)
+
+    def _limited(self, reason, key, **who):
+        """Refuse a code while a limit holds; one `claim_limited` line a minute per key."""
+        now = self.clock()
+        if now - self.limited_at.get(key, -FLOOD_ALERT_SECONDS) >= FLOOD_ALERT_SECONDS:
+            self.limited_at[key] = now
+            if len(self.limited_at) > 4096:
+                self.limited_at = {k: t for k, t in self.limited_at.items() if now - t < HOUR}
+            self._write("claim_limited", reason=reason, **who)
+        raise ClaimRejected(reason, limited=True)
 
     def _failed(self, reason, caller, account=None):
         now = self.clock()

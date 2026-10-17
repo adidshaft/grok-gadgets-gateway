@@ -291,3 +291,28 @@ def test_status_of_a_service_without_a_tunnel(tmp_path):
         "allowed host: none (no tunnel route)",
         "sign-in (--oauth): off",
     ]
+
+
+def test_a_port_left_in_time_wait_counts_as_free():
+    """Right after `service uninstall` the old relay's closed connections linger; a listener
+    with SO_REUSEADDR (as asyncio sets) can bind, so the install check must agree."""
+    import socket
+
+    from grok_gadgets_gateway.background import port_free
+
+    server = socket.socket()
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind(("127.0.0.1", 0))
+    port = server.getsockname()[1]
+    server.listen()
+    client = socket.create_connection(("127.0.0.1", port))
+    accepted, _ = server.accept()
+    accepted.close()  # The server side closes first, so its end enters TIME_WAIT.
+    client.close()
+    server.close()
+    assert port_free("127.0.0.1", port)
+    busy = socket.socket()
+    busy.bind(("127.0.0.1", 0))
+    busy.listen()
+    assert not port_free("127.0.0.1", busy.getsockname()[1])
+    busy.close()
