@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `builder report` ([#164](https://github.com/adidshaft/grok-gadgets-gateway/issues/164), hub ADR 013). On the relay host it shows each gadget as counts: online, last seen, calls a day, error outcomes, firmware version and last update result, claimed, and the operator's name for it. It reads the request log with its rotated files, `firmware/status.json` and `oauth/accounts.json`. It never shows tokens, arguments, state, addresses, account IDs, codes or other accounts' names. `--days`, `--json`, `--log`.
+
 - Sign-in refresh is visible in the request log ([#211](https://github.com/adidshaft/grok-gadgets-gateway/issues/211)). New lines: `oauth_access_expired` once per expired access token, `oauth_token_refreshed` when a refresh token is exchanged, and `oauth_refresh_rejected` with `reason` (`unknown`, `expired`, `revoked` or `client`). None of them holds a token.
 
 ## 0.1.0-alpha.16 — 17 October 2026

@@ -1117,6 +1117,24 @@
       ],
       "stage": "review",
       "evidence": "GitHub #209; tests/test_firmware.py (26 tests, written first); rehearse --update passed; full suite 402 passed. No kit or relay test yet."
+    },
+    {
+      "id": "GW-BUILD-002",
+      "owner": "grok-gadgets-gateway",
+      "problem": "A builder cannot see how their gadgets are doing",
+      "acceptance": [
+        "builder report CLI from the request log, firmware status and accounts",
+        "Devices, last seen, calls a day, errors, versions, claimed",
+        "No tokens, arguments, state, addresses, account IDs or codes",
+        "Tests"
+      ],
+      "labels": [
+        "feature",
+        "gateway",
+        "P2"
+      ],
+      "stage": "review",
+      "evidence": "GitHub #164; tests/test_report.py (written first). Not yet run on a real relay."
     }
   ]
 }
