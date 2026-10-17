@@ -25,7 +25,7 @@ def gateway_release():
     try:
         return version("grok-gadgets-gateway")
     except PackageNotFoundError:  # pragma: no cover - only in a raw source tree
-        return "0.1.0a16"
+        return "0.1.0a17"
 
 
 def _check(mcp_host, device_host, port, mode):
