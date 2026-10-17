@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.1.0-alpha.17 — 18 October 2026
+
+- The builder kit (hub ADR 013). On 17 October 2026 a clean-room run and the owner's dry run on a fresh host followed the hub guide Ship a gadget: `relay init`, the preflight, a batch of three, phone setup, a claim, Grok Bot text, a signed update and `builder report` ([hub record](https://github.com/adidshaft/grok-gadgets/blob/dev/docs/verification/builder-kit-2026-10-17.md)). The fixes below came from those runs. Nobody outside the project has run the guide yet.
+
 - `factory-provision --batch` trusts the batch's token, not this computer's own registry. A Mac that also runs a gateway refused the kit's batch token because it held an older enrollment for the same ID (owner dry run, [#162](https://github.com/adidshaft/grok-gadgets-gateway/issues/162)).
 - `relay-check --mcp` sends its own user agent. A tunnel's edge refused Python's default one with 403, so the check failed on a correct route (owner dry run, [#165](https://github.com/adidshaft/grok-gadgets-gateway/issues/165)).
 - The `relay init` setup script gives the relay user the SSH keys that reach root, so `scp grokgadgets@HOST:…` in NEXT-STEPS works ([#165](https://github.com/adidshaft/grok-gadgets-gateway/issues/165), owner dry run).
