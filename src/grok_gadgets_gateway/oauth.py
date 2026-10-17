@@ -34,7 +34,7 @@ from mcp.server.auth.provider import (
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 from starlette.responses import HTMLResponse, RedirectResponse
 
-from .accounts import REQUEST_WRONG_MAX, ClaimRejected, normal_code
+from .accounts import REQUEST_WRONG_MAX, ClaimRejected
 from .operator import DEFAULT_TOKEN_NAME, TOKEN_NAME, OperatorError, atomic_write, config_dir
 
 SCOPE = "gadgets"
@@ -394,12 +394,8 @@ class OwnerApprovedOAuth:
             return await self.approve_page(_QueryOnly(request_id))
         headers = {k.lower().encode(): v.encode() for k, v in request.headers.items()}
         who = caller(request.scope, headers)
-        code = normal_code(text)
         try:
-            if code is not None and len(code) == 19:
-                account, recovery = self.accounts.recover(code, caller=who)
-            else:
-                account, recovery = self.accounts.claim_new_account(text, caller=who)
+            account, recovery = self.accounts.sign_in_code(text, caller=who)
         except ClaimRejected as exc:
             pending["wrong"] = pending.get("wrong", 0) + 1
             if exc.limited or pending["wrong"] >= REQUEST_WRONG_MAX:
@@ -410,6 +406,8 @@ class OwnerApprovedOAuth:
             return self._code_page(request_id, pending, f"<strong>{exc}</strong> ", 200)
         self._forget(request_id)
         target = self._grant(pending, account, account, now)
+        if recovery is None:  # A link code: the account exists and keeps its recovery code.
+            return _page(f'Done. <a href="{html.escape(target)}">Continue to Grok Bot</a>')
         return _page(
             "Done. Save this recovery code somewhere safe. It is shown only once. "
             "You need it to sign in again after 30 days without use, or from a new app:"

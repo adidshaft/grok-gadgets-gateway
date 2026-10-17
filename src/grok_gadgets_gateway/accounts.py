@@ -18,10 +18,13 @@ from collections import deque
 from pathlib import Path
 
 from .operator import OperatorError, atomic_write
+from .protocol import GatewayError
 
 # Codes use the sign-in alphabet: no 0/O or 1/I, so a code read off a display is typed right.
 ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 CLAIM_SECONDS = 600
+SHARE_SECONDS = 600  # share and link codes (§6)
+SCOPES = ("use", "view")
 HOUR = 3600
 # Wrong codes (hub ADR 011 §5).
 REQUEST_WRONG_MAX = 5
@@ -73,6 +76,8 @@ class Accounts:
         self.data = None
         self.sessions = {}  # device -> {"mode", "code" (digest), "expires", "sent"}
         self.codes = {}  # claim code digest -> device
+        self.share_codes = {}  # digest -> {"device", "scope", "owner", "expires"}
+        self.link_codes = {}  # digest -> {"account", "expires"}
         self.wrong = {}  # caller or account -> deque of wrong-code times
         self.relay_wrong = deque()
         self.closed_until = 0.0
@@ -114,10 +119,38 @@ class Accounts:
         record = self.data["devices"].get(device_id)
         return record["owner"] if record else None
 
+    def _record(self, device_id):
+        return self.data["devices"].get(device_id)
+
+    def role(self, account, device_id):
+        """`owner`, `use`, `view` or None: what this account may do with the gadget."""
+        record = self._record(device_id)
+        if record is None or account is None:
+            return None
+        if record["owner"] == account:
+            return "owner"
+        for grant in record.get("grants", {}).values():
+            if grant["account"] == account:
+                return grant["scope"]
+        return None
+
+    def visible(self, account):
+        """{device: role} for every gadget this account owns or holds a grant on."""
+        found = {}
+        for device_id in self.data["devices"]:
+            role = self.role(account, device_id)
+            if role is not None:
+                found[device_id] = role
+        return found
+
     def assign(self, device_id, account, *, via):
         if account not in self.data["accounts"]:
             raise OperatorError(f"no account {account}")
-        self.data["devices"][device_id] = {"owner": account, "claimed_at": self.clock()}
+        self.data["devices"][device_id] = {
+            "owner": account,
+            "claimed_at": self.clock(),
+            "grants": {},
+        }
         self._save()
         self._end_code(device_id)
         self._write("device_claimed", device=device_id, account=account, via=via)
@@ -252,6 +285,139 @@ class Accounts:
         account, recovery = self._new_account()
         self.assign(device_id, account, via="sign_in")
         return account, recovery
+
+    def sign_in_code(self, text, *, caller):
+        """Sign-in page: a claim or share code makes a new account; a link code opens its own.
+
+        Returns (account, recovery code or None). A code never opens another existing account.
+        """
+        self._check_open(caller)
+        code = normal_code(text)
+        if code is not None and len(code) == 9:
+            device_id = self._live_device(code)
+            if device_id is not None:
+                account, recovery = self._new_account()
+                self.assign(device_id, account, via="sign_in")
+                return account, recovery
+            share = self._take(self.share_codes, code)
+            if share is not None:
+                account, recovery = self._new_account()
+                self._grant(share, account)
+                return account, recovery
+            link = self._take(self.link_codes, code)
+            if link is not None and link["account"] in self.data["accounts"]:
+                self._write("account_linked", account=link["account"])
+                return link["account"], None
+        if code is not None and len(code) == 19:
+            return self.recover(code, caller=caller)
+        self._failed("wrong_code", caller)
+
+    def _take(self, table, code):
+        """Remove and return a live share or link code entry; None if unknown or expired."""
+        entry = table.pop(_digest(code), None)
+        if entry is None or entry["expires"] <= self.clock():
+            return None
+        return entry
+
+    # --- tools (§6–8) ---
+
+    def claim(self, text, *, account):
+        """gadgets_claim: a claim code adds the gadget; a share code adds a grant."""
+        self._check_open(None, account)
+        code = normal_code(text)
+        if code is not None and len(code) == 9:
+            device_id = self._live_device(code)
+            if device_id is not None:
+                self.assign(device_id, account, via="tool")
+                return {"device_id": device_id, "role": "owner"}
+            share = self._take(self.share_codes, code)
+            if share is not None and share["owner"] != account:
+                return {"device_id": share["device"], "role": self._grant(share, account)}
+        self._failed("wrong_code", None, account)
+
+    def _grant(self, share, account):
+        record = self._record(share["device"])
+        if record is None or record["owner"] != share["owner"]:
+            self._failed("stale_share", None, account)  # The gadget changed hands since.
+        grants = record.setdefault("grants", {})
+        for share_id, grant in list(grants.items()):
+            if grant["account"] == account:
+                del grants[share_id]  # A new share replaces an older one; never two.
+        share_id = "share_" + secrets.token_hex(6)
+        grants[share_id] = {"account": account, "scope": share["scope"], "created": self.clock()}
+        self._save()
+        self._write(
+            "share_used",
+            device=share["device"],
+            account=account,
+            share_id=share_id,
+            scope=share["scope"],
+        )
+        return share["scope"]
+
+    def _owned(self, account, device_id):
+        role = self.role(account, device_id)
+        if role is None:
+            raise GatewayError("unknown_device", "Device not registered")
+        if role != "owner":
+            raise GatewayError("not_owner", "Only the gadget's owner can do this")
+        return self._record(device_id)
+
+    def share_create(self, account, device_id, scope="use"):
+        if scope not in SCOPES:
+            raise GatewayError("invalid_scope", "scope is use or view")
+        self._owned(account, device_id)
+        code = _random_code(2)
+        self.share_codes[_digest(code)] = {
+            "device": device_id,
+            "scope": scope,
+            "owner": account,
+            "expires": self.clock() + SHARE_SECONDS,
+        }
+        self._write("share_created", device=device_id, account=account, scope=scope)
+        return {"share_code": code, "scope": scope, "expires_in": SHARE_SECONDS}
+
+    def shares(self, account, device_id):
+        record = self._owned(account, device_id)
+        return [
+            {"share_id": share_id, "scope": grant["scope"], "created": grant["created"]}
+            for share_id, grant in sorted(record.get("grants", {}).items())
+        ]
+
+    def share_revoke(self, account, device_id, share_id):
+        record = self._owned(account, device_id)
+        if record.get("grants", {}).pop(str(share_id), None) is None:
+            raise GatewayError("unknown_share", "No such share on this gadget")
+        self._save()
+        self._write("share_revoked", device=device_id, account=account, share_id=share_id)
+
+    def link_code(self, account):
+        """A 10-minute code that signs a second app in to this account (§6)."""
+        code = _random_code(2)
+        self.link_codes[_digest(code)] = {
+            "account": account,
+            "expires": self.clock() + SHARE_SECONDS,
+        }
+        self._write("link_created", account=account)
+        return {"link_code": code, "expires_in": SHARE_SECONDS}
+
+    def remove(self, account, device_id):
+        """gadgets_remove: the owner unclaims (grants end too); a grantee drops the grant."""
+        role = self.role(account, device_id)
+        if role is None:
+            raise GatewayError("unknown_device", "Device not registered")
+        record = self._record(device_id)
+        if role == "owner":
+            del self.data["devices"][device_id]
+            self._save()
+            self._write("device_unclaimed", device=device_id, account=account, via="tool")
+            return "unclaimed"
+        for share_id, grant in list(record.get("grants", {}).items()):
+            if grant["account"] == account:
+                del record["grants"][share_id]
+                self._write("share_dropped", device=device_id, account=account, share_id=share_id)
+        self._save()
+        return "dropped"
 
     def recover(self, text, *, caller):
         """A recovery code opens its account once and is replaced: (account, new code)."""

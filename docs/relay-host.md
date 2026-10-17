@@ -158,6 +158,13 @@ people use the relay (hub ADR 011). Then:
   account.
 - On the first start in accounts mode, every enrolled device and every live sign-in, such as
   `grok-bot`, joins the operator account. Back up the config directory first.
+- Every tool answers only for the caller's own gadgets and shares. Another account's gadget,
+  command or event looks exactly like one that does not exist. The operator account sees
+  only its own gadgets.
+- Three more tools: `gadgets_claim` adds a gadget by its code or accepts a share code;
+  `gadgets_remove` unclaims a gadget (its shares end and it shows a new code) or drops a
+  share; `gadgets_share` makes a 10-minute, one-use share code (`use` or `view`), lists and
+  revokes shares, or makes a link code that signs a second app in to the same account.
 - `accounts list` shows the accounts and how many gadgets each owns, never a code.
 - Codes live in memory only. Wrong codes are limited: 5 per sign-in, 20 an hour per address
   and 200 an hour for the relay, after which code entry closes for 10 minutes with a

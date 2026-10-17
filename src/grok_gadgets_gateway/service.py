@@ -785,6 +785,7 @@ async def _serve_http(
         listener_status=listener_status,
         http=True,
         usage_hook=usage_hook,
+        accounts=accounts,
         log_level="WARNING",
     )
     app = mcp.streamable_http_app(
