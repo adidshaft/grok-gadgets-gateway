@@ -79,9 +79,10 @@ def code_client(url, codes, pages=None):
                 )
                 if pages is not None:
                     pages.append(page)
-            assert page.status_code == 200, page.text
-            link = re.search(r'href="([^"]+)"', page.text).group(1).replace("&amp;", "&")
-            query = parse_qs(urlparse(link).query)
+            # A right code hands straight back to Grok Bot, as the operator approval does:
+            # a phone's sign-in sheet closes only on that redirect (17 October 2026).
+            assert page.status_code == 302, page.text
+            query = parse_qs(urlparse(page.headers["location"]).query)
             result.update({k: v[0] for k, v in query.items()})
 
     async def callback():
@@ -115,8 +116,7 @@ async def test_a_person_signs_in_with_the_code_their_gadget_shows(tmp_path):
         wrong, done = pages
         assert "That code did not work." in wrong.text
         assert "AAAA-AAAA" not in wrong.text
-        recovery = RECOVERY.search(done.text).group()
-        assert "recovery code" in done.text.lower()
+        assert done.status_code == 302 and "code=" in done.headers["location"]
 
         # The gadget learns it is claimed in its next poll reply.
         assert (await exchange({"type": "poll"})) == {"ok": True, "commands": [], "claimed": True}
@@ -129,7 +129,7 @@ async def test_a_person_signs_in_with_the_code_their_gadget_shows(tmp_path):
     assert {r["name"] for r in records["access"].values()} == {owner}
     log = (tmp_path / "requests.jsonl").read_text()
     text = log + json.dumps(records) + json.dumps(accounts_file(tmp_path))
-    for secret in (reply["claim_code"], recovery, storage.tokens.access_token):
+    for secret in (reply["claim_code"], storage.tokens.access_token):
         assert secret not in text
     events = {json.loads(line)["event"] for line in log.splitlines()}
     assert {"account_created", "device_claimed", "claim_rejected"} <= events

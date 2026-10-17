@@ -483,6 +483,17 @@ class Accounts:
         self._save()
         self._write("share_revoked", device=device_id, account=account, share_id=share_id)
 
+    def new_recovery_code(self, account):
+        """A fresh recovery code for this account; the old one stops working (§6)."""
+        record = self.data["accounts"].get(account)
+        if record is None:
+            raise GatewayError("account_required", "Sign in with your own Grok Bot sign-in")
+        code = _random_code(4)
+        record["recovery_sha256"] = _digest(code)
+        self._save()
+        self._write("recovery_code_replaced", account=account)
+        return {"recovery_code": code}
+
     def link_code(self, account):
         """A 10-minute code that signs a second app in to this account (§6)."""
         code = _random_code(2)

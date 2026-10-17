@@ -231,17 +231,29 @@ async def test_share_use_revoke_and_remove_through_the_tools(tmp_path):
         assert claimed["role"] == "owner"
         assert error(await alice.call("gadgets_claim", code="ZZZZ-ZZZZ")) == "invalid_code"
 
-        # A link code signs a second app in to Alice's account, with no recovery code.
+        # A link code signs a second app in to Alice's account.
         link = await alice.call("gadgets_share", action="link")
         second = await sign_in(stack, url, link["link_code"])
         names = [d["device_id"] for d in (await second.call("gadgets_list_devices"))["devices"]]
         assert names == ["dev-1", "dev-2"]
 
+        # Alice asks for her recovery code in chat; it replaces the one made at sign-in and
+        # signs a third app in to the same account once.
+        recovery = await alice.call("gadgets_share", action="recovery_code")
+        assert len(recovery["recovery_code"]) == 19
+        third = await sign_in(stack, url, recovery["recovery_code"])
+        assert len((await third.call("gadgets_list_devices"))["devices"]) == 2
+
     lines = [json.loads(x) for x in (tmp_path / "requests.jsonl").read_text().splitlines()]
     events = {line["event"] for line in lines}
     assert {"share_created", "share_used", "share_revoked", "device_unclaimed"} <= events
     text = json.dumps(lines)
-    for secret in (share["share_code"], view["share_code"], link["link_code"]):
+    for secret in (
+        share["share_code"],
+        view["share_code"],
+        link["link_code"],
+        recovery["recovery_code"],
+    ):
         assert secret not in text
 
 

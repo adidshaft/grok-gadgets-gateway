@@ -600,13 +600,17 @@ def make_server(
             action=revoke (owner): end the share with share_id. action=link: a 10-minute code
             that signs a second app in to your own account. action=refuse_transfer (owner):
             stop a pending transfer that someone started with the code the gadget showed after
-            a reset; otherwise it completes when you remove the gadget or after 7 days. Give
-            codes only to people you mean; a share never merges accounts."""
+            a reset; otherwise it completes when you remove the gadget or after 7 days.
+            action=recovery_code: a new recovery code for your account, which signs you in
+            again after 30 days without use or on a new phone; the old one stops working.
+            Give codes only to people you mean; a share never merges accounts."""
 
             def share():
                 account = signed_in(ctx)
                 if action == "link":
                     return accounts.link_code(account)
+                if action == "recovery_code":
+                    return accounts.new_recovery_code(account)
                 if device_id is None:
                     raise GatewayError("invalid_arguments", "device_id is required")
                 if action == "create":
@@ -620,7 +624,8 @@ def make_server(
                     accounts.refuse_transfer(account, device_id)
                     return {"refused": device_id}
                 raise GatewayError(
-                    "invalid_arguments", "action is create, list, revoke, link or refuse_transfer"
+                    "invalid_arguments",
+                    "action is create, list, revoke, link, recovery_code or refuse_transfer",
                 )
 
             arguments = {"action": action, "device_id": device_id, "scope": scope}
