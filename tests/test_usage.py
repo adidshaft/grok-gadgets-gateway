@@ -242,6 +242,27 @@ def test_usage_command(tmp_path, capsys, private_home):
     capsys.readouterr()
 
 
+def test_calibrate_zero_keeps_the_saved_rate(tmp_path, capsys, private_home):
+    # GW-USAGE-002 (#166): a whole-percent page that shows no change must not replace a
+    # valid calibration with a zero rate.
+    from grok_gadgets_gateway.usage import rate_path
+
+    log = tmp_path / "requests.jsonl"
+    write_log(log, CALLS)
+    args = ["usage", "--log", str(log), "--token", "grok-bot"]
+    window = ["--since", "2026-10-13T08:00", "--until", "2026-10-13T10:00"]
+    assert cli.main([*args, *window, "--calibrate", "1.5", "--unit", "% weekly usage"]) == 0
+    saved = rate_path().read_bytes()
+    capsys.readouterr()
+    for zero in ("0", "0.0", "-1"):
+        with pytest.raises(SystemExit) as exit_info:
+            cli.main([*args, *window, "--calibrate", zero, "--unit", "% weekly usage"])
+        assert exit_info.value.code == 2
+        assert rate_path().read_bytes() == saved
+    err = capsys.readouterr().err
+    assert "nothing was saved" in err and "more than zero" in err
+
+
 async def test_stdio_feeds_the_hook_without_a_request_log(tmp_path):
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
