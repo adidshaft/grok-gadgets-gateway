@@ -33,6 +33,7 @@ TRANSFER_GRACE_SECONDS = 7 * 86400
 READ_ROLES = ("owner", "use", "view")
 ADMIN_ACTIONS = ("unclaim", "assign", "link")
 ACCOUNT_ID = re.compile(r"acct_[a-z2-7]{26}")
+LABEL_MAX = 32  # gadget names and rooms (GW-NAME-001)
 HOUR = 3600
 # Wrong codes (hub ADR 011 §5).
 REQUEST_WRONG_MAX = 5
@@ -66,6 +67,18 @@ def _random_code(groups):
 def new_account_id():
     """`acct_` and 26 base32 characters: 128 random bits."""
     return "acct_" + base64.b32encode(secrets.token_bytes(16)).decode().rstrip("=").lower()
+
+
+def _clean_label(text):
+    """A trimmed name or room; None when not given; False when blank, too long or unprintable."""
+    if text is None:
+        return None
+    if not isinstance(text, str):
+        return False
+    if any(not c.isprintable() for c in text):
+        return False
+    text = " ".join(text.split())
+    return text if 0 < len(text) <= LABEL_MAX else False
 
 
 def normal_code(text):
@@ -157,6 +170,58 @@ class Accounts:
                 found[device_id] = role
         return found
 
+    # --- names and rooms, per account (GW-NAME-001) ---
+
+    def _labels(self, account):
+        return self.data.setdefault("labels", {}).get(account, {})
+
+    def label(self, account, device_id):
+        entry = self._labels(account).get(device_id, {})
+        return {"name": entry.get("name"), "room": entry.get("room")}
+
+    def set_label(self, account, device_id, name, room=None):
+        """Name a gadget (and give it a room) for this account only; None clears both."""
+        if self.role(account, device_id) is None:
+            raise GatewayError("unknown_device", "Device not registered")
+        visible = self.visible(account)
+        name, room = _clean_label(name), _clean_label(room)
+        if name is False or room is False or (name is None and room is not None):
+            raise GatewayError(
+                "invalid_name", f"A name is 1-{LABEL_MAX} printable characters; a room needs a name"
+            )
+        if name is not None and name in visible:
+            raise GatewayError("invalid_name", "Use a name, not a device ID")
+        for other, entry in self._labels(account).items():
+            same = (entry.get("name") or "").casefold() == (name or "").casefold()
+            if name is not None and other != device_id and other in visible and same:
+                raise GatewayError("name_taken", "You already use this name for another gadget")
+        labels = self.data.setdefault("labels", {}).setdefault(account, {})
+        if name is None:
+            labels.pop(device_id, None)
+        else:
+            labels[device_id] = {"name": name, "room": room}
+        self._save()
+        self._write("gadget_named", device=device_id, account=account)
+        return {"device_id": device_id, "name": name, "room": room}
+
+    def resolve(self, account, text):
+        """The device ID a person means: an ID they can see, or one of their own names."""
+        if not isinstance(text, str):
+            return text
+        visible = self.visible(account)
+        if text in visible:
+            return text
+        wanted = " ".join(text.split()).casefold()
+        for device_id, entry in self._labels(account).items():
+            if device_id in visible and (entry.get("name") or "").casefold() == wanted:
+                return device_id
+        return text
+
+    def _forget_labels(self, device_id):
+        """A gadget that changes hands or is unclaimed loses every account's name for it."""
+        for labels in self.data.get("labels", {}).values():
+            labels.pop(device_id, None)
+
     def pending_transfer(self, device_id):
         """{"account", "since", "completes_at"} of a pending transfer, or None."""
         record = self._record(device_id)
@@ -172,6 +237,7 @@ class Accounts:
     def _complete(self, device_id, *, via):
         record = self.data["devices"][device_id]
         pending = record.pop("pending")
+        self._forget_labels(device_id)
         self.data["devices"][device_id] = {
             "owner": pending["account"],
             "claimed_at": self.clock(),
@@ -541,6 +607,7 @@ class Accounts:
 
     def unclaim(self, device_id, *, account=None, via):
         record = self.data["devices"].pop(device_id, None)
+        self._forget_labels(device_id)
         self._save()
         if record is not None:
             self._write(

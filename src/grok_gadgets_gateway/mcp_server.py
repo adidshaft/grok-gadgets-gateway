@@ -170,6 +170,28 @@ def came_remote(ctx):
     return None if value is None else value == "1"
 
 
+ROLE_WORDS = {"owner": "yours", "use": "shared with you", "view": "shared with you to view"}
+ACCOUNT_INSTRUCTIONS = """Grok Gadgets connects this person's own gadgets to Grok Bot.
+- If gadgets_list_devices is empty, ask the person for the code their gadget shows on its
+  display (Code XXXX-XXXX) and call gadgets_claim with it. Never guess codes.
+- After a claim, ask what to call the gadget and where it is, then call gadgets_name. Refer to
+  gadgets by their name; every tool accepts the name in place of device_id.
+- Read each gadget's summary aloud as it is; it says whose it is and whether it is online.
+- Once, after the first claim, offer a recovery code (gadgets_share action=recovery_code) and
+  tell the person to keep it private: it signs them in again on a new phone.
+- Share only when the person asks, and say a share code works once for 10 minutes."""
+
+
+def _summary(device, label, role):
+    """One plain sentence Grok Bot can say as is: name, room, online, whose."""
+    parts = [label.get("name") or device["device_id"]]
+    if label.get("room"):
+        parts.append(label["room"])
+    parts.append("online" if device.get("available") else "offline")
+    parts.append(ROLE_WORDS.get(role, role))
+    return ", ".join(parts)
+
+
 def _iso(seconds):
     return datetime.fromtimestamp(seconds, UTC).isoformat() if seconds else None
 
@@ -280,7 +302,13 @@ def make_server(
             if device_server:
                 await device_server.close()
 
-    mcp = MCPServer("Grok Gadgets gateway", lifespan=lifespan, **server_options)
+    mcp = MCPServer(
+        "Grok Gadgets gateway",
+        title="Grok Gadgets",
+        instructions=ACCOUNT_INSTRUCTIONS if accounts is not None else None,
+        lifespan=lifespan,
+        **server_options,
+    )
     # Accounts mode (hub ADR 011): which account sent each command, for command status.
     command_accounts = OrderedDict()
 
@@ -296,8 +324,19 @@ def make_server(
         if role is None:
             # The same answer as for a gadget that does not exist.
             raise GatewayError("unknown_device", "Device not registered")
+        if role == "pending_transfer":
+            raise GatewayError(
+                "transfer_pending",
+                "This gadget is waiting for its owner to finish the transfer to you; "
+                "you can use it after that",
+            )
         if role not in roles:
             raise GatewayError("not_allowed", "This share lets you read the gadget, not command it")
+
+    def named(ctx, device_id):
+        """The device ID a person means: an ID, or the name they gave it (GW-NAME-001)."""
+        account = caller_account(ctx)
+        return accounts.resolve(account, device_id) if account is not None else device_id
 
     def tool(annotations, description=None):
         def register(fn):
@@ -398,6 +437,7 @@ def make_server(
             shown = []
             for device in listed:
                 role = visible.get(device["device_id"])
+                label = accounts.label(account, device["device_id"])
                 if role == "pending_transfer":
                     # Until the old owner unclaims or the grace period ends: nothing but this.
                     pending = accounts.pending_transfer(device["device_id"]) or {}
@@ -406,10 +446,17 @@ def make_server(
                             "device_id": device["device_id"],
                             "role": role,
                             "completes_at": _iso(pending.get("completes_at")),
+                            "summary": f"{device['device_id']}, waiting for its owner to "
+                            "finish the transfer to you",
                         }
                     )
                 elif role is not None:
-                    entry = {**device, "role": role}
+                    entry = {
+                        **label,
+                        **device,
+                        "role": role,
+                        "summary": _summary(device, label, role),
+                    }
                     pending = accounts.pending_transfer(device["device_id"])
                     if role == "owner" and pending:
                         entry["pending_transfer"] = {"completes_at": _iso(pending["completes_at"])}
@@ -421,7 +468,9 @@ def make_server(
     @tool(READ_ONLY)
     async def gadgets_get_state(device_id: str, ctx: Context) -> dict:
         """Read a gadget's last reported state and freshness (fresh, stale or offline).
-        Reported state is the device's own report; it does not prove a physical effect."""
+        Reported state is the device's own report; it does not prove a physical effect.
+        device_id may be the gadget's ID or the name you gave it."""
+        device_id = named(ctx, device_id)
         return run(
             "gadgets_get_state",
             {"device_id": device_id},
@@ -438,6 +487,7 @@ def make_server(
         command_id: str | None = None,
     ) -> dict:
         started = time.monotonic()
+        device_id = named(ctx, device_id)
         request = {
             "device_id": device_id,
             "capability": capability,
@@ -512,13 +562,14 @@ def make_server(
         null cursor."""
 
         def events():
+            device = named(ctx, device_id)
             account = caller_account(ctx)
             if account is None:
-                return gateway.read_events(cursor, device_id, limit)
-            if device_id is not None:
-                allow(ctx, device_id)
+                return gateway.read_events(cursor, device, limit)
+            if device is not None:
+                allow(ctx, device)
             readable = set(accounts.visible(account, READ_ROLES))
-            return gateway.read_events(cursor, device_id, limit, readable)
+            return gateway.read_events(cursor, device, limit, readable)
 
         return run(
             "gadgets_read_events",
@@ -579,6 +630,7 @@ def make_server(
         async def gadgets_remove(device_id: str, ctx: Context) -> dict:
             """Remove a gadget from your list. As its owner, this unclaims it: every share
             ends and the gadget shows a new code. With a share, this drops only your share."""
+            device_id = named(ctx, device_id)
             return run(
                 "gadgets_remove",
                 {"device_id": device_id},
@@ -607,22 +659,23 @@ def make_server(
 
             def share():
                 account = signed_in(ctx)
+                device = named(ctx, device_id)
                 if action == "link":
                     return accounts.link_code(account)
                 if action == "recovery_code":
                     return accounts.new_recovery_code(account)
-                if device_id is None:
+                if device is None:
                     raise GatewayError("invalid_arguments", "device_id is required")
                 if action == "create":
-                    return accounts.share_create(account, device_id, scope)
+                    return accounts.share_create(account, device, scope)
                 if action == "list":
-                    return {"shares": accounts.shares(account, device_id)}
+                    return {"shares": accounts.shares(account, device)}
                 if action == "revoke":
-                    accounts.share_revoke(account, device_id, share_id)
+                    accounts.share_revoke(account, device, share_id)
                     return {"revoked": share_id}
                 if action == "refuse_transfer":
-                    accounts.refuse_transfer(account, device_id)
-                    return {"refused": device_id}
+                    accounts.refuse_transfer(account, device)
+                    return {"refused": device}
                 raise GatewayError(
                     "invalid_arguments",
                     "action is create, list, revoke, link, recovery_code or refuse_transfer",
@@ -630,6 +683,21 @@ def make_server(
 
             arguments = {"action": action, "device_id": device_id, "scope": scope}
             return run("gadgets_share", arguments, share, ctx)
+
+        @tool(ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=True))
+        async def gadgets_name(
+            device_id: str, ctx: Context, name: str | None = None, room: str | None = None
+        ) -> dict:
+            """Give a gadget a simple name, and optionally a room, so the person can say
+            "the desk display" instead of its ID. Names are private to this person's account,
+            up to 32 characters, and unique among their gadgets. After that, every tool
+            accepts the name in place of device_id. name=null clears the name and room."""
+
+            def label():
+                account = signed_in(ctx)
+                return accounts.set_label(account, named(ctx, device_id), name, room)
+
+            return run("gadgets_name", {"device_id": device_id}, label, ctx)
 
     if test_controls:
         if simulator is None:

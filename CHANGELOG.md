@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Gadget names and rooms in accounts mode ([#202](https://github.com/adidshaft/grok-gadgets-gateway/issues/202)). `gadgets_name` gives a gadget a plain name and an optional room, private to the caller's account (up to 32 characters, unique among their gadgets). Every tool accepts the name in place of `device_id`, only among the caller's own gadgets. `gadgets_list_devices` adds `name`, `room` and a one-line `summary` such as "Desk display, Office, online, yours". The server now has the title Grok Gadgets and instructions that tell Grok Bot to ask for the code on the display, name the gadget after a claim, use names and offer a recovery code once. A pending transfer answers `transfer_pending` instead of the share message. Names go when a gadget is unclaimed or changes hands; line `gadget_named`.
+
 - A code refused by a wrong-code limit now writes `claim_limited` (reason and caller or account), at most once a minute per key ([#200](https://github.com/adidshaft/grok-gadgets-gateway/issues/200)). `service install` right after `service uninstall` no longer reports the device port as in use while only closed connections linger.
 
 - The sign-in page no longer sends a `form-action` CSP directive ([#198](https://github.com/adidshaft/grok-gadgets-gateway/issues/198)). Browsers apply it to the redirect after the code form, so phones stopped before handing the sign-in back to Grok Bot. Found in the two-account acceptance; reproduced and fixed in a browser against a local relay.
