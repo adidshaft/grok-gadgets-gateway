@@ -8,6 +8,7 @@ import os
 import signal
 import sys
 from importlib.metadata import version
+from pathlib import Path
 
 from .domain import Gateway
 from .mcp_server import RateLimiter, RequestLog, make_server
@@ -58,6 +59,8 @@ COMMANDS = (
     "factory-provision",
     "label",
     "firmware",
+    "relay",
+    "builder",
 )
 DESCRIPTION = """Grok Gadgets gateway: the MCP server your Grok Bot will use to reach your gadgets.
 
@@ -202,7 +205,18 @@ def build_parser():
     init.add_argument("--port", type=int, default=8766, help="HTTP port in the settings")
 
     enroll_cmd = sub.add_parser("enroll", help="issue a device token for a device ID")
-    enroll_cmd.add_argument("device_id")
+    enroll_cmd.add_argument("device_id", nargs="?")
+    enroll_cmd.add_argument(
+        "--batch", metavar="IDS.csv", help="enroll every device_id in this CSV (hub ADR 013)"
+    )
+    enroll_cmd.add_argument("--count", type=int, help="make N device IDs (Linux gadgets)")
+    enroll_cmd.add_argument("--prefix", help="device ID prefix for --count, e.g. lamp-")
+    enroll_cmd.add_argument(
+        "--out", metavar="DIR", help="new folder for the batch: token files, labels, batch.csv"
+    )
+    enroll_cmd.add_argument(
+        "--no-labels", action="store_true", help="no setup labels (gadgets without a hotspot)"
+    )
     enroll_cmd.add_argument(
         "--rotate",
         action="store_true",
@@ -330,6 +344,33 @@ def build_parser():
     fw_remove.add_argument("board")
     fw_remove.add_argument("version")
 
+    relay = sub.add_parser("relay", help="set up a new relay host (hub ADR 013)")
+    relay_sub = relay.add_subparsers(dest="relay_command", metavar="ACTION", required=True)
+    relay_init = relay_sub.add_parser(
+        "init", help="write cloud-init, a setup script and next steps for a new relay (no secrets)"
+    )
+    relay_init.add_argument("--mcp-host", required=True, help="Grok Bot's name, via the tunnel")
+    relay_init.add_argument("--device-host", required=True, help="the gadgets' DNS-only name")
+    relay_init.add_argument("--mode", choices=("systemd", "compose"), default="systemd")
+    relay_init.add_argument("--port", type=int, default=8444, help="device port (default 8444)")
+    relay_init.add_argument(
+        "--no-accounts", action="store_true", help="one operator only, no claim codes"
+    )
+    relay_init.add_argument("--out", required=True, metavar="DIR", help="a new folder")
+
+    builder = sub.add_parser("builder", help="builder tools for a relay (hub ADR 013)")
+    builder_sub = builder.add_subparsers(dest="builder_command", metavar="ACTION", required=True)
+    report = builder_sub.add_parser(
+        "report", help="your gadgets as counts: last seen, calls, errors, firmware, claimed"
+    )
+    report.add_argument(
+        "--log", action="append", help="request log (default: this host's service log)"
+    )
+    report.add_argument("--days", type=int, default=7, help="calls window in days (default 7)")
+    report.add_argument("--firmware-dir", help="firmware store (default: config firmware/)")
+    report.add_argument("--accounts", help="accounts file (default: oauth/accounts.json)")
+    report.add_argument("--json", action="store_true")
+
     remote = sub.add_parser(
         "remote", help="kill switch: turn remote (tunnel) access off or on at once"
     )
@@ -427,6 +468,12 @@ def build_parser():
     relay_check.add_argument(
         "--ca", metavar="FILE", help="the relay's lan/ca.pem (default: this computer's CA)"
     )
+    relay_check.add_argument(
+        "--mcp",
+        metavar="URL",
+        help="also check every preflight item, with Grok Bot's URL "
+        "(https://gadgets.example.net/mcp): open port, refuses HTTP, 401 and metadata",
+    )
 
     provision = sub.add_parser(
         "wifi-provision",
@@ -478,10 +525,15 @@ def build_parser():
         help="write a gadget's identity over USB once and print its setup label (no Wi-Fi)",
     )
     factory.add_argument("serial_port")
-    factory.add_argument("--device", required=True, help="device ID of this board")
+    factory.add_argument("--device", help="device ID of this board (not with --batch)")
+    factory.add_argument(
+        "--batch", metavar="DIR", help="use this board's row of an enroll --batch folder"
+    )
+    factory.add_argument(
+        "--read-id", action="store_true", help="only print the board's device ID, for a batch CSV"
+    )
     factory.add_argument(
         "--gateway",
-        required=True,
         metavar="NAME[:PORT]",
         help="the relay's DNS name from device-cert (port 8444 by default; relays set up "
         "before 14 October 2026 use 8443)",
@@ -702,7 +754,11 @@ def run(parser, args):
             parser.error(str(exc))
         print(settings, end="")
         return 0
+    if command == "enroll" and (args.batch or args.count is not None):
+        return run_enroll_batch(parser, args)
     if command == "enroll":
+        if args.device_id is None:
+            parser.error("enroll needs a device ID, or --batch IDS.csv or --count N with --out")
         try:
             token = enroll(args.device_id, args.credentials, rotate=args.rotate)
             if args.token_file:
@@ -756,6 +812,29 @@ def run(parser, args):
         return run_accounts(parser, args)
     if command == "firmware":
         return run_firmware(parser, args)
+    if command == "relay":
+        from .relay_init import write_files
+
+        try:
+            files = write_files(
+                args.out,
+                mcp_host=args.mcp_host,
+                device_host=args.device_host,
+                mode=args.mode,
+                port=args.port,
+                accounts=not args.no_accounts,
+            )
+        except OperatorError as exc:
+            parser.error(str(exc))
+        print(
+            f"Wrote {len(files)} files to {args.out}. Start with "
+            f"{os.path.join(args.out, 'NEXT-STEPS.md')}. They hold no secret.",
+            file=sys.stderr,
+        )
+        return 0
+
+    if command == "builder":
+        return run_builder_report(parser, args)
     if command == "usage":
         return run_usage(parser, args)
     if command == "serve":
@@ -919,13 +998,23 @@ def run_lan(parser, args):
 
 def run_relay_check(parser, args):
     from .lan import ca_pem_text, is_dns_name, parse_gateway_address, read_ca_file
-    from .relay_check import relay_check
+    from .relay_check import full_check, relay_check
 
     try:
         host, port = parse_gateway_address(args.gateway)
         if not is_dns_name(host):
             parser.error("relay-check takes the relay's public DNS name")
         ca = read_ca_file(args.ca) if args.ca else ca_pem_text()
+        if args.mcp:
+            results = full_check(host, port, ca, mcp_url=args.mcp)
+            for _ok, line in results:
+                print(line)
+            failed = sum(1 for ok, _ in results if not ok)
+            if failed:
+                print(f"Relay check: {failed} of {len(results)} items failed.")
+                return 1
+            print(f"Relay check passed: all {len(results)} items.")
+            return 0
         lines = relay_check(host, port, ca)
     except OperatorError as exc:
         print(f"Relay check failed: {exc}", file=sys.stderr)
@@ -947,6 +1036,10 @@ def provisioning_token(parser, args, path, *, enroll_new=False):
     from .transport import digest, read_registry
 
     record = read_registry(path).get(args.device) if os.path.exists(path) else None
+    if getattr(args, "batch", None):
+        # A batch comes from the relay that enrolled it. This computer's own gateway may hold
+        # an older, unrelated enrollment for the same ID, so it is not the reference here.
+        record = None
     if args.token_file:
         token = read_device_token_file(args.token_file)
         if record is not None:
@@ -987,14 +1080,72 @@ def provisioning_token(parser, args, path, *, enroll_new=False):
     )
 
 
+def run_enroll_batch(parser, args):
+    from .batch import count_ids, make_batch, read_ids
+
+    if args.device_id or args.rotate or args.token_file:
+        parser.error("a batch takes no device ID, --rotate or --token-file")
+    if not args.out:
+        parser.error("a batch needs --out DIR, a new folder")
+    if args.batch and args.count is not None:
+        parser.error("use --batch or --count, not both")
+    if args.count is not None and not args.prefix:
+        parser.error("--count needs --prefix, for example --prefix lamp-")
+    try:
+        ids = read_ids(args.batch) if args.batch else count_ids(args.count, args.prefix)
+        rows = make_batch(ids, args.out, credentials=args.credentials, labels=not args.no_labels)
+    except (OperatorError, CredentialError, OSError) as exc:
+        parser.error(str(exc))
+    print(
+        f"Enrolled {len(rows)} gadget{'s' if len(rows) != 1 else ''} in {args.out}: one token "
+        "file each in tokens/ (shown nowhere else), "
+        + ("setup labels in labels/ (print.html prints them all), " if not args.no_labels else "")
+        + "and batch.csv. Keep the folder private until every gadget is provisioned.",
+        file=sys.stderr,
+    )
+    return 0
+
+
 def run_factory_provision(parser, args):
     import serial
 
-    from .label import label_record, label_text, labels_dir, save_record, write_label_files
+    from .batch import batch_token, mark_provisioned
+    from .label import (
+        label_record,
+        label_text,
+        labels_dir,
+        load_record,
+        save_record,
+        write_label_files,
+    )
     from .lan import ca_pem_text, is_dns_name, parse_gateway_address, read_ca_file
     from .relay_check import relay_check
-    from .wifi_provision import ProvisionError, factory_frame, factory_provision
+    from .wifi_provision import ProvisionError, factory_frame, factory_provision, status
 
+    if args.read_id or args.batch:
+        if args.device:
+            parser.error("--read-id and --batch read the device ID from the board")
+        try:
+            with serial.Serial(args.serial_port, 115200, timeout=0.1, write_timeout=2) as device:
+                board_id = status(device).get("device_id")
+        except (serial.SerialException, OSError) as exc:
+            parser.error(f"cannot use {args.serial_port}: {exc}")
+        except ProvisionError as exc:
+            parser.error(str(exc))
+        if not isinstance(board_id, str):
+            parser.error("the board did not report a device ID")
+        if args.read_id:
+            print(board_id)
+            return 0
+        args.device = board_id
+        if args.token_file or args.rotate or args.enroll:
+            parser.error("--batch takes the token from the batch folder")
+        try:
+            _row, args.token_file = batch_token(args.batch, board_id)
+        except OperatorError as exc:
+            parser.error(str(exc))
+    if not args.device or not args.gateway:
+        parser.error("factory-provision needs --device (or --batch) and --gateway")
     path = args.credentials or credentials_path()
     try:
         host, port = parse_gateway_address(args.gateway)
@@ -1003,7 +1154,15 @@ def run_factory_provision(parser, args):
             for line in relay_check(host, port, ca):
                 print(line, file=sys.stderr)
         token, commit = provisioning_token(parser, args, path, enroll_new=args.enroll)
-        values = label_record(args.device, new=args.new_label)
+        if args.batch:
+            # The label printed with the batch, wherever the batch was made (hub ADR 013 §2).
+            values = load_record(args.device, Path(args.batch) / "labels")
+            if values is None:
+                parser.error(
+                    f"the batch has no label for {args.device}; make it without --no-labels"
+                )
+        else:
+            values = label_record(args.device, new=args.new_label)
         frame = factory_frame(
             token,
             host,
@@ -1027,6 +1186,8 @@ def run_factory_provision(parser, args):
     except (OperatorError, CredentialError) as exc:
         parser.error(f"The board has its new token, but the registry was not updated: {exc}")
     save_record(values)
+    if args.batch:
+        mark_provisioned(args.batch, args.device)
     files = write_label_files(values, args.label_dir or labels_dir())
     print(label_text(values), end="")
     print(
@@ -1196,7 +1357,7 @@ def run_service(parser, args, service=None):
                 "Check it: grok-gadgets-gateway service status",
                 file=sys.stderr,
             )
-            if service.platform == "linux":
+            if service.platform == "linux" and not _lingering():
                 print(
                     "To start it at boot without a login, run: loginctl enable-linger",
                     file=sys.stderr,
@@ -1272,6 +1433,39 @@ def run_usage(parser, args):
         print(json.dumps(summary, indent=2))
     else:
         print(format_summary(summary))
+    return 0
+
+
+def run_builder_report(parser, args):
+    """Counts only; never tokens, arguments, state, addresses, accounts or codes (ADR 013)."""
+    from .firmware import firmware_dir
+    from .logfiles import rotated
+    from .oauth import oauth_dir
+    from .report import build_report, format_report
+    from .usage import default_log
+
+    paths = args.log
+    if not paths:
+        found = default_log()
+        if found is None or not found.is_file():
+            parser.error("no service request log here; pass --log PATH")
+        paths = [found]
+    for path in paths:
+        if not Path(path).is_file():
+            parser.error(f"no request log at {path}")
+    if args.days < 1:
+        parser.error("--days must be 1 or more")
+    files = [old for path in paths for old in rotated(path)] or paths
+    try:
+        report = build_report(
+            files,
+            firmware_dir=args.firmware_dir or firmware_dir(),
+            accounts_path=args.accounts or (oauth_dir() / "accounts.json"),
+            days=args.days,
+        )
+    except OperatorError as exc:
+        parser.error(str(exc))
+    print(json.dumps(report, indent=2) if args.json else format_report(report))
     return 0
 
 
@@ -1598,6 +1792,13 @@ async def _serve(credentials, mcp_token, **kwargs):
         await asyncio.wait({running.task, stopping}, return_when=asyncio.FIRST_COMPLETED)
         stopping.cancel()
     print("Gateway stopped; device sessions closed.", file=sys.stderr)
+
+
+def _lingering():
+    """True when systemd starts this user's services at boot (loginctl enable-linger)."""
+    import getpass
+
+    return Path("/var/lib/systemd/linger", getpass.getuser()).exists()
 
 
 def main(argv=None):

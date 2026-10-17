@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+## 0.1.0-alpha.17 — 18 October 2026
+
+- The builder kit (hub ADR 013). On 17 October 2026 a clean-room run and the owner's dry run on a fresh host followed the hub guide Ship a gadget: `relay init`, the preflight, a batch of three, phone setup, a claim, Grok Bot text, a signed update and `builder report` ([hub record](https://github.com/adidshaft/grok-gadgets/blob/dev/docs/verification/builder-kit-2026-10-17.md)). The fixes below came from those runs. Nobody outside the project has run the guide yet.
+
+- `factory-provision --batch` trusts the batch's token, not this computer's own registry. A Mac that also runs a gateway refused the kit's batch token because it held an older enrollment for the same ID (owner dry run, [#162](https://github.com/adidshaft/grok-gadgets-gateway/issues/162)).
+- `relay-check --mcp` sends its own user agent. A tunnel's edge refused Python's default one with 403, so the check failed on a correct route (owner dry run, [#165](https://github.com/adidshaft/grok-gadgets-gateway/issues/165)).
+- The `relay init` setup script gives the relay user the SSH keys that reach root, so `scp grokgadgets@HOST:…` in NEXT-STEPS works ([#165](https://github.com/adidshaft/grok-gadgets-gateway/issues/165), owner dry run).
+- `relay init` opens SSH as `22/tcp`, so the setup script also runs on a minimal Ubuntu image without the OpenSSH firewall profile. `service install` gives the `enable-linger` hint only when the user does not linger yet ([#165](https://github.com/adidshaft/grok-gadgets-gateway/issues/165), clean-room run).
+- `builder report` ([#164](https://github.com/adidshaft/grok-gadgets-gateway/issues/164), hub ADR 013). On the relay host it shows each gadget as counts: online, last seen, calls a day, error outcomes, firmware version and last update result, claimed, and the operator's name for it. It reads the request log with its rotated files, `firmware/status.json` and `oauth/accounts.json`. It never shows tokens, arguments, state, addresses, account IDs, codes or other accounts' names. `--days`, `--json`, `--log`.
+
+- Batches ([#162](https://github.com/adidshaft/grok-gadgets-gateway/issues/162), hub ADR 013). `enroll --batch IDS.csv --out DIR` (or `--count N --prefix P` for Linux gadgets) enrolls every device, writes one mode-0600 token file each, makes setup labels with a printable `labels/print.html` (`--no-labels` to skip) and a `batch.csv` with no secret. It refuses devices that are already enrolled and a folder in use. `factory-provision PORT --batch DIR` reads the board's ID, sends its row's token and label, marks the row and deletes the token file. `factory-provision PORT --read-id` prints a board's ID for the CSV.
+
+- `relay init` ([#165](https://github.com/adidshaft/grok-gadgets-gateway/issues/165), hub ADR 013). It writes `setup-relay.sh`, `cloud-init.yaml` and `NEXT-STEPS.md` for a fresh Ubuntu host: firewall (SSH and 8444), the pinned tunnel client and gateway release, `init`, `device-cert` and the user service with `--oauth --accounts --device-listen 0.0.0.0:8444`. `--mode compose` adds Compose files. No generated file holds a secret; it refuses port 8443 and one name for both roles. `relay-check NAME --mcp URL` runs the full preflight: DNS only, port open, the relay CA with its SHA-256 fingerprint, the device port refuses HTTP, and `/mcp` answers 401 with its metadata 200. Each line says ok or FAIL, and later checks still run.
+
+- Sign-in refresh is visible in the request log ([#211](https://github.com/adidshaft/grok-gadgets-gateway/issues/211)). New lines: `oauth_access_expired` once per expired access token, `oauth_token_refreshed` when a refresh token is exchanged, and `oauth_refresh_rejected` with `reason` (`unknown`, `expired`, `revoked` or `client`). None of them holds a token.
+
 ## 0.1.0-alpha.16 — 17 October 2026
 
 - On 17 October 2026 the owner's ESP32-S3 OLED kit took signed updates from the owner's relay with no cable: progress on the OLED, a restart and the new version in its hello; an image signed with another key and an image with one changed byte were refused and logged; an image that never came Online reverted by itself after 5 minutes; a power cut during a download recovered ([hub record](https://github.com/adidshaft/grok-gadgets/blob/dev/docs/verification/ota-2026-10-17.md)). Grok Bot showing text after an update is not tested yet (#211).

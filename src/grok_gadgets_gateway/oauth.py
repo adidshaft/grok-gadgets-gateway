@@ -168,6 +168,7 @@ class OwnerApprovedOAuth:
         for key in ("clients", "access", "refresh", "registered_at"):
             self.state.setdefault(key, {})
         self.alerted_at = None
+        self.expired_seen = set()  # Access-token digests already logged as expired (#211).
         self.requests = {}  # request id -> pending authorization (memory only)
         self.codes = {}  # authorization code -> AuthorizationCode (memory only)
         self.code_accounts = {}  # authorization code -> account (accounts mode)
@@ -422,7 +423,7 @@ class OwnerApprovedOAuth:
         account = self.code_accounts.pop(authorization_code.code, None)
         return self._issue(client, authorization_code.subject, authorization_code.scopes, account)
 
-    def _issue(self, client, name, scopes, account=None):
+    def _issue(self, client, name, scopes, account=None, event="oauth_token_issued"):
         now = self.clock()
         access = "gga_" + secrets.token_urlsafe(32)
         refresh = "ggr_" + secrets.token_urlsafe(32)
@@ -436,7 +437,7 @@ class OwnerApprovedOAuth:
             "access": _digest(access),
         }
         self._save()
-        self._write("oauth_token_issued", token=name, client_name=client.client_name)
+        self._write(event, token=name, client_name=client.client_name)
         return OAuthToken(
             access_token=access,
             expires_in=ACCESS_SECONDS,
@@ -452,9 +453,30 @@ class OwnerApprovedOAuth:
             return None
         return record
 
+    def _refused(self, kind, token, client=None):
+        """Why a token is not live: `unknown` (never issued, used or pruned), `expired`,
+        `revoked` or `client` (another client's token). Logs never hold a token."""
+        record = self.state[kind].get(_digest(token))
+        if record is None:
+            return "unknown", None
+        if record["expires_at"] <= self.clock():
+            return "expired", record
+        if _revoked(self.root, record):
+            return "revoked", record
+        if client is not None and record["client_id"] != client.client_id:
+            return "client", record
+        return None, record
+
     async def load_refresh_token(self, client, refresh_token):
-        record = self._live("refresh", refresh_token)
-        if record is None or record["client_id"] != client.client_id:
+        reason, record = self._refused("refresh", refresh_token, client)
+        if reason is not None:
+            # GW-OAUTH-REFRESH-001 (#211): show whether Grok Bot tried to refresh, and why not.
+            self._write(
+                "oauth_refresh_rejected",
+                reason=reason,
+                token=record["name"] if record else None,
+                client_name=client.client_name,
+            )
             return None
         return RefreshToken(
             token=refresh_token,
@@ -470,12 +492,27 @@ class OwnerApprovedOAuth:
             raise TokenError("invalid_grant", "refresh token is not valid")
         self.state["access"].pop(record.get("access"), None)
         return self._issue(
-            client, record["name"], scopes or record["scopes"], record.get("account")
+            client,
+            record["name"],
+            scopes or record["scopes"],
+            record.get("account"),
+            event="oauth_token_refreshed",
         )
 
     async def load_access_token(self, token):
         record = self._live("access", token)
         if record is None:
+            reason, expired = self._refused("access", token)
+            digest = _digest(token)
+            if reason == "expired" and digest not in self.expired_seen:
+                # Once per token: the next line in the log should be a refresh.
+                self.expired_seen.add(digest)
+                client = self.state["clients"].get(expired["client_id"]) or {}
+                self._write(
+                    "oauth_access_expired",
+                    token=expired["name"],
+                    client_name=client.get("client_name"),
+                )
             return None
         return AccessToken(
             token=token,

@@ -101,3 +101,105 @@ def relay_check(name, port, ca_pem, resolver=None, handshake=None):
     check_tls(name, port, ca_pem, handshake or tls_handshake)
     lines.append(f"ok  {name}:{port} presents a certificate from the relay CA")
     return lines
+
+
+# --- the full preflight (GW-BUILD-003, hub ADR 013 §1) ---
+
+
+def ca_fingerprint(ca_pem):
+    """SHA-256 of the relay CA, as `AB:CD:…`, to compare with `lan-ca show` on the host."""
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes
+
+    cert = x509.load_pem_x509_certificate(ca_pem.encode())
+    return cert.fingerprint(hashes.SHA256()).hex(":").upper()
+
+
+def check_port(name, port, timeout=5.0):
+    try:
+        socket.create_connection((name, port), timeout=timeout).close()
+    except OSError:
+        return False, (
+            f"FAIL nothing accepts TCP on {name}:{port}. Open the port in the host firewall "
+            f"(ufw allow {port}/tcp) and in the provider's firewall"
+        )
+    return True, f"ok  {name}:{port} is open"
+
+
+def check_refuses_http(name, port, timeout=3.0):
+    """A device listener never answers HTTP; a proxy or web server in front of it does."""
+    try:
+        with socket.create_connection((name, port), timeout=timeout) as sock:
+            sock.sendall(b"GET / HTTP/1.0\r\nHost: " + name.encode() + b"\r\n\r\n")
+            try:
+                reply = sock.recv(16)
+            except OSError:
+                reply = b""
+    except OSError:
+        return False, f"FAIL cannot connect to {name}:{port} to check it refuses HTTP"
+    if reply.startswith(b"HTTP/"):
+        return False, (
+            f"FAIL {name}:{port} answers HTTP: a proxy or web server is in front of the device "
+            "listener. Point a DNS-only record straight at the relay host"
+        )
+    return True, f"ok  {name}:{port} refuses plain HTTP"
+
+
+def check_mcp(url, timeout=10.0):
+    """`/mcp` asks for a sign-in (401) and its protected-resource metadata answers (200)."""
+    from importlib.metadata import version
+    from urllib.error import HTTPError, URLError
+    from urllib.parse import urlsplit
+    from urllib.request import Request, urlopen
+
+    # A tunnel's edge may refuse Python's default user agent (403), so name the check.
+    agent = {"User-Agent": f"grok-gadgets-gateway/{version('grok-gadgets-gateway')} relay-check"}
+    parts = urlsplit(url)
+    metadata = f"{parts.scheme}://{parts.netloc}/.well-known/oauth-protected-resource{parts.path}"
+
+    def status(request):
+        try:
+            with urlopen(request, timeout=timeout) as response:
+                return response.status
+        except HTTPError as exc:
+            return exc.code
+        except (URLError, OSError):
+            return None
+
+    meta = status(Request(metadata, headers=agent))
+    post = status(
+        Request(
+            url, data=b"{}", method="POST", headers={**agent, "Content-Type": "application/json"}
+        )
+    )
+    if meta == 200 and post == 401:
+        return True, f"ok  {url} answers 401 without a sign-in, and its sign-in metadata 200"
+    return False, (
+        f"FAIL {url}: metadata {meta}, POST {post} (want 200 and 401). Check the tunnel routes "
+        "the name to http://127.0.0.1:8766 and serve runs with --oauth"
+    )
+
+
+def full_check(name, port, ca_pem, mcp_url=None, resolver=None, handshake=None, fingerprint=None):
+    """Every preflight item as (ok, line); later checks still run after a failure."""
+    results = []
+    try:
+        addresses = check_dns(name, resolver or resolve_all)
+        results.append(
+            (True, f"ok  {name} is a DNS-only record ({len(addresses)} address(es), no proxy)")
+        )
+    except OperatorError as exc:
+        results.append((False, f"FAIL {exc}"))
+    results.append(check_port(name, port))
+    try:
+        check_tls(name, port, ca_pem, handshake or tls_handshake)
+        print_ = (fingerprint or ca_fingerprint)(ca_pem)
+        results.append(
+            (True, f"ok  {name}:{port} presents a certificate from the relay CA (SHA-256 {print_})")
+        )
+    except OperatorError as exc:
+        results.append((False, f"FAIL {exc}"))
+    results.append(check_refuses_http(name, port))
+    if mcp_url:
+        results.append(check_mcp(mcp_url))
+    return results
