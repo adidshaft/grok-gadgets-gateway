@@ -88,11 +88,24 @@ def test_relay_init_cli(tmp_path, capsys):
 
 
 class _Mcp(BaseHTTPRequestHandler):
+    """Like the tunnel's edge, it refuses Python's default user agent with 403."""
+
+    def _blocked(self):
+        if self.headers.get("User-Agent", "").startswith("Python-urllib"):
+            self.send_response(403)
+            self.end_headers()
+            return True
+        return False
+
     def do_GET(self):
+        if self._blocked():
+            return
         self.send_response(200 if self.path == "/.well-known/oauth-protected-resource/mcp" else 404)
         self.end_headers()
 
     def do_POST(self):
+        if self._blocked():
+            return
         self.send_response(401)
         self.end_headers()
 
