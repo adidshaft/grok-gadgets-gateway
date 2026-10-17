@@ -7,6 +7,7 @@ the session opens with `server/discover` (modern). `--protocol` picks one; `both
 
 import asyncio
 import json
+import os
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
@@ -416,3 +417,218 @@ async def rehearse_accounts(out=print, directory=None):
                 raise RehearsalError(f"B's remove gave {removed}")
             await alice.ok("gadgets_command", **blue)
             out("ok  B removed gadget-b; A owns it and commanded it")
+
+
+# --- rehearse --update (GW-OTA-001, hub ADR 012) ---
+
+UPDATE_GADGET = ("update-gadget", "rehearsal-token-update-gadget")
+UPDATE_BOARD = "rehearsal-board"
+
+
+class _UpdatingGadget:
+    """A simulated gadget that checks and downloads signed updates as the firmware does."""
+
+    def __init__(self, port, public_key, version):
+        from cryptography.hazmat.primitives import serialization
+
+        self.port = port
+        self.key = serialization.load_pem_public_key(Path(public_key).read_bytes())
+        self.version = version
+        self.reader = self.writer = None
+        self.offer = None
+
+    async def connect(self):
+        from .protocol import _root
+
+        hello = json.loads(_root.joinpath("fixtures/device-transcript.json").read_text())[0]
+        hello["device"]["device_id"], hello["token"] = UPDATE_GADGET
+        hello["device"]["firmware_version"] = self.version
+        hello["update"] = "ready"
+        self.reader, self.writer = await asyncio.open_connection("127.0.0.1", self.port)
+        reply = await self.send(hello)
+        if not reply.get("ok"):
+            raise RehearsalError(f"hello failed: {reply}")
+        self.offer = reply.get("update")
+        return self.offer
+
+    async def send(self, message):
+        self.writer.write((json.dumps(message) + "\n").encode())
+        await self.writer.drain()
+        line = await asyncio.wait_for(self.reader.readline(), 5)
+        if len(line) > 2048:
+            raise RehearsalError("a reply is longer than 2,048 bytes")
+        return json.loads(line)
+
+    async def report(self, status, version, reason=None):
+        message = {"type": "update_status", "version": version, "status": status}
+        if reason:
+            message["reason"] = reason
+        if not (await self.send(message)).get("ok"):
+            raise RehearsalError(f"the relay refused the {status} report")
+
+    def check(self):
+        """The firmware's checks before any download: signature, then the manifest."""
+        import base64
+
+        from cryptography.exceptions import InvalidSignature
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric import ec
+
+        raw = base64.b64decode(self.offer["manifest"])
+        try:
+            self.key.verify(
+                base64.b64decode(self.offer["signature"]), raw, ec.ECDSA(hashes.SHA256())
+            )
+        except InvalidSignature:
+            return None, "signature"
+        manifest = json.loads(raw)
+        if manifest["board"] != UPDATE_BOARD:
+            return None, "board"
+        if manifest["version"] in (self.version,) or manifest["size"] != self.offer["size"]:
+            return None, "version"
+        return manifest, None
+
+    async def download(self, manifest):
+        import base64
+        import hashlib
+
+        digest, size = hashlib.sha256(), 0
+        for offset in range(0, manifest["size"], self.offer["chunk"]):
+            reply = await self.send(
+                {"type": "update_chunk", "version": manifest["version"], "offset": offset}
+            )
+            if not reply.get("ok"):
+                raise RehearsalError(f"chunk {offset} refused: {reply['error']['code']}")
+            data = base64.b64decode(reply["data"])
+            digest.update(data)
+            size += len(data)
+        return size == manifest["size"] and digest.hexdigest() == manifest["sha256"]
+
+    async def close(self):
+        if self.writer is not None:
+            self.writer.close()
+            self.writer = None
+
+
+async def rehearse_update(out=print, directory=None):
+    """Sign updates and deliver them to a simulated gadget on a private relay.
+
+    A good update is offered, downloaded in chunks, verified and applied after a restart.
+    An update signed with another key and one with a changed byte are refused, and an image
+    that never goes Online is reported as reverted and not offered again. It uses a temporary
+    config directory and never this computer's gateway configuration or keys.
+    """
+    import io
+    import tempfile
+
+    from . import firmware
+    from .operator import atomic_write
+    from .service import serve_gateway
+    from .transport import digest
+
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(directory or temporary)
+        builder = firmware.keygen(root / "keys" / "builder.key")
+        stranger = firmware.keygen(root / "keys" / "stranger.key")
+        store = firmware.Store(root / "firmware")
+
+        def publish(version, key, **add):
+            image = root / f"{version}.bin"
+            image.write_bytes(os.urandom(5 * firmware.CHUNK + 300))
+            bundle = root / f"update-{version}"
+            firmware.sign(image, key, board=UPDATE_BOARD, version=version, out=bundle)
+            store.add(bundle, **add)
+            return bundle
+
+        credentials = root / "credentials.json"
+        devices = {UPDATE_GADGET[0]: {"sha256": digest(UPDATE_GADGET[1]), "revoked": False}}
+        atomic_write(credentials, json.dumps({"devices": devices}).encode())
+        atomic_write(root / "mcp-token", b"rehearsal-only-mcp-token\n")
+        async with serve_gateway(
+            credentials,
+            root / "mcp-token",
+            port=_free_port(),
+            device_port=(device_port := _free_port()),
+            log_stream=io.StringIO(),
+            request_log=root / "requests.jsonl",
+            firmware_directory=store.root,
+        ):
+            gadget = _UpdatingGadget(device_port, builder["public"], "1.0.0")
+            if await gadget.connect() is not None:
+                raise RehearsalError("an update was offered before one was assigned")
+            await gadget.close()
+
+            publish("1.0.1", builder["private"], public_key=builder["public"])
+            store.assign(UPDATE_GADGET[0], "1.0.1")
+            if await gadget.connect() is None:
+                raise RehearsalError("the assigned update was not offered")
+            manifest, reason = gadget.check()
+            if manifest is None:
+                raise RehearsalError(f"the gadget refused a good update: {reason}")
+            await gadget.report("started", "1.0.1")
+            if not await gadget.download(manifest):
+                raise RehearsalError("the downloaded image does not match its manifest")
+            await gadget.report("verified", "1.0.1")
+            await gadget.close()
+            gadget.version = "1.0.1"  # The restart: the new image says hello.
+            if await gadget.connect() is not None:
+                raise RehearsalError("the running version was offered again")
+            await gadget.report("applied", "1.0.1")
+            if store.status()[UPDATE_GADGET[0]]["status"] != "applied":
+                raise RehearsalError("the relay did not record the update as applied")
+            out("ok  1.0.1 offered, downloaded in chunks, verified, restarted and applied")
+
+            publish("1.0.2", stranger["private"], unchecked=True)
+            store.assign(UPDATE_GADGET[0], "1.0.2")
+            await gadget.close()
+            await gadget.connect()
+            manifest, reason = gadget.check()
+            if manifest is not None or reason != "signature":
+                raise RehearsalError("an update signed with another key was not refused")
+            await gadget.report("rejected", "1.0.2", reason)
+            if (await gadget.send({"type": "poll"})).get("update", False) is not None:
+                raise RehearsalError("the refused update was not withdrawn")
+            out("ok  1.0.2, signed with another key, refused before any download")
+
+            publish("1.0.3", builder["private"], public_key=builder["public"])
+            stored = store.root / UPDATE_BOARD / "1.0.3" / "image.bin"
+            changed = bytearray(stored.read_bytes())
+            changed[len(changed) // 2] ^= 0x01
+            stored.write_bytes(bytes(changed))
+            store.assign(UPDATE_GADGET[0], "1.0.3")
+            await gadget.close()
+            await gadget.connect()
+            manifest, reason = gadget.check()
+            if manifest is None or await gadget.download(manifest):
+                raise RehearsalError("a changed byte was not caught by the SHA-256 check")
+            await gadget.report("failed", "1.0.3", "sha256")
+            out("ok  1.0.3 with one changed byte refused by the SHA-256 check before Update.end()")
+
+            publish("1.0.4", builder["private"], public_key=builder["public"])
+            store.assign(UPDATE_GADGET[0], "1.0.4")
+            await gadget.close()
+            await gadget.connect()
+            manifest, _ = gadget.check()
+            if manifest is None or not await gadget.download(manifest):
+                raise RehearsalError("1.0.4 did not download")
+            await gadget.report("verified", "1.0.4")
+            await gadget.close()
+            # 1.0.4 never goes Online; the previous image starts and reports the revert.
+            await gadget.connect()
+            if gadget.offer is None:
+                raise RehearsalError("1.0.4 was not offered before the revert report")
+            await gadget.report("reverted", "1.0.4", "not_online")
+            await gadget.close()
+            if await gadget.connect() is not None:
+                raise RehearsalError("a reverted version was offered again")
+            await gadget.close()
+            out("ok  1.0.4 never went Online: reverted, reported and not offered again")
+
+            names = [
+                json.loads(line)["event"]
+                for line in (root / "requests.jsonl").read_text().splitlines()
+            ]
+            for event in ("update_applied", "update_rejected", "update_failed", "update_reverted"):
+                if event not in names:
+                    raise RehearsalError(f"the request log has no {event} line")
+            out("ok  the request log has update_applied, _rejected, _failed and _reverted lines")

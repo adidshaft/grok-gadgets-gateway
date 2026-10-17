@@ -449,6 +449,7 @@ async def serve_gateway(
     oauth_issuer=None,
     oauth_directory=None,
     accounts=False,
+    firmware_directory=None,
 ):
     """Run until the context exits. HTTP and the device listener bind 127.0.0.1.
 
@@ -524,6 +525,12 @@ async def serve_gateway(
         claims.open(enrolled)
         if sim is not None and claims.owner(sim.device_id) is None:
             claims.assign(sim.device_id, claims.operator, via="operator")
+    updates = None
+    if registry is not None:
+        from .firmware import Updates
+
+        # Signed updates (hub ADR 012): offered only to gadgets that ask in their hello.
+        updates = Updates(firmware_directory, log=log)
     device_server = None
     if registry is not None:
         device_server = DeviceServer(
@@ -534,6 +541,7 @@ async def serve_gateway(
             reserved_ids=[sim.device_id] if sim else [],
             log=log,
             claims=claims,
+            updates=updates,
         )
 
     def make_lan_server(address):
@@ -551,6 +559,7 @@ async def serve_gateway(
             connects_per_minute=LAN_CONNECTS_PER_MINUTE,
             frames_per_second=LAN_FRAMES_PER_SECOND,
             claims=claims,
+            updates=updates,
         )
 
     lan_server = make_lan_server(lan_bind) if lan is not None else None
@@ -572,6 +581,7 @@ async def serve_gateway(
             public=True,
             pending_per_address=RELAY_PENDING_PER_ADDRESS,
             claims=claims,
+            updates=updates,
         )
 
     def listener_status():
