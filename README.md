@@ -72,6 +72,10 @@ The gateway gives Grok Bot six tools:
 | `gadgets_read_events` | Reads button presses and other events in order. |
 | `gadgets_diagnostics` | A support report with no tokens, state or arguments. |
 
+A relay in accounts mode (`serve --oauth --accounts`) scopes every tool to the caller's own
+gadgets and adds `gadgets_claim`, `gadgets_remove` and `gadgets_share`
+([relay host guide](docs/relay-host.md#accounts-other-people-claim-their-own-gadgets)).
+
 A result is the gadget's own report, not proof of a physical effect.
 
 ## Connect a gadget

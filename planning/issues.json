@@ -972,6 +972,26 @@
       ],
       "stage": "review",
       "evidence": "GitHub #159; tests/test_accounts.py and tests/test_claim_sign_in.py with the SDK OAuth client and a TCP device; 345 passed. No relay or Grok Bot test yet."
+    },
+    {
+      "id": "GW-CLAIM-002",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Every sign-in sees every device; no claim, remove or share tools",
+      "acceptance": [
+        "All six tools scoped by account, diagnostics, read_events and command_status included",
+        "A cross-account regression test per tool",
+        "gadgets_claim, gadgets_remove, gadgets_share (create, list, revoke, link)",
+        "Share codes scoped, revocable, one use, 10 minutes, no merge",
+        "Shared bearer credential refused (GW-CLAIM-001)"
+      ],
+      "labels": [
+        "feature",
+        "protocol",
+        "gateway",
+        "P1"
+      ],
+      "stage": "review",
+      "evidence": "GitHub #160; tests/test_scoped_tools.py (two OAuth sign-ins, two TCP gadgets) and tests/test_accounts_share.py; 356 passed. No relay or Grok Bot test yet."
     }
   ]
 }
