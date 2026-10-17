@@ -285,3 +285,22 @@ async def test_five_wrong_codes_end_a_sign_in_and_floods_are_logged(tmp_path):
     lines = [json.loads(x) for x in (tmp_path / "requests.jsonl").read_text().splitlines()]
     rejected = [line for line in lines if line["event"] == "claim_rejected"]
     assert len(rejected) == 5 and "DDDD-DDDD" not in json.dumps(lines)
+
+
+async def test_the_code_page_lets_the_browser_follow_the_redirect_to_grok_bot(tmp_path):
+    """Browsers apply the form page's `form-action` CSP to the redirect after the post, so
+    `form-action 'self'` stopped a phone's hand-back to Grok Bot's callback (17 Oct 2026)."""
+    port, device_port = free_port(), free_port()
+    async with accounts_server(tmp_path, port, device_port) as running:
+        url = running.url.replace("127.0.0.1", "localhost")
+        writer, reply, _ = await device(device_port)
+        pages = []
+        auth, _ = code_client(url, ["AAAA-AAAA", reply["claim_code"]], pages)
+        await list_devices(url, auth)
+        writer.close()
+    form_page, done = pages
+    assert form_page.status_code == 200 and 'method="post"' in form_page.text
+    policy = form_page.headers["content-security-policy"]
+    assert "form-action" not in policy and "default-src 'none'" in policy
+    assert form_page.headers["x-frame-options"] == "DENY"
+    assert done.status_code == 302
