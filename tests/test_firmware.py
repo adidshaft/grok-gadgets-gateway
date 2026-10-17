@@ -335,6 +335,19 @@ def test_a_refused_or_reverted_version_is_not_offered_again(relay, state):
     assert updates.poll("kit-1", "s2")["update"]["version"] == "0.2.0-alpha.17"
 
 
+def test_a_reverted_result_stays_when_the_gadget_refuses_the_offer_again(relay):
+    # Seen on the kit: the old image says hello, gets the offer once more, reports the revert
+    # and then refuses that version. The operator should still see `reverted`.
+    store, updates, log, *_ = relay
+    store.assign("kit-1", "0.2.0-alpha.17")
+    assert "update" in updates.hello("kit-1", hello(), "s1")
+    status(updates, "reverted", reason="not_online")
+    status(updates, "rejected", reason="version")
+    assert [e["event"] for e in log.events()][-2:] == ["update_reverted", "update_rejected"]
+    result = store.status()["kit-1"]
+    assert result["status"] == "reverted" and result["reason"] == "not_online"
+
+
 def test_an_assignment_made_during_a_session_arrives_in_one_poll(relay, tmp_path):
     store, updates, log, *_ = relay
     assert updates.hello("kit-1", hello(), "s1") == {}
