@@ -28,6 +28,7 @@ def test_systemd_files_hold_the_hosts_and_no_secret(tmp_path):
         assert 'GATEWAY="${GATEWAY:-grok-gadgets-gateway==' in text
         assert "ufw allow 8444/tcp" in text and "8443" not in text
         assert "ufw allow 22/tcp" in text and "ufw allow OpenSSH" not in text
+        assert "/root/.ssh/authorized_keys" in text
         assert MCP in text and DEVICES in text and "--accounts" in text
         assert "service install" in text and "enable-linger" in text
     # No secret is ever written: tunnel credentials and tokens go by hand.

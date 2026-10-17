@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The `relay init` setup script gives the relay user the SSH keys that reach root, so `scp grokgadgets@HOST:…` in NEXT-STEPS works ([#165](https://github.com/adidshaft/grok-gadgets-gateway/issues/165), owner dry run).
 - `relay init` opens SSH as `22/tcp`, so the setup script also runs on a minimal Ubuntu image without the OpenSSH firewall profile. `service install` gives the `enable-linger` hint only when the user does not linger yet ([#165](https://github.com/adidshaft/grok-gadgets-gateway/issues/165), clean-room run).
 - `builder report` ([#164](https://github.com/adidshaft/grok-gadgets-gateway/issues/164), hub ADR 013). On the relay host it shows each gadget as counts: online, last seen, calls a day, error outcomes, firmware version and last update result, claimed, and the operator's name for it. It reads the request log with its rotated files, `firmware/status.json` and `oauth/accounts.json`. It never shows tokens, arguments, state, addresses, account IDs, codes or other accounts' names. `--days`, `--json`, `--log`.
 

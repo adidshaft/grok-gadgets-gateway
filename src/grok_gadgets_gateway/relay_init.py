@@ -93,6 +93,12 @@ curl -fsSL -o /tmp/cloudflared.deb \\
 dpkg -i /tmp/cloudflared.deb
 
 id -u "$RELAY_USER" >/dev/null 2>&1 || useradd -m -s /bin/bash "$RELAY_USER"
+# The keys that reach root also reach the relay user, for scp and enroll from your computer.
+if [ -s /root/.ssh/authorized_keys ] && [ ! -s "/home/$RELAY_USER/.ssh/authorized_keys" ]; then
+  install -d -m 700 -o "$RELAY_USER" -g "$RELAY_USER" "/home/$RELAY_USER/.ssh"
+  install -m 600 -o "$RELAY_USER" -g "$RELAY_USER" /root/.ssh/authorized_keys \\
+    "/home/$RELAY_USER/.ssh/authorized_keys"
+fi
 loginctl enable-linger "$RELAY_USER"
 RUNTIME="/run/user/$(id -u "$RELAY_USER")"
 for _ in $(seq 1 30); do [ -d "$RUNTIME" ] && break; sleep 1; done
