@@ -386,8 +386,9 @@ def provision(tmp_path, monkeypatch, capsys, *extra):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     if not (tmp_path / "grok-gadgets" / "credentials.json").exists():
         assert main(["init", "--client", "http"]) == 0
-        assert main(["enroll", "dev-1"]) == 0
+        assert main(["enroll", "dev-1", "--token-file", str(tmp_path / "dev.token")]) == 0
     capsys.readouterr()
+    extra = (*extra, "--token-file", str(tmp_path / "dev.token"))
     # Two status checks (before the prompt and before sending), then the provisioning reply.
     board = FakeSerialPort([b'{"ok":true,"device_id":"dev-1"}\n'] * 3)
     answers = ["home", "password1"]

@@ -2,6 +2,7 @@
 
 import argparse
 import asyncio
+import hmac
 import json
 import os
 import signal
@@ -273,6 +274,25 @@ def build_parser():
     oauth_revoke = oauth_sub.add_parser("revoke", help="end every sign-in with this name at once")
     oauth_revoke.add_argument("name")
 
+    accounts = sub.add_parser("accounts", help="see the accounts of serve --oauth --accounts")
+    accounts_sub = accounts.add_subparsers(dest="accounts_command", required=True)
+    accounts_sub.add_parser("list", help="list accounts and how many gadgets each owns")
+    unclaim = accounts_sub.add_parser("unclaim", help="take a gadget away from its owner")
+    unclaim.add_argument("device_id")
+    assign = accounts_sub.add_parser("assign", help="give a gadget to an account")
+    assign.add_argument("device_id")
+    assign.add_argument("account")
+    link = accounts_sub.add_parser(
+        "link", help="print a 10-minute code that signs a new app in to an account"
+    )
+    link.add_argument("account")
+    for command in (unclaim, assign, link):
+        command.add_argument(
+            "--no-wait",
+            action="store_true",
+            help="queue the change and return; serve applies it when it runs",
+        )
+
     remote = sub.add_parser(
         "remote", help="kill switch: turn remote (tunnel) access off or on at once"
     )
@@ -335,6 +355,12 @@ def build_parser():
         help="let Grok Bot sign in with OAuth at https://ALLOWED-HOST; you approve each sign-in "
         "with: grok-gadgets-gateway oauth approve CODE",
     )
+    serve.add_argument(
+        "--accounts",
+        action="store_true",
+        help="with --oauth: each person signs in with the code their gadget shows and gets an "
+        "account (hub ADR 011); the first start gives enrolled devices to the operator account",
+    )
     _request_log_option(serve)
     _usage_hook_option(serve)
 
@@ -392,6 +418,17 @@ def build_parser():
     provision.add_argument(
         "--factory-reset", action="store_true", help="erase the board's Wi-Fi settings instead"
     )
+    provision_token = provision.add_mutually_exclusive_group()
+    provision_token.add_argument(
+        "--token-file",
+        metavar="FILE",
+        help="the device token from enroll --token-file (the registry keeps only its hash)",
+    )
+    provision_token.add_argument(
+        "--rotate",
+        action="store_true",
+        help="send a new token; the registry stores it after the board confirms",
+    )
     provision.add_argument(
         "--no-relay-check",
         action="store_true",
@@ -422,6 +459,17 @@ def build_parser():
     )
     factory.add_argument(
         "--replace", action="store_true", help="overwrite the board's existing factory identity"
+    )
+    factory_token = factory.add_mutually_exclusive_group()
+    factory_token.add_argument(
+        "--token-file",
+        metavar="FILE",
+        help="the device token from enroll --token-file (the registry keeps only its hash)",
+    )
+    factory_token.add_argument(
+        "--rotate",
+        action="store_true",
+        help="send a new token; the registry stores it after the board confirms",
     )
     factory.add_argument(
         "--new-label",
@@ -469,6 +517,9 @@ def build_parser():
         "--oauth", action="store_true", help="let Grok Bot sign in (see serve --oauth)"
     )
     service_install.add_argument(
+        "--accounts", action="store_true", help="accounts and claim codes (see serve --accounts)"
+    )
+    service_install.add_argument(
         "--device-port", type=int, default=8765, help="loopback device port"
     )
     _usage_hook_option(service_install)
@@ -504,6 +555,12 @@ def build_parser():
         choices=("legacy", "modern", "both"),
         default="both",
         help="MCP era: legacy initialize, modern 2026-07-28 server/discover, or both (default)",
+    )
+    rehearse.add_argument(
+        "--accounts",
+        action="store_true",
+        help="run two accounts on a private relay in accounts mode with two simulated gadgets: "
+        "claim, isolation, share, revoke and transfer (uses no config of this computer)",
     )
     return parser
 
@@ -651,6 +708,8 @@ def run(parser, args):
         return run_remote(parser, args)
     if command == "oauth":
         return run_oauth(parser, args)
+    if command == "accounts":
+        return run_accounts(parser, args)
     if command == "usage":
         return run_usage(parser, args)
     if command == "serve":
@@ -675,6 +734,7 @@ def run(parser, args):
                     remote_switch=str(remote_off_path()),
                     usage_hook=usage_hook,
                     oauth=args.oauth,
+                    accounts=args.accounts,
                 )
             )
         except OperatorError as exc:
@@ -709,6 +769,22 @@ def run(parser, args):
         return run_label(parser, args)
     if command == "service":
         return run_service(parser, args)
+    if command == "rehearse" and args.accounts:
+        from .rehearse import RehearsalError, rehearse_accounts
+
+        try:
+            asyncio.run(rehearse_accounts())
+        except Exception as exc:  # noqa: BLE001 - one plain message, as for the other rehearsal
+            from .rehearse import _find
+
+            failure = _find(exc, RehearsalError) or exc
+            print(f"Account rehearsal failed: {failure}")
+            return 1
+        print(
+            "Account rehearsal passed: two sign-ins, each with its own gadget. It does not "
+            "prove a Grok Bot connection, a second person or any physical effect."
+        )
+        return 0
     if command == "rehearse":
         from .rehearse import main as rehearse_main
 
@@ -798,13 +874,63 @@ def run_relay_check(parser, args):
     return 0
 
 
+def provisioning_token(parser, args, path, *, enroll_new=False):
+    """The token a provisioning line carries, and what to store once the board confirms.
+
+    The registry keeps only hashes (GW-CLAIM-003), so the token comes from `--token-file`,
+    or `--rotate` (or `--enroll` for a new device) makes one that is stored after the board
+    confirms. A registry from before the change still holds the plain token.
+    """
+    from .operator import new_device_token, read_device_token_file
+    from .transport import digest, read_registry
+
+    record = read_registry(path).get(args.device) if os.path.exists(path) else None
+    if args.token_file:
+        token = read_device_token_file(args.token_file)
+        if record is not None:
+            expected = record.get("sha256") or digest(record["token"])
+            if not hmac.compare_digest(expected, digest(token)):
+                parser.error(
+                    f"{args.token_file} does not match the token enrolled for {args.device}"
+                )
+            if record.get("revoked"):
+                parser.error(f"{args.device} is revoked. Run: enroll {args.device} --rotate")
+        return token, lambda: None
+    if args.rotate:
+        if record is None:
+            parser.error(f"{args.device} is not enrolled. Run: enroll {args.device}")
+        token = new_device_token()
+        return token, lambda: enroll(args.device, path, rotate=True, token=token)
+    if record is None and enroll_new:
+        token = new_device_token()
+
+        def add():
+            enroll(args.device, path, token=token)
+            print(f"Enrolled {args.device} in {path}.", file=sys.stderr)
+
+        return token, add
+    if record is None:
+        parser.error(
+            f"{args.device} is not enrolled. Run on the relay: enroll {args.device} "
+            "--token-file FILE, then pass --token-file FILE"
+            + (", or pass --enroll" if enroll_new is not None else "")
+        )
+    if record.get("revoked"):
+        parser.error(f"{args.device} is revoked. Run: enroll {args.device} --rotate")
+    if "token" in record:
+        return record["token"], lambda: None
+    parser.error(
+        f"The registry keeps only a hash of {args.device}'s token. Pass --token-file FILE "
+        f"(from enroll {args.device} --token-file FILE), or --rotate to send a new token"
+    )
+
+
 def run_factory_provision(parser, args):
     import serial
 
     from .label import label_record, label_text, labels_dir, save_record, write_label_files
     from .lan import ca_pem_text, is_dns_name, parse_gateway_address, read_ca_file
     from .relay_check import relay_check
-    from .transport import read_registry
     from .wifi_provision import ProvisionError, factory_frame, factory_provision
 
     path = args.credentials or credentials_path()
@@ -814,21 +940,10 @@ def run_factory_provision(parser, args):
         if is_dns_name(host) and not args.no_relay_check:
             for line in relay_check(host, port, ca):
                 print(line, file=sys.stderr)
-        record = read_registry(path).get(args.device) if os.path.exists(path) else None
-        if record is None and args.enroll:
-            enroll(args.device, path)
-            print(f"Enrolled {args.device} in {path}.", file=sys.stderr)
-            record = read_registry(path).get(args.device)
-        if record is None:
-            parser.error(
-                f"{args.device} is not enrolled. Run on the relay: enroll {args.device}, "
-                "or pass --enroll"
-            )
-        if record.get("revoked"):
-            parser.error(f"{args.device} is revoked. Run: enroll {args.device} --rotate")
+        token, commit = provisioning_token(parser, args, path, enroll_new=args.enroll)
         values = label_record(args.device, new=args.new_label)
         frame = factory_frame(
-            record["token"],
+            token,
             host,
             port,
             ca,
@@ -845,6 +960,10 @@ def run_factory_provision(parser, args):
         parser.error(f"cannot use {args.serial_port}: {exc}")
     except ProvisionError as exc:
         parser.error(str(exc))
+    try:
+        commit()
+    except (OperatorError, CredentialError) as exc:
+        parser.error(f"The board has its new token, but the registry was not updated: {exc}")
     save_record(values)
     files = write_label_files(values, args.label_dir or labels_dir())
     print(label_text(values), end="")
@@ -889,7 +1008,6 @@ def run_wifi_provision(parser, args):
         read_ca_file,
     )
     from .relay_check import relay_check
-    from .transport import read_registry
     from .wifi_provision import (
         ProvisionError,
         check_board,
@@ -907,11 +1025,7 @@ def run_wifi_provision(parser, args):
             else:
                 parser.error("--lan ADDRESS[:PORT] or --gateway NAME[:PORT] is required")
             path = args.credentials or credentials_path()
-            record = read_registry(path).get(args.device)
-            if record is None:
-                parser.error(f"{args.device} is not enrolled. Run: enroll {args.device}")
-            if record.get("revoked"):
-                parser.error(f"{args.device} is revoked. Run: enroll {args.device} --rotate")
+            token, commit = provisioning_token(parser, args, path, enroll_new=None)
             ca = read_ca_file(args.ca) if args.ca else ca_pem_text()
             if args.gateway and is_dns_name(host) and not args.no_relay_check:
                 for line in relay_check(host, port, ca):
@@ -933,13 +1047,17 @@ def run_wifi_provision(parser, args):
             except (EOFError, KeyboardInterrupt):
                 print(file=sys.stderr)
                 parser.error("Cancelled; nothing was sent to the board.")
-            frame = provision_frame(ssid, password, record["token"], host, port, ca)
+            frame = provision_frame(ssid, password, token, host, port, ca)
             del password
             provision(device, args.device, frame)
     except (serial.SerialException, OSError) as exc:
         parser.error(f"cannot use {args.serial_port}: {exc}")
     except ProvisionError as exc:
         parser.error(str(exc))
+    try:
+        commit()
+    except (OperatorError, CredentialError) as exc:
+        parser.error(f"The board has its new token, but the registry was not updated: {exc}")
     print(
         f"Provisioned {args.device} for {host}:{port}. The board restarts and joins Wi-Fi; "
         "you can now power it from a USB charger.",
@@ -959,6 +1077,8 @@ def run_service(parser, args, service=None):
                 parser.error("the gateway is not set up. Run: grok-gadgets-gateway init")
             if args.oauth and len(args.allowed_host) != 1:
                 parser.error("--oauth needs exactly one --allowed-host: the tunnel name")
+            if args.accounts and not args.oauth:
+                parser.error("--accounts needs --oauth: accounts are created at sign-in")
             if args.usage_hook is not None:
                 import shlex
 
@@ -1001,6 +1121,7 @@ def run_service(parser, args, service=None):
                     args.oauth,
                     args.usage_hook,
                     args.device_listen,
+                    args.accounts,
                 ),
             ]
             environment = {
@@ -1089,6 +1210,59 @@ def run_usage(parser, args):
         print(json.dumps(summary, indent=2))
     else:
         print(format_summary(summary))
+    return 0
+
+
+def run_accounts(parser, args):
+    """`list` reads `oauth/accounts.json`; changes are queued for `serve` (hub ADR 011 §9)."""
+    import time
+
+    from .accounts import ACCOUNT_ID, queue_admin
+    from .oauth import oauth_dir
+    from .transport import DEVICE_ID
+
+    action = args.accounts_command
+    if action != "list":
+        if not DEVICE_ID.fullmatch(getattr(args, "device_id", None) or "x"):
+            parser.error("not a device ID")
+        if action in ("assign", "link") and not ACCOUNT_ID.fullmatch(args.account):
+            parser.error("not an account ID; see: grok-gadgets-gateway accounts list")
+        request = {"action": action}
+        if action in ("unclaim", "assign"):
+            request["device"] = args.device_id
+        if action in ("assign", "link"):
+            request["account"] = args.account
+        queued = queue_admin(oauth_dir() / "admin", request)
+        if "code" in queued:
+            print(queued["code"])
+            print(
+                "Give this code to the account's owner once; it works for 10 minutes on the "
+                "relay's sign-in page.",
+                file=sys.stderr,
+            )
+        deadline = time.monotonic() + (0 if args.no_wait else 5)
+        while queued["path"].exists() and time.monotonic() < deadline:
+            time.sleep(0.2)
+        if queued["path"].exists():
+            print("Queued; serve applies it when it runs.", file=sys.stderr)
+        else:
+            print("Applied by serve; see its log for the result.", file=sys.stderr)
+        return 0
+    path = oauth_dir() / "accounts.json"
+    try:
+        data = json.loads(path.read_text())
+    except FileNotFoundError:
+        print("No accounts yet: start serve --oauth --accounts.", file=sys.stderr)
+        return 0
+    except (OSError, ValueError):
+        parser.error(f"{path} is damaged")
+    owned = {}
+    for record in data.get("devices", {}).values():
+        owned[record["owner"]] = owned.get(record["owner"], 0) + 1
+    for account in sorted(data.get("accounts", {})):
+        role = "operator" if account == data.get("operator") else "-"
+        count = owned.get(account, 0)
+        print(f"{account}  {role}  {count} gadget{'' if count == 1 else 's'}")
     return 0
 
 

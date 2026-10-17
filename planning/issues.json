@@ -933,6 +933,154 @@
       ],
       "stage": "review",
       "evidence": "GitHub #158; tests/test_factory_provision.py with a fake board. No kit test yet."
+    },
+    {
+      "id": "GW-CLAIM-003",
+      "owner": "grok-gadgets-gateway",
+      "problem": "credentials.json holds plain device tokens; provisioning reads them from there",
+      "acceptance": [
+        "Registry keeps SHA-256 hashes only; enroll shows the token once",
+        "Migration on first start keeps revocations and a 0600 backup",
+        "Constant-time digest comparison, also for unknown devices",
+        "factory-provision and wifi-provision work with --token-file or --rotate; hash stored after the board confirms",
+        "Tests"
+      ],
+      "labels": [
+        "feature",
+        "gateway",
+        "P1"
+      ],
+      "stage": "review",
+      "evidence": "GitHub #161; tests/test_hashed_tokens.py (13 tests) and updated provisioning tests; 326 passed. No relay or kit test yet."
+    },
+    {
+      "id": "GW-CLAIM-001",
+      "owner": "grok-gadgets-gateway",
+      "problem": "The relay has one tenant; sign-ins carry only an approved name",
+      "acceptance": [
+        "serve --oauth --accounts with oauth/accounts.json",
+        "Account minted when a sign-in is approved with a claim code; carried by the refresh-token family, never client_id",
+        "Claim code in the hello reply only after the gadget opts in; fresh code in poll replies",
+        "Recovery code shown once; shared bearer tokens refused",
+        "CLI approve kept for the operator account; migration of enrolled devices and live sign-ins",
+        "Attempt limits and flood line; tests"
+      ],
+      "labels": [
+        "feature",
+        "gateway",
+        "P1"
+      ],
+      "stage": "review",
+      "evidence": "GitHub #159; tests/test_accounts.py and tests/test_claim_sign_in.py with the SDK OAuth client and a TCP device; 345 passed. No relay or Grok Bot test yet."
+    },
+    {
+      "id": "GW-CLAIM-002",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Every sign-in sees every device; no claim, remove or share tools",
+      "acceptance": [
+        "All six tools scoped by account, diagnostics, read_events and command_status included",
+        "A cross-account regression test per tool",
+        "gadgets_claim, gadgets_remove, gadgets_share (create, list, revoke, link)",
+        "Share codes scoped, revocable, one use, 10 minutes, no merge",
+        "Shared bearer credential refused (GW-CLAIM-001)"
+      ],
+      "labels": [
+        "feature",
+        "protocol",
+        "gateway",
+        "P1"
+      ],
+      "stage": "review",
+      "evidence": "GitHub #160; tests/test_scoped_tools.py (two OAuth sign-ins, two TCP gadgets) and tests/test_accounts_share.py; 356 passed. No relay or Grok Bot test yet."
+    },
+    {
+      "id": "GW-CLAIM-004",
+      "owner": "grok-gadgets-gateway",
+      "problem": "No unclaim, transfer or reset reconciliation",
+      "acceptance": [
+        "The old owner can unclaim; otherwise a claim after a reset waits a grace period",
+        "Audit lines for claim, unclaim and transfer; no tokens or codes in logs",
+        "Tests for reset-then-claim by a second account",
+        "rehearse runs two accounts"
+      ],
+      "labels": [
+        "feature",
+        "gateway",
+        "P1"
+      ],
+      "stage": "review",
+      "evidence": "GitHub #180; tests/test_transfer.py, tests/test_rehearse_accounts.py, sign-in flood test; 367 passed. No relay, kit or Grok Bot test yet."
+    },
+    {
+      "id": "GW-CLAIM-005",
+      "owner": "grok-gadgets-gateway",
+      "problem": "After a right code the phone's sign-in sheet never handed the authorization code back to Grok Bot",
+      "acceptance": [
+        "A right code answers with the same 302 redirect as the operator approval",
+        "Recovery code from gadgets_share action=recovery_code, replacing the old one",
+        "Tests"
+      ],
+      "labels": [
+        "bug",
+        "gateway",
+        "P1"
+      ],
+      "stage": "review",
+      "evidence": "GitHub #196; relay log 17 Oct 10:10:37Z oauth_sign_in_approved with no oauth_token_issued; tests updated; 367 passed."
+    },
+    {
+      "id": "GW-CLAIM-006",
+      "owner": "grok-gadgets-gateway",
+      "problem": "form-action 'self' blocks the redirect from the code page to Grok Bot's callback",
+      "acceptance": [
+        "No form-action directive on the sign-in page",
+        "Regression test on the form page header",
+        "Browser check against a local relay"
+      ],
+      "labels": [
+        "bug",
+        "gateway",
+        "P1"
+      ],
+      "stage": "review",
+      "evidence": "GitHub #198; relay 17 Oct 10:44:07Z account_linked, no oauth_token_issued; Chromium console CSP error with the old header; callback reached with the fix; 368 passed."
+    },
+    {
+      "id": "GW-CLAIM-007",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Limited claim attempts were not logged; the install port check failed for ~40 s after uninstall",
+      "acceptance": [
+        "claim_limited line, once a minute per key",
+        "port_free tolerates TIME_WAIT like the listeners; a live listener still counts",
+        "Tests"
+      ],
+      "labels": [
+        "bug",
+        "gateway",
+        "P2"
+      ],
+      "stage": "review",
+      "evidence": "GitHub #200; relay 17 Oct: 21st flood code refused without a line; install retried 14 times at 10:53Z; tests added; 370 passed."
+    },
+    {
+      "id": "GW-NAME-001",
+      "owner": "grok-gadgets-gateway",
+      "problem": "People must use device IDs such as oledkit-84c7bb57148c in Grok Bot",
+      "acceptance": [
+        "gadgets_name with name and room per account",
+        "Names accepted wherever device_id is",
+        "Summary line in the list",
+        "Server title and instructions for Grok Bot",
+        "transfer_pending message",
+        "Tests"
+      ],
+      "labels": [
+        "feature",
+        "gateway",
+        "P1"
+      ],
+      "stage": "review",
+      "evidence": "GitHub #202; tests/test_names.py (6); 376 passed. Owner request 17 Oct 2026."
     }
   ]
 }

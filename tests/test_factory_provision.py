@@ -10,6 +10,7 @@ from test_lan import FakeSerialPort
 from grok_gadgets_gateway import label, lan, relay_check
 from grok_gadgets_gateway.cli import main
 from grok_gadgets_gateway.operator import OperatorError
+from grok_gadgets_gateway.transport import digest
 from grok_gadgets_gateway.wifi_provision import ProvisionError, factory_frame
 
 NAME = "devices.example.net"
@@ -80,7 +81,9 @@ def run(tmp_path, monkeypatch, capsys, replies, *extra, enroll=True):
     if not (tmp_path / "grok-gadgets" / "credentials.json").exists():
         assert main(["init", "--client", "http"]) == 0
         if enroll:
-            assert main(["enroll", DEVICE]) == 0
+            assert main(["enroll", DEVICE, "--token-file", str(tmp_path / "dev.token")]) == 0
+    if enroll and "--enroll" not in extra and "--rotate" not in extra:
+        extra = (*extra, "--token-file", str(tmp_path / "dev.token"))
     capsys.readouterr()
     board = FakeSerialPort(replies)
     monkeypatch.setattr(serial, "Serial", lambda *a, **k: board)
@@ -97,7 +100,7 @@ def test_factory_provision_writes_the_identity_and_prints_the_label(tmp_path, mo
     frame = json.loads(board.written[-1])
     registry = json.loads((tmp_path / "grok-gadgets" / "credentials.json").read_text())
     assert frame["type"] == "factory_provision" and "ssid" not in frame and "password" not in frame
-    assert frame["token"] == registry["devices"][DEVICE]["token"]
+    assert registry["devices"][DEVICE]["sha256"] == digest(frame["token"])
     assert frame["host"] == NAME and frame["port"] == 8444 and frame["ca"] == lan.ca_pem_text()
     out, err = capsys.readouterr()
     record = label.load_record(DEVICE)
@@ -150,7 +153,7 @@ def test_factory_provision_refuses_before_sending(tmp_path, monkeypatch, capsys)
         (b'{"ok":true,"device_id":"' + DEVICE.encode() + b'"}\n', "0.2.0-alpha.15"),
     ):
         with pytest.raises(SystemExit):
-            run(tmp_path, monkeypatch, capsys, [reply], "--gateway", NAME, "--replace")
+            run(tmp_path, monkeypatch, capsys, [reply], "--gateway", NAME, "--replace", "--rotate")
         assert message in capsys.readouterr().err
 
     # A proxied relay name is refused before the board is touched.

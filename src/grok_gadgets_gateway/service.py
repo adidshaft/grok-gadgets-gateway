@@ -32,6 +32,8 @@ MCP_PATH = "/mcp"
 # Set by BearerAuth after a token matches; any client-sent copy is removed first.
 TOKEN_HEADER = b"x-grok-gadgets-token"
 REMOTE_HEADER = b"x-grok-gadgets-remote"
+# Accounts mode (hub ADR 011): the account of the OAuth sign-in that made this request.
+ACCOUNT_HEADER = b"x-grok-gadgets-account"
 _LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
 # A tunnel or proxy adds one of these; a local client does not.
 _FORWARDING_HEADERS = (b"forwarded", b"x-forwarded-for", b"x-forwarded-host", b"x-real-ip")
@@ -105,6 +107,12 @@ class FileTokenVerifier:
         # With serve --oauth, an access token from an owner-approved sign-in also matches.
         self.oauth = oauth
 
+    async def account_of(self, token):
+        """The account of an OAuth sign-in; None for the shared static tokens."""
+        if self.oauth is None or not isinstance(token, str):
+            return None
+        return await self.oauth.verify_account(token)
+
     async def verify_token(self, token):
         if not isinstance(token, str) or not token:
             return None
@@ -174,8 +182,11 @@ class BearerAuth:
         resource_metadata=None,
         allowed_hosts=(),
         clock=time.monotonic,
+        accounts=False,
     ):
         self.app = app
+        # Accounts mode refuses the Bot's shared credential: only an account's sign-in works.
+        self.accounts = accounts
         self.verifier = verifier
         self.limits = limits or Limits()
         self.log = log
@@ -236,7 +247,7 @@ class BearerAuth:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
-        internal = (TOKEN_HEADER, REMOTE_HEADER)
+        internal = (TOKEN_HEADER, REMOTE_HEADER, ACCOUNT_HEADER)
         headers = [(k, v) for k, v in scope.get("headers") or [] if k not in internal]
         values = dict(headers)
         remote = is_remote(values)
@@ -262,6 +273,16 @@ class BearerAuth:
                 "invalid_token",
                 "Bearer token required",
                 [(b"www-authenticate", challenge.encode())],
+            )
+            return
+        account = await self.verifier.account_of(token) if self.accounts else None
+        if self.accounts and account is None:
+            self._reject(401, "shared_credential_refused", name)
+            await _send_json(
+                send,
+                401,
+                "shared_credential_refused",
+                "This relay has accounts: sign in with your own Grok Bot sign-in",
             )
             return
         if remote and name == DEFAULT_TOKEN_NAME:
@@ -310,6 +331,8 @@ class BearerAuth:
             await send(message)
 
         added = [(TOKEN_HEADER, name.encode()), (REMOTE_HEADER, b"1" if remote else b"0")]
+        if account is not None:
+            added.append((ACCOUNT_HEADER, account.encode()))
         scope = {**scope, "headers": [*headers, *added]}
         self.active[name] = self.active.get(name, 0) + 1
         try:
@@ -425,6 +448,7 @@ async def serve_gateway(
     oauth=False,
     oauth_issuer=None,
     oauth_directory=None,
+    accounts=False,
 ):
     """Run until the context exits. HTTP and the device listener bind 127.0.0.1.
 
@@ -444,6 +468,8 @@ async def serve_gateway(
             oauth_issuer = f"https://{allowed_hosts[0]}"
         if request_log is None:
             raise OperatorError("--oauth requires --request-log")
+    if accounts and not oauth:
+        raise OperatorError("--accounts needs --oauth: accounts are created at sign-in")
     if simulator_config and not simulator:
         raise OperatorError("--simulator-config requires --simulator")
     for flag, value in (("--lan-listen", lan_listen), ("--device-listen", device_listen)):
@@ -485,6 +511,19 @@ async def serve_gateway(
 
     gateway = Gateway()
     sim = Simulator(gateway, config=config) if simulator else None
+    claims = None
+    if accounts:
+        from .accounts import Accounts
+        from .oauth import oauth_dir
+        from .transport import read_registry
+
+        enrolled = list(read_registry(credentials)) if credentials is not None else []
+        if sim is not None:
+            enrolled.append(sim.device_id)
+        claims = Accounts(Path(oauth_directory or oauth_dir()) / "accounts.json", log=log)
+        claims.open(enrolled)
+        if sim is not None and claims.owner(sim.device_id) is None:
+            claims.assign(sim.device_id, claims.operator, via="operator")
     device_server = None
     if registry is not None:
         device_server = DeviceServer(
@@ -494,6 +533,7 @@ async def serve_gateway(
             port=device_port,
             reserved_ids=[sim.device_id] if sim else [],
             log=log,
+            claims=claims,
         )
 
     def make_lan_server(address):
@@ -510,6 +550,7 @@ async def serve_gateway(
             handshake_timeout=LAN_HANDSHAKE_TIMEOUT,
             connects_per_minute=LAN_CONNECTS_PER_MINUTE,
             frames_per_second=LAN_FRAMES_PER_SECOND,
+            claims=claims,
         )
 
     lan_server = make_lan_server(lan_bind) if lan is not None else None
@@ -530,6 +571,7 @@ async def serve_gateway(
             frames_per_second=RELAY_FRAMES_PER_SECOND,
             public=True,
             pending_per_address=RELAY_PENDING_PER_ADDRESS,
+            claims=claims,
         )
 
     def listener_status():
@@ -613,8 +655,12 @@ async def serve_gateway(
             oauth_issuer=oauth_issuer if oauth else None,
             oauth_directory=oauth_directory,
             listener_status=listener_status if registry is not None else None,
+            accounts=claims,
         ) as running:
             follower = None
+            admin = None
+            if claims is not None:
+                admin = asyncio.create_task(apply_admin(claims, claims.path.parent / "admin"))
             if lan_server is not None:
                 running.lan = lan_label()
                 if is_local_name(lan[0]):
@@ -640,6 +686,8 @@ async def serve_gateway(
             finally:
                 if follower is not None:
                     follower.cancel()
+                if admin is not None:
+                    admin.cancel()
     finally:
         if relay_server is not None:
             await relay_server.close()
@@ -651,7 +699,14 @@ async def serve_gateway(
         log.close()
 
 
-def _oauth_routes(issuer, directory, log):
+async def apply_admin(accounts, directory, every=1.0):
+    """Apply operator commands queued by `accounts unclaim|assign|link` (hub ADR 011 §9)."""
+    while True:
+        accounts.apply_admin(directory)
+        await asyncio.sleep(every)
+
+
+def _oauth_routes(issuer, directory, log, accounts=None):
     """The SDK's OAuth routes, protected-resource metadata and the owner approval page."""
     from mcp.server.auth.handlers.metadata import MetadataHandler
     from mcp.server.auth.routes import (
@@ -668,7 +723,7 @@ def _oauth_routes(issuer, directory, log):
 
     from .oauth import APPROVE_PATH, SCOPE, OwnerApprovedOAuth
 
-    provider = OwnerApprovedOAuth(issuer, directory, log)
+    provider = OwnerApprovedOAuth(issuer, directory, log, accounts=accounts)
     issuer_url = AnyHttpUrl(provider.issuer)
     resource = AnyHttpUrl(provider.issuer + MCP_PATH)
     registration = ClientRegistrationOptions(
@@ -697,6 +752,7 @@ def _oauth_routes(issuer, directory, log):
             resource, [issuer_url], scopes_supported=[SCOPE], resource_name="Grok Gadgets gateway"
         ),
         Route(APPROVE_PATH, provider.approve_page, methods=["GET"]),
+        Route(APPROVE_PATH, provider.code_submitted, methods=["POST"]),
     ]
     return provider, Starlette(routes=routes), str(build_resource_metadata_url(resource))
 
@@ -727,6 +783,7 @@ async def _serve_http(
     oauth_issuer=None,
     oauth_directory=None,
     listener_status=None,
+    accounts=None,
 ):
     if listener_status is None and device_server is not None:
         listener_status = device_server.status
@@ -740,6 +797,7 @@ async def _serve_http(
         listener_status=listener_status,
         http=True,
         usage_hook=usage_hook,
+        accounts=accounts,
         log_level="WARNING",
     )
     app = mcp.streamable_http_app(
@@ -750,7 +808,9 @@ async def _serve_http(
     )
     provider = oauth_app = resource_metadata = None
     if oauth_issuer is not None:
-        provider, oauth_app, resource_metadata = _oauth_routes(oauth_issuer, oauth_directory, log)
+        provider, oauth_app, resource_metadata = _oauth_routes(
+            oauth_issuer, oauth_directory, log, accounts
+        )
     config = uvicorn.Config(
         BearerAuth(
             app,
@@ -761,6 +821,7 @@ async def _serve_http(
             oauth_app=oauth_app,
             resource_metadata=resource_metadata,
             allowed_hosts=allowed_hosts,
+            accounts=accounts is not None,
         ),
         host="127.0.0.1",
         port=port,

@@ -448,7 +448,8 @@ class Gateway:
         )
         return {"ok": True}
 
-    def read_events(self, cursor=None, device_id=None, limit=32):
+    def read_events(self, cursor=None, device_id=None, limit=32, devices=None):
+        """`devices`: when set, only events of these gadgets (accounts mode, hub ADR 011)."""
         if type(limit) is not int or not 1 <= limit <= 128:
             raise GatewayError("invalid_cursor", "Event limit must be 1..128")
         if device_id is not None:
@@ -473,6 +474,8 @@ class Gateway:
             if event["sequence"] <= position:
                 continue
             position = event["sequence"]
+            if devices is not None and event["device_id"] not in devices:
+                continue
             if device_id is None or event["device_id"] == device_id:
                 result.append(copy.deepcopy(event))
                 if len(result) >= limit:

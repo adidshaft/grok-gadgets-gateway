@@ -2,7 +2,7 @@
 
 The connection point between your Grok Bot and your gadgets: a built-in simulated light,
 Linux gadgets and ESP32 devices. It serves six MCP tools. The owner tested USB and Wi-Fi hardware through the gateway.
-Grok Bot calls the six tools natively from the Mac and phone apps through `serve --oauth` behind a tunnel you run ([record](https://github.com/adidshaft/grok-gadgets/blob/main/docs/verification/grok-remote-https-2026-10-13.md), [project status](https://grokgadgets.org/doc-docs-public-support-matrix)).
+Grok Bot calls the six tools natively from the Mac and iPhone apps through `serve --oauth` behind a tunnel you run ([record](https://github.com/adidshaft/grok-gadgets/blob/main/docs/verification/grok-remote-https-2026-10-13.md), [project status](https://grokgadgets.org/doc-docs-public-support-matrix)).
 Independent project, not affiliated with SpaceXSI.
 
 > Writing style: ASD-STE100-inspired English. Use short sentences, active verbs and one instruction per step. This is not certified compliance.
@@ -13,7 +13,7 @@ Independent project, not affiliated with SpaceXSI.
 | --- | --- |
 | [Use a gadget](https://github.com/adidshaft/grok-gadgets/blob/main/docs/getting-started/connect-grok-bot.md) | Connect Grok Bot to the tested kit |
 | [Build a gadget](docs/first-success.md) | Start with a simulated light |
-| [Run the gateway](docs/daily-use.md) | Keep the current Mac route available |
+| [Run the gateway](docs/daily-use.md) | Keep a local gateway available |
 
 ## Install from PyPI
 
@@ -55,7 +55,7 @@ order Grok Bot will: list the gadgets, set the simulated light blue, read its st
 ```mermaid
 flowchart LR
     B["Grok Bot on Mac or iPhone"] -->|HTTPS and OAuth| T["Owner-run tunnel"]
-    T --> G["Gateway<br>Owner’s Mac"]
+    T --> G["Gateway<br>Always-on server"]
     R["rehearse: local check"] --> G
     G --> S["Simulated light"]
     G --> D["Linux / ESP32 gadgets"]
@@ -71,6 +71,11 @@ The gateway gives Grok Bot six tools:
 | `gadgets_command_status` | Reads the result of a slower command later. |
 | `gadgets_read_events` | Reads button presses and other events in order. |
 | `gadgets_diagnostics` | A support report with no tokens, state or arguments. |
+
+A relay in accounts mode (`serve --oauth --accounts`) scopes every tool to the caller's own
+gadgets. It adds `gadgets_claim`, `gadgets_remove`, `gadgets_share` and `gadgets_name`.
+With `gadgets_name` you can say "the desk display" instead of an ID
+([relay host guide](docs/relay-host.md#accounts-other-people-claim-their-own-gadgets)).
 
 A result is the gadget's own report, not proof of a physical effect.
 
@@ -99,8 +104,10 @@ On 13 October 2026 Grok Bot also called the six tools natively from the Mac and 
 It used an owner-run tunnel and `serve --oauth`, a sign-in that you approve on the Mac
 ([tunnel guide](docs/tunnel.md#oauth-sign-in-for-grok-bot)).
 The owner tested this route for one day, including a phone call over cellular.
-The Mac must stay awake and run the gateway and tunnel. During sleep, calls failed; nothing was queued.
-A gateway without the Mac is planned, not available yet. See the [roadmap](https://github.com/adidshaft/grok-gadgets/blob/main/ROADMAP.md).
+The original Mac route needs an awake Mac. During its sleep check, calls failed; nothing was queued.
+An always-on relay now lets the kit work without the Mac. See the [relay record](https://github.com/adidshaft/grok-gadgets/blob/main/docs/verification/mac-free-route-2026-10-13.md).
+Phone setup passed on iPhone and Android; Grok Bot calls from Android remain untested.
+See the [phone setup record](https://github.com/adidshaft/grok-gadgets/blob/main/docs/verification/phone-setup-2026-10-14.md) and [roadmap](https://github.com/adidshaft/grok-gadgets/blob/main/ROADMAP.md).
 Never expose port 8765.
 Read [remote access](docs/remote-access.md) and [security](SECURITY.md) first.
 
@@ -137,3 +144,8 @@ Contribute on the `dev` branch; `main` holds tagged stable releases ([branches](
 Apache-2.0; see [LICENSE](LICENSE) and [NOTICE](NOTICE). Grok Gadgets is an independent
 open-source project. It is **not affiliated with, endorsed by or sponsored by SpaceXSI**. We reconstructed the pre-publication commit dates; see the
 [history record](https://github.com/adidshaft/grok-gadgets/blob/main/docs/verification/publication-sanitization.md).
+
+## Project discussion
+
+Ask questions and share gadget ideas in [hub Discussions](https://github.com/adidshaft/grok-gadgets/discussions).
+Use this repository's issue forms for defects.

@@ -42,6 +42,15 @@
         },
         "duplicate": {
           "type": "boolean"
+        },
+        "claimed": {
+          "type": "boolean",
+          "description": "Accounts mode, only after a hello with claim (hub ADR 011): whether the gadget has an owner."
+        },
+        "claim_code": {
+          "type": "string",
+          "pattern": "^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$",
+          "description": "Accounts mode, unclaimed gadgets that opted in: the code to show, valid 10 minutes."
         }
       },
       "additionalProperties": false
