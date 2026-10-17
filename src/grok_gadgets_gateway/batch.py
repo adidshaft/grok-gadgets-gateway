@@ -105,6 +105,8 @@ def make_batch(ids, out, *, credentials=None, labels=True, label_dir=None):
         if labels:
             record = label_record(device_id, label_dir, new=True)
             save_record(record, label_dir)
+            # The batch carries the record too: factory-provision may run on another computer.
+            save_record(record, label_out)
             files = write_label_files(record, label_out)
             row.update(
                 hotspot=record["hotspot"],

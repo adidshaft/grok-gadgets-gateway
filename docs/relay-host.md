@@ -154,12 +154,13 @@ grok-gadgets-gateway enroll --count 3 --prefix lamp- --out batch-2 --no-labels
 ```
 
 The folder holds one token file for each gadget in `tokens/` (mode 0600, shown nowhere else). It also holds the setup labels in `labels/` (`print.html` prints them all) and `batch.csv`. The CSV lists
-the devices and their files, never a secret. Then provision each board from the batch. The
-command reads the board's ID, sends that row's token and label, and deletes the token file:
+the devices and their files, never a secret. Copy the folder to the computer with the boards
+privately, for example with `scp -r`. Then provision each board from the batch. The command
+reads the board's ID, sends that row's token and label, and deletes the token file:
 
 ```sh
 grok-gadgets-gateway factory-provision /dev/cu.usbmodem101 --gateway devices.example.net \
-  --batch batch-1
+  --ca relay-ca.pem --batch batch-1
 ```
 
 Keep the batch folder off shared drives and out of chats until every row says

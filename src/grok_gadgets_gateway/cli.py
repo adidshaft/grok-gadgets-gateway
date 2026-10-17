@@ -1054,7 +1054,14 @@ def run_factory_provision(parser, args):
     import serial
 
     from .batch import batch_token, mark_provisioned
-    from .label import label_record, label_text, labels_dir, save_record, write_label_files
+    from .label import (
+        label_record,
+        label_text,
+        labels_dir,
+        load_record,
+        save_record,
+        write_label_files,
+    )
     from .lan import ca_pem_text, is_dns_name, parse_gateway_address, read_ca_file
     from .relay_check import relay_check
     from .wifi_provision import ProvisionError, factory_frame, factory_provision, status
@@ -1091,7 +1098,15 @@ def run_factory_provision(parser, args):
             for line in relay_check(host, port, ca):
                 print(line, file=sys.stderr)
         token, commit = provisioning_token(parser, args, path, enroll_new=args.enroll)
-        values = label_record(args.device, new=args.new_label)
+        if args.batch:
+            # The label printed with the batch, wherever the batch was made (hub ADR 013 §2).
+            values = load_record(args.device, Path(args.batch) / "labels")
+            if values is None:
+                parser.error(
+                    f"the batch has no label for {args.device}; make it without --no-labels"
+                )
+        else:
+            values = label_record(args.device, new=args.new_label)
         frame = factory_frame(
             token,
             host,

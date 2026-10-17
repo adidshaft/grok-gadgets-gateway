@@ -130,6 +130,9 @@ def test_factory_provision_from_a_batch(config, monkeypatch, capsys):
     out = config / "kit-batch"
     batch.make_batch([KIT], out)
     record = label.load_record(KIT)
+    # factory-provision runs on another computer: its own label store does not have the record.
+    label.record_path(KIT).unlink()
+    assert stat.S_IMODE((out / "labels" / f"{KIT}.json").stat().st_mode) == 0o600
     status = json.dumps({"ok": True, "device_id": KIT, "factory": False}).encode() + b"\n"
     ok = json.dumps({"ok": True, "device_id": KIT, "restarting": True}).encode() + b"\n"
     # The board answers twice: once for its ID, once for the identity check before sending.
