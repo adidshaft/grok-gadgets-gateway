@@ -212,3 +212,20 @@ def test_accounts_list_shows_accounts_and_their_gadgets_without_secrets(
     assert f"{accounts.operator}  operator  2 gadgets" in out
     assert f"{account}  -  1 gadget" in out
     assert recovery not in out and code not in out
+
+
+def test_a_limited_attempt_is_logged_once_a_minute(tmp_path):
+    accounts, clock, log = store(tmp_path, devices=())
+    for _ in range(20):
+        with pytest.raises(ClaimRejected):
+            accounts.claim_new_account("EEEE-EEEE", caller="198.51.100.20")
+    for _ in range(3):
+        with pytest.raises(ClaimRejected):
+            accounts.claim_new_account("EEEE-EEEE", caller="198.51.100.20")
+    assert log.events("claim_limited") == [
+        {"event": "claim_limited", "reason": "caller_limit", "caller": "198.51.100.20"}
+    ]
+    clock.now += 61
+    with pytest.raises(ClaimRejected):
+        accounts.claim_new_account("EEEE-EEEE", caller="198.51.100.20")
+    assert len(log.events("claim_limited")) == 2

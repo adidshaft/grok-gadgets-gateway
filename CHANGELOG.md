@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- A code refused by a wrong-code limit now writes `claim_limited` (reason and caller or account), at most once a minute per key ([#200](https://github.com/adidshaft/grok-gadgets-gateway/issues/200)). `service install` right after `service uninstall` no longer reports the device port as in use while only closed connections linger.
+
 - The sign-in page no longer sends a `form-action` CSP directive ([#198](https://github.com/adidshaft/grok-gadgets-gateway/issues/198)). Browsers apply it to the redirect after the code form, so phones stopped before handing the sign-in back to Grok Bot. Found in the two-account acceptance; reproduced and fixed in a browser against a local relay.
 
 - A right code on the sign-in page now hands the sign-in straight back to Grok Bot with a redirect, as the operator approval does ([#196](https://github.com/adidshaft/grok-gadgets-gateway/issues/196)). On a phone the earlier page, with a recovery code and a link, never finished the sign-in. The recovery code now comes from `gadgets_share action=recovery_code`, which replaces the old one.

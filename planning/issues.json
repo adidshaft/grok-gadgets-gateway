@@ -1044,6 +1044,23 @@
       ],
       "stage": "review",
       "evidence": "GitHub #198; relay 17 Oct 10:44:07Z account_linked, no oauth_token_issued; Chromium console CSP error with the old header; callback reached with the fix; 368 passed."
+    },
+    {
+      "id": "GW-CLAIM-007",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Limited claim attempts were not logged; the install port check failed for ~40 s after uninstall",
+      "acceptance": [
+        "claim_limited line, once a minute per key",
+        "port_free tolerates TIME_WAIT like the listeners; a live listener still counts",
+        "Tests"
+      ],
+      "labels": [
+        "bug",
+        "gateway",
+        "P2"
+      ],
+      "stage": "review",
+      "evidence": "GitHub #200; relay 17 Oct: 21st flood code refused without a line; install retried 14 times at 10:53Z; tests added; 370 passed."
     }
   ]
 }
