@@ -175,6 +175,11 @@ async def test_owner_approved_sign_in_refresh_and_revoke(tmp_path):
     names = {e["event"] for e in events}
     assert {"oauth_client_registered", "oauth_sign_in_requested", "oauth_sign_in_approved"} <= names
     assert "oauth_token_issued" in names
+    # GW-OAUTH-REFRESH-001 (#211): a refresh and a refused refresh are both visible.
+    refreshed = [e for e in events if e["event"] == "oauth_token_refreshed"]
+    assert [(e["token"], e["client_name"]) for e in refreshed] == [("grok-bot", "test-bot")]
+    rejected = [e for e in events if e["event"] == "oauth_refresh_rejected"]
+    assert [e["reason"] for e in rejected] == ["unknown"]
 
 
 async def test_a_denied_or_unapproved_sign_in_gets_no_token(tmp_path):
@@ -236,3 +241,62 @@ def test_oauth_cli(tmp_path, capsys, private_home):
     assert "no pending sign-in" in capsys.readouterr().err
     assert cli.main(["oauth", "revoke", "grok-bot"]) == 0
     assert "Ended every grok-bot sign-in" in capsys.readouterr().err
+
+
+class _Log:
+    def __init__(self):
+        self.lines = []
+
+    def write(self, record, detail=None):
+        self.lines.append(record)
+
+    def events(self, name):
+        return [line for line in self.lines if line["event"] == name]
+
+
+async def test_expiry_and_refusal_reasons_are_logged(tmp_path):
+    # GW-OAUTH-REFRESH-001 (#211): when Grok Bot's access token runs out, the log must show
+    # whether it refreshed, and why a refresh was refused. Never a token.
+    from mcp.shared.auth import OAuthClientInformationFull
+
+    from grok_gadgets_gateway.oauth import ACCESS_SECONDS, REFRESH_SECONDS, OwnerApprovedOAuth
+
+    now = [1_000_000.0]
+    log = _Log()
+    provider = OwnerApprovedOAuth(
+        "http://localhost:1", tmp_path / "oauth", log=log, clock=lambda: now[0]
+    )
+    client = OAuthClientInformationFull(
+        client_id="c1", client_name="test-bot", redirect_uris=["http://localhost:9/cb"]
+    )
+    other = OAuthClientInformationFull(
+        client_id="c2", client_name="other", redirect_uris=["http://localhost:9/cb"]
+    )
+    await provider.register_client(client)
+    await provider.register_client(other)
+    token = provider._issue(client, "grok-bot", ["gadgets"])
+    assert await provider.load_access_token(token.access_token) is not None
+    assert log.events("oauth_access_expired") == []
+
+    now[0] += ACCESS_SECONDS + 1
+    assert await provider.load_access_token(token.access_token) is None
+    assert await provider.load_access_token(token.access_token) is None
+    expired = log.events("oauth_access_expired")
+    assert [(e["token"], e["client_name"]) for e in expired] == [("grok-bot", "test-bot")]
+
+    assert await provider.load_refresh_token(other, token.refresh_token) is None
+    assert await provider.load_refresh_token(client, "ggr_never-issued") is None
+    loaded = await provider.load_refresh_token(client, token.refresh_token)
+    fresh = await provider.exchange_refresh_token(client, loaded, [])
+    assert fresh.access_token != token.access_token
+    assert [e["token"] for e in log.events("oauth_token_refreshed")] == ["grok-bot"]
+
+    late = provider._issue(client, "grok-bot", ["gadgets"])
+    now[0] += REFRESH_SECONDS + 1
+    assert await provider.load_refresh_token(client, late.refresh_token) is None
+    reasons = [e["reason"] for e in log.events("oauth_refresh_rejected")]
+    assert reasons == ["client", "unknown", "expired"]
+    for line in log.lines:
+        text = json.dumps(line)
+        for secret in (token.access_token, token.refresh_token, fresh.access_token):
+            assert secret not in text

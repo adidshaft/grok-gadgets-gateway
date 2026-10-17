@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Sign-in refresh is visible in the request log ([#211](https://github.com/adidshaft/grok-gadgets-gateway/issues/211)). New lines: `oauth_access_expired` once per expired access token, `oauth_token_refreshed` when a refresh token is exchanged, and `oauth_refresh_rejected` with `reason` (`unknown`, `expired`, `revoked` or `client`). None of them holds a token.
+
 ## 0.1.0-alpha.16 — 17 October 2026
 
 - On 17 October 2026 the owner's ESP32-S3 OLED kit took signed updates from the owner's relay with no cable: progress on the OLED, a restart and the new version in its hello; an image signed with another key and an image with one changed byte were refused and logged; an image that never came Online reverted by itself after 5 minutes; a power cut during a download recovered ([hub record](https://github.com/adidshaft/grok-gadgets/blob/dev/docs/verification/ota-2026-10-17.md)). Grok Bot showing text after an update is not tested yet (#211).
