@@ -1098,6 +1098,25 @@
       ],
       "stage": "done",
       "evidence": "GitHub #166; refused since 0.1.0-alpha.13 (usage.calibrate); tests/test_usage.py test_calibrate_zero_keeps_the_saved_rate proves the saved rate is unchanged after 0, 0.0 and -1."
+    },
+    {
+      "id": "GW-OTA-001",
+      "owner": "grok-gadgets-gateway",
+      "problem": "No way to update a gadget's firmware without a cable",
+      "acceptance": [
+        "firmware keygen/sign/add/assign/status/list/remove; the private key never on the relay",
+        "Opt-in update in hello; offers, chunks under 2,048 bytes, status reports",
+        "Limits and update_* log lines without image bytes or key material",
+        "Protocol schemas, README and fixture; rehearse --update",
+        "Kit acceptance in the hub Phase 12b record"
+      ],
+      "labels": [
+        "feature",
+        "gateway",
+        "P1"
+      ],
+      "stage": "review",
+      "evidence": "GitHub #209; tests/test_firmware.py (26 tests, written first); rehearse --update passed; full suite 402 passed. No kit or relay test yet."
     }
   ]
 }

@@ -51,6 +51,57 @@
           "type": "string",
           "pattern": "^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$",
           "description": "Accounts mode, unclaimed gadgets that opted in: the code to show, valid 10 minutes."
+        },
+        "update": {
+          "description": "Only after a hello with update ready (hub ADR 012): the offered update, or null when an offer made in this session is withdrawn.",
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "required": [
+                "version",
+                "size",
+                "chunk",
+                "manifest",
+                "signature"
+              ],
+              "properties": {
+                "version": {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                "size": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 8388608
+                },
+                "chunk": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1024
+                },
+                "manifest": {
+                  "type": "string",
+                  "maxLength": 684,
+                  "pattern": "^[A-Za-z0-9+/]*={0,2}$"
+                },
+                "signature": {
+                  "type": "string",
+                  "maxLength": 96,
+                  "pattern": "^[A-Za-z0-9+/]*={0,2}$"
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        "data": {
+          "type": "string",
+          "maxLength": 1368,
+          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
+          "description": "Reply to update_chunk (hub ADR 012): base64 of at most chunk bytes."
         }
       },
       "additionalProperties": false

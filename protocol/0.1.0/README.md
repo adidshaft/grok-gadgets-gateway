@@ -42,6 +42,34 @@ explains them. The wire format is 0.1.0.
   answers the field with `invalid_request`: send the hello again without it until the next
   boot.
 
+## Signed updates (hub ADR 012)
+
+- A gadget whose firmware holds a builder's public key adds `"update": "ready"` to its hello.
+  Only then may a reply carry `update` or `data`. A relay before this change answers the
+  field with `invalid_request`: send the hello again without it until the next boot (drop
+  `update` before `claim` when both were sent).
+- When the operator assigned an update to this gadget and its version differs from the
+  hello's `firmware_version`, the hello reply carries `update`: `version`, `size`, `chunk`
+  (1024), `manifest` (base64 of the signed manifest JSON) and `signature` (base64 of the DER
+  ECDSA P-256 signature over SHA-256 of those manifest bytes). A poll reply carries `update`
+  only when the offer changed in this session; `null` withdraws it.
+- `{"type": "update_chunk", "version": V, "offset": N}` asks for `chunk` bytes at `N`, a
+  multiple of `chunk` below `size`. The reply is `{"ok": true, "data": "<base64>"}`; the last
+  chunk is shorter. `update_unavailable` means the offer was withdrawn or changed: abandon the
+  download. `busy` means too many gadgets are updating: try again with backoff, on the same
+  session.
+- `{"type": "update_status", "version": V, "status": S, "reason": R}` reports `started`,
+  `verified`, `rejected`, `failed`, `applied` or `reverted`; `reason` is optional (`signature`,
+  `board`, `version`, `size`, `protocol`, `sha256`, `write`, `link`, `not_online`, `boot`).
+  The reply is `{"ok": true}`. After `rejected`, `failed` or `reverted` the relay does not
+  offer that version to that gadget again until the operator assigns it again.
+- Check the signature with a compiled public key, then the manifest (`format`
+  `grok-gadgets-update/1`, `board`, `version`, `size`, `min_protocol`), before downloading.
+  Check the byte count and SHA-256 of the image before making it bootable. Mark a new image
+  valid only after it is Online through the relay. The relay never proves an image is safe.
+- [fixtures/update-transcript.json](fixtures/update-transcript.json) is a complete exchange
+  for a 2,500-byte update with its public key; request *i* is answered by reply *i*.
+
 ## Capabilities and schemas
 
 - Capabilities are string names. `rgb.set` has the canonical strict arguments
@@ -127,6 +155,7 @@ failures never echo input. Revocation is reloaded from the credential file on ea
 | `unknown_command` | ACK for a command this session does not own. | Drop the ACK; keep polling. |
 | `unsupported_capability`, `invalid_event` | Undeclared or malformed event. | Drop it; keep polling. |
 | `busy`, `unavailable` | Gateway temporarily cannot accept the request. | Retry with capped backoff. |
+| `update_unavailable` | The update offer was withdrawn or changed. Session kept. | Abandon the download. |
 
 SDKs reconnect with capped backoff after connection loss. Never retry a physical action under
 a new command ID only because an acknowledgement was lost.

@@ -57,6 +57,7 @@ COMMANDS = (
     "wifi-provision",
     "factory-provision",
     "label",
+    "firmware",
 )
 DESCRIPTION = """Grok Gadgets gateway: the MCP server your Grok Bot will use to reach your gadgets.
 
@@ -292,6 +293,42 @@ def build_parser():
             action="store_true",
             help="queue the change and return; serve applies it when it runs",
         )
+
+    fw = sub.add_parser("firmware", help="sign, store and assign firmware updates (hub ADR 012)")
+    fw_sub = fw.add_subparsers(dest="firmware_command", metavar="ACTION", required=True)
+    keygen = fw_sub.add_parser(
+        "keygen", help="make the builder's signing key (on the builder's computer only)"
+    )
+    keygen.add_argument(
+        "--out", required=True, help="private key file; NAME.pub.pem goes beside it"
+    )
+    fw_sign = fw_sub.add_parser("sign", help="sign an application image (firmware.bin)")
+    fw_sign.add_argument("image")
+    fw_sign.add_argument("--key", required=True, help="the builder's private key")
+    fw_sign.add_argument("--board", required=True, help="build name, e.g. esp32s3-oled-kit-wifi")
+    fw_sign.add_argument("--version", required=True, help="what the new image reports in hello")
+    fw_sign.add_argument("--min-protocol", default="0.1.0")
+    fw_sign.add_argument("--out", required=True, help="directory for the three update files")
+    fw_add = fw_sub.add_parser("add", help="store a signed update on this relay")
+    fw_add.add_argument("directory")
+    fw_add.add_argument("--public-key", help="the builder's public key; the signature must match")
+    fw_add.add_argument(
+        "--unchecked",
+        action="store_true",
+        help="store without the signature check, only to prove a gadget refuses a wrong key",
+    )
+    fw_assign = fw_sub.add_parser("assign", help="offer a stored version to one gadget")
+    fw_assign.add_argument("device_id")
+    fw_assign.add_argument("version", nargs="?")
+    fw_assign.add_argument("--board", help="needed when the version exists for several boards")
+    fw_assign.add_argument("--none", action="store_true", help="withdraw the offer")
+    fw_status = fw_sub.add_parser("status", help="what each gadget was offered and did")
+    fw_status.add_argument("device_id", nargs="?")
+    fw_status.add_argument("--json", action="store_true")
+    fw_sub.add_parser("list", help="list stored updates")
+    fw_remove = fw_sub.add_parser("remove", help="delete a stored update and withdraw it")
+    fw_remove.add_argument("board")
+    fw_remove.add_argument("version")
 
     remote = sub.add_parser(
         "remote", help="kill switch: turn remote (tunnel) access off or on at once"
@@ -557,6 +594,13 @@ def build_parser():
         help="MCP era: legacy initialize, modern 2026-07-28 server/discover, or both (default)",
     )
     rehearse.add_argument(
+        "--update",
+        action="store_true",
+        help="sign an update and deliver it to a simulated gadget on a private relay: offer, "
+        "chunks, restart, applied; a wrong key, a changed byte and a revert (uses no config of "
+        "this computer)",
+    )
+    rehearse.add_argument(
         "--accounts",
         action="store_true",
         help="run two accounts on a private relay in accounts mode with two simulated gadgets: "
@@ -710,6 +754,8 @@ def run(parser, args):
         return run_oauth(parser, args)
     if command == "accounts":
         return run_accounts(parser, args)
+    if command == "firmware":
+        return run_firmware(parser, args)
     if command == "usage":
         return run_usage(parser, args)
     if command == "serve":
@@ -769,6 +815,22 @@ def run(parser, args):
         return run_label(parser, args)
     if command == "service":
         return run_service(parser, args)
+    if command == "rehearse" and args.update:
+        from .rehearse import RehearsalError, rehearse_update
+
+        try:
+            asyncio.run(rehearse_update())
+        except Exception as exc:  # noqa: BLE001 - one plain message, as for the other rehearsal
+            from .rehearse import _find
+
+            failure = _find(exc, RehearsalError) or exc
+            print(f"Update rehearsal failed: {failure}")
+            return 1
+        print(
+            "Update rehearsal passed with a simulated gadget. It does not prove that a real "
+            "gadget writes, verifies or boots an image."
+        )
+        return 0
     if command == "rehearse" and args.accounts:
         from .rehearse import RehearsalError, rehearse_accounts
 
@@ -1210,6 +1272,109 @@ def run_usage(parser, args):
         print(json.dumps(summary, indent=2))
     else:
         print(format_summary(summary))
+    return 0
+
+
+def run_firmware(parser, args):
+    """Signed updates (hub ADR 012). `serve` reads the assignments and writes the status."""
+    from . import firmware
+
+    action = args.firmware_command
+    try:
+        if action == "keygen":
+            made = firmware.keygen(args.out)
+            print(
+                f"Private key: {made['private']} (mode 0600). Keep it off the relay and back it up."
+            )
+            print(
+                f"Public key:  {made['public']} (compile it into your images; give it to the relay)"
+            )
+            print(f"Key ID:      {made['key_id']}")
+            return 0
+        if action == "sign":
+            manifest = firmware.sign(
+                args.image,
+                args.key,
+                board=args.board,
+                version=args.version,
+                min_protocol=args.min_protocol,
+                out=args.out,
+            )
+            print(
+                f"Signed {manifest['board']} {manifest['version']}: {manifest['size']} bytes, "
+                f"sha256 {manifest['sha256']}, key {manifest['key_id']} -> {args.out}"
+            )
+            return 0
+        store = firmware.Store()
+        if action == "add":
+            if args.public_key is None and not args.unchecked:
+                parser.error("firmware add needs --public-key (or --unchecked for a test)")
+            manifest = store.add(
+                args.directory, public_key=args.public_key, unchecked=args.unchecked
+            )
+            checked = "UNCHECKED" if args.public_key is None else "signature checked"
+            print(f"Stored {manifest['board']} {manifest['version']} ({checked}).")
+            return 0
+        if action == "assign":
+            if args.none:
+                store.withdraw(args.device_id)
+                print(f"Withdrew the offer to {args.device_id}.")
+            elif args.version is None:
+                parser.error("firmware assign needs a VERSION or --none")
+            else:
+                entry = store.assign(args.device_id, args.version, args.board)
+                print(
+                    f"Offered {entry['board']} {entry['version']} to {args.device_id}; "
+                    "it starts at the gadget's next hello or poll."
+                )
+            return 0
+        if action == "list":
+            for manifest in store.list():
+                print(
+                    f"{manifest['board']} {manifest['version']}  {manifest['size']} bytes  "
+                    f"key {manifest['key_id']}"
+                )
+            return 0
+        if action == "remove":
+            store.remove(args.board, args.version)
+            print(f"Removed {args.board} {args.version}; any offer of it is withdrawn.")
+            return 0
+        if action == "status":
+            assigned, results = store.assignments(), store.status()
+            report = {}
+            for device in sorted(set(assigned) | set(results)):
+                if args.device_id and device != args.device_id:
+                    continue
+                result = results.get(device, {})
+                entry = assigned.get(device, {})
+                state = (
+                    result.get("status") if result.get("version") == entry.get("version") else None
+                )
+                report[device] = {
+                    "assigned": entry.get("version"),
+                    "board": entry.get("board"),
+                    "reported": result.get("reported"),
+                    "status": state or ("waiting" if entry else None),
+                    "last": {
+                        k: result.get(k) for k in ("version", "status", "reason", "progress", "at")
+                    },
+                }
+            if args.json:
+                print(json.dumps(report, indent=2))
+            elif not report:
+                print("No gadget has an assigned update or a reported result.")
+            for device, row in report.items() if not args.json else ():
+                last = row["last"]
+                detail = last["status"] or "nothing reported"
+                if last["reason"]:
+                    detail += f" ({last['reason']})"
+                print(
+                    f"{device}: assigned {row['assigned'] or '-'}, running {row['reported'] or '?'}, "
+                    f"{row['status'] or '-'}; last: {last['version'] or '-'} {detail} {last['at'] or ''}"
+                )
+            return 0
+    except firmware.OperatorError as exc:
+        parser.error(str(exc))
     return 0
 
 
