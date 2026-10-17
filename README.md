@@ -73,7 +73,8 @@ The gateway gives Grok Bot six tools:
 | `gadgets_diagnostics` | A support report with no tokens, state or arguments. |
 
 A relay in accounts mode (`serve --oauth --accounts`) scopes every tool to the caller's own
-gadgets and adds `gadgets_claim`, `gadgets_remove` and `gadgets_share`
+gadgets. It adds `gadgets_claim`, `gadgets_remove`, `gadgets_share` and `gadgets_name`.
+With `gadgets_name` you can say "the desk display" instead of an ID
 ([relay host guide](docs/relay-host.md#accounts-other-people-claim-their-own-gadgets)).
 
 A result is the gadget's own report, not proof of a physical effect.

@@ -175,6 +175,10 @@ people use the relay (hub ADR 011). Then:
   owner sees `pending_transfer` in the list and can stop it with
   `gadgets_share action=refuse_transfer`. Lines: `transfer_pending`, `transfer_done` (with
   `via` `unclaim` or `grace_period`), `transfer_refused`, `transfer_withdrawn`.
+- `gadgets_name` gives a gadget a plain name and a room ("Desk display", "Office") for that
+  person only. Every tool then accepts the name, and the list says each gadget in one line,
+  for example "Desk display, Office, online, yours". Grok Bot is told at connect time to ask
+  for a name after each claim.
 - `accounts list` shows the accounts and how many gadgets each owns, never a code.
 - Operator changes reach the running relay through queued files in `oauth/admin/`:
   `accounts unclaim DEVICE`, `accounts assign DEVICE ACCOUNT`, and `accounts link ACCOUNT`,

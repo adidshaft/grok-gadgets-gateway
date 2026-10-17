@@ -77,8 +77,9 @@ async def sign_in(stack, url, code):
     http = await stack.enter_async_context(httpx2.AsyncClient(auth=auth, timeout=10))
     read, write = await stack.enter_async_context(streamable_http_client(url, http_client=http))
     session = await stack.enter_async_context(ClientSession(read, write))
-    await session.initialize()
-    return Person(session)
+    person = Person(session)
+    person.initialized = await session.initialize()
+    return person
 
 
 def error(response):

@@ -409,7 +409,7 @@ async def rehearse_accounts(out=print, directory=None):
             claimed = await alice.ok("gadgets_claim", code=b_gadget.code)
             if claimed["role"] != "pending_transfer":
                 raise RehearsalError(f"the transfer is not pending: {claimed}")
-            await alice.refused("gadgets_command", "not_allowed", **blue)
+            await alice.refused("gadgets_command", "transfer_pending", **blue)
             out("ok  after a reset gadget-b showed a transfer code; A's claim is pending")
             removed = await bob.ok("gadgets_remove", device_id="gadget-b")
             if removed["result"] != "transferred":

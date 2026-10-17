@@ -1061,6 +1061,26 @@
       ],
       "stage": "review",
       "evidence": "GitHub #200; relay 17 Oct: 21st flood code refused without a line; install retried 14 times at 10:53Z; tests added; 370 passed."
+    },
+    {
+      "id": "GW-NAME-001",
+      "owner": "grok-gadgets-gateway",
+      "problem": "People must use device IDs such as oledkit-84c7bb57148c in Grok Bot",
+      "acceptance": [
+        "gadgets_name with name and room per account",
+        "Names accepted wherever device_id is",
+        "Summary line in the list",
+        "Server title and instructions for Grok Bot",
+        "transfer_pending message",
+        "Tests"
+      ],
+      "labels": [
+        "feature",
+        "gateway",
+        "P1"
+      ],
+      "stage": "review",
+      "evidence": "GitHub #202; tests/test_names.py (6); 376 passed. Owner request 17 Oct 2026."
     }
   ]
 }
