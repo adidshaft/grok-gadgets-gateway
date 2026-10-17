@@ -104,3 +104,24 @@ Rules:
 Use `usage` for totals. The hook is for live use; it has no history.
 
 Example: [`examples/usage-hooks/macos-notify.py`](../examples/usage-hooks/macos-notify.py) posts a local macOS notification for each remote call. `service install --usage-hook` passes a hook to the service; see [daily use](daily-use.md#5-notify-on-each-remote-call-optional).
+
+## Builder report
+
+On a relay host, `builder report` shows your gadgets as counts. It reads the request log, its
+rotated files, the firmware status and the accounts file of this host:
+
+```sh
+grok-gadgets-gateway builder report             # the last 7 days
+grok-gadgets-gateway builder report --days 30 --json
+```
+
+For each gadget it shows:
+
+- Online or offline, and when the relay last saw it.
+- Calls a day and the error outcomes.
+- The firmware version and the last update result.
+- Whether someone claimed it, and the name that the operator account gave it.
+
+It never shows a token, command arguments, reported state, an address, an account ID, a code
+or another account's names. It is a command on the host, not a web page. Pass `--log PATH` when
+the relay runs in a container (`/data/logs/requests.jsonl`).
