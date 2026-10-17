@@ -992,6 +992,24 @@
       ],
       "stage": "review",
       "evidence": "GitHub #160; tests/test_scoped_tools.py (two OAuth sign-ins, two TCP gadgets) and tests/test_accounts_share.py; 356 passed. No relay or Grok Bot test yet."
+    },
+    {
+      "id": "GW-CLAIM-004",
+      "owner": "grok-gadgets-gateway",
+      "problem": "No unclaim, transfer or reset reconciliation",
+      "acceptance": [
+        "The old owner can unclaim; otherwise a claim after a reset waits a grace period",
+        "Audit lines for claim, unclaim and transfer; no tokens or codes in logs",
+        "Tests for reset-then-claim by a second account",
+        "rehearse runs two accounts"
+      ],
+      "labels": [
+        "feature",
+        "gateway",
+        "P1"
+      ],
+      "stage": "review",
+      "evidence": "GitHub #180; tests/test_transfer.py, tests/test_rehearse_accounts.py, sign-in flood test; 367 passed. No relay, kit or Grok Bot test yet."
     }
   ]
 }

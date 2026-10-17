@@ -22,6 +22,8 @@ from .domain import ACK_TIMEOUT_SECONDS
 from .protocol import GatewayError
 from .usage import json_size
 
+READ_ROLES = ("owner", "use", "view")
+
 REDACTED = "[redacted]"
 _SECRET_KEY = re.compile(r"token|secret|password|passwd|key|credential", re.IGNORECASE)
 
@@ -166,6 +168,10 @@ def came_remote(ctx):
         return None
     value = headers.get("x-grok-gadgets-remote") if headers else None
     return None if value is None else value == "1"
+
+
+def _iso(seconds):
+    return datetime.fromtimestamp(seconds, UTC).isoformat() if seconds else None
 
 
 def account_name(ctx):
@@ -389,13 +395,26 @@ def make_server(
             if account is None:
                 return {"devices": listed}
             visible = accounts.visible(account)
-            return {
-                "devices": [
-                    {**device, "role": visible[device["device_id"]]}
-                    for device in listed
-                    if device["device_id"] in visible
-                ]
-            }
+            shown = []
+            for device in listed:
+                role = visible.get(device["device_id"])
+                if role == "pending_transfer":
+                    # Until the old owner unclaims or the grace period ends: nothing but this.
+                    pending = accounts.pending_transfer(device["device_id"]) or {}
+                    shown.append(
+                        {
+                            "device_id": device["device_id"],
+                            "role": role,
+                            "completes_at": _iso(pending.get("completes_at")),
+                        }
+                    )
+                elif role is not None:
+                    entry = {**device, "role": role}
+                    pending = accounts.pending_transfer(device["device_id"])
+                    if role == "owner" and pending:
+                        entry["pending_transfer"] = {"completes_at": _iso(pending["completes_at"])}
+                    shown.append(entry)
+            return {"devices": shown}
 
         return run("gadgets_list_devices", {}, devices, ctx)
 
@@ -498,7 +517,8 @@ def make_server(
                 return gateway.read_events(cursor, device_id, limit)
             if device_id is not None:
                 allow(ctx, device_id)
-            return gateway.read_events(cursor, device_id, limit, set(accounts.visible(account)))
+            readable = set(accounts.visible(account, READ_ROLES))
+            return gateway.read_events(cursor, device_id, limit, readable)
 
         return run(
             "gadgets_read_events",
@@ -516,7 +536,7 @@ def make_server(
             account = caller_account(ctx)
             if account is not None:
                 # Only this account's gadgets and commands; no relay-wide counts.
-                visible = accounts.visible(account)
+                visible = accounts.visible(account, READ_ROLES)
                 value["devices"] = [d for d in value["devices"] if d["device_id"] in visible]
                 value["event_count"] = sum(e["device_id"] in visible for e in gateway.events)
                 value["command_count"] = sum(
@@ -578,8 +598,10 @@ def make_server(
             action=create (owner): a 10-minute, one-use share code; scope use (read and
             command) or view (read only). action=list (owner): current shares.
             action=revoke (owner): end the share with share_id. action=link: a 10-minute code
-            that signs a second app in to your own account. Give codes only to people you
-            mean; a share never merges accounts."""
+            that signs a second app in to your own account. action=refuse_transfer (owner):
+            stop a pending transfer that someone started with the code the gadget showed after
+            a reset; otherwise it completes when you remove the gadget or after 7 days. Give
+            codes only to people you mean; a share never merges accounts."""
 
             def share():
                 account = signed_in(ctx)
@@ -594,7 +616,12 @@ def make_server(
                 if action == "revoke":
                     accounts.share_revoke(account, device_id, share_id)
                     return {"revoked": share_id}
-                raise GatewayError("invalid_arguments", "action is create, list, revoke or link")
+                if action == "refuse_transfer":
+                    accounts.refuse_transfer(account, device_id)
+                    return {"refused": device_id}
+                raise GatewayError(
+                    "invalid_arguments", "action is create, list, revoke, link or refuse_transfer"
+                )
 
             arguments = {"action": action, "device_id": device_id, "scope": scope}
             return run("gadgets_share", arguments, share, ctx)

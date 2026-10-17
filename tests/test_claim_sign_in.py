@@ -245,3 +245,43 @@ async def test_accounts_mode_needs_oauth(tmp_path):
             credentials, mcp_token, port=free_port(), device_port=free_port(), accounts=True
         ):
             pytest.fail("started")
+
+
+async def test_five_wrong_codes_end_a_sign_in_and_floods_are_logged(tmp_path):
+    port, device_port = free_port(), free_port()
+    async with accounts_server(tmp_path, port, device_port) as running:
+        url = running.url.replace("127.0.0.1", "localhost")
+        writer, reply, _ = await device(device_port)
+        async with httpx2.AsyncClient(follow_redirects=False) as web:
+            register = await web.post(
+                f"http://localhost:{port}/register",
+                json={"client_name": "flood", "redirect_uris": ["http://localhost:9/cb"]},
+            )
+            client_id = register.json()["client_id"]
+            first = await web.get(
+                f"http://localhost:{port}/authorize",
+                params={
+                    "response_type": "code",
+                    "client_id": client_id,
+                    "redirect_uri": "http://localhost:9/cb",
+                    "code_challenge": "x" * 43,
+                    "code_challenge_method": "S256",
+                    "resource": url,
+                },
+            )
+            page_url = first.headers["location"]
+            request_id = REQUEST.search((await web.get(page_url)).text).group(1)
+            approve = page_url.split("?")[0]
+            for attempt in range(5):
+                page = await web.post(approve, data={"request": request_id, "code": "DDDD-DDDD"})
+                assert page.status_code == (400 if attempt == 4 else 200)
+            assert "Start the sign-in again" in page.text
+            # The request is gone: even the right code no longer works on it.
+            gone = await web.post(
+                approve, data={"request": request_id, "code": reply["claim_code"]}
+            )
+            assert gone.status_code == 400
+        writer.close()
+    lines = [json.loads(x) for x in (tmp_path / "requests.jsonl").read_text().splitlines()]
+    rejected = [line for line in lines if line["event"] == "claim_rejected"]
+    assert len(rejected) == 5 and "DDDD-DDDD" not in json.dumps(lines)

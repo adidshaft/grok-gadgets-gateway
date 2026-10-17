@@ -12,6 +12,8 @@ Neither ever reaches a file or a log line.
 import base64
 import hashlib
 import json
+import os
+import re
 import secrets
 import time
 from collections import deque
@@ -25,6 +27,12 @@ ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 CLAIM_SECONDS = 600
 SHARE_SECONDS = 600  # share and link codes (§6)
 SCOPES = ("use", "view")
+# A pending transfer completes after this long unless the old owner refuses it (§7; the
+# owner chose 7 days on 17 October 2026).
+TRANSFER_GRACE_SECONDS = 7 * 86400
+READ_ROLES = ("owner", "use", "view")
+ADMIN_ACTIONS = ("unclaim", "assign", "link")
+ACCOUNT_ID = re.compile(r"acct_[a-z2-7]{26}")
 HOUR = 3600
 # Wrong codes (hub ADR 011 §5).
 REQUEST_WRONG_MAX = 5
@@ -102,6 +110,8 @@ class Accounts:
             self._write("accounts_migrated", operator=operator, devices=len(self.data["devices"]))
         except (OSError, ValueError):
             raise OperatorError(f"{self.path} is damaged") from None
+        for device_id in list(self.data["devices"]):
+            self._settle(device_id)
         return self
 
     def _save(self):
@@ -116,14 +126,15 @@ class Accounts:
         return self.data["operator"]
 
     def owner(self, device_id):
-        record = self.data["devices"].get(device_id)
+        record = self._record(device_id)
         return record["owner"] if record else None
 
     def _record(self, device_id):
+        self._settle(device_id)
         return self.data["devices"].get(device_id)
 
     def role(self, account, device_id):
-        """`owner`, `use`, `view` or None: what this account may do with the gadget."""
+        """`owner`, `use`, `view`, `pending_transfer` or None for this account and gadget."""
         record = self._record(device_id)
         if record is None or account is None:
             return None
@@ -132,16 +143,55 @@ class Accounts:
         for grant in record.get("grants", {}).values():
             if grant["account"] == account:
                 return grant["scope"]
+        if (record.get("pending") or {}).get("account") == account:
+            return "pending_transfer"
         return None
 
-    def visible(self, account):
-        """{device: role} for every gadget this account owns or holds a grant on."""
+    def visible(self, account, roles=None):
+        """{device: role} for every gadget this account owns, shares or waits for."""
         found = {}
-        for device_id in self.data["devices"]:
+        for device_id in list(self.data["devices"]):
             role = self.role(account, device_id)
-            if role is not None:
+            if role is not None and (roles is None or role in roles):
                 found[device_id] = role
         return found
+
+    def pending_transfer(self, device_id):
+        """{"account", "since", "completes_at"} of a pending transfer, or None."""
+        record = self._record(device_id)
+        return dict(record["pending"]) if record and record.get("pending") else None
+
+    def _settle(self, device_id):
+        """Complete a pending transfer whose grace period has ended."""
+        record = self.data["devices"].get(device_id)
+        pending = record.get("pending") if record else None
+        if pending and pending["completes_at"] <= self.clock():
+            self._complete(device_id, via="grace_period")
+
+    def _complete(self, device_id, *, via):
+        record = self.data["devices"][device_id]
+        pending = record.pop("pending")
+        self.data["devices"][device_id] = {
+            "owner": pending["account"],
+            "claimed_at": self.clock(),
+            "grants": {},
+        }
+        self._save()
+        self._write(
+            "transfer_done",
+            device=device_id,
+            account=pending["account"],
+            owner=record["owner"],
+            via=via,
+        )
+
+    def refuse_transfer(self, account, device_id):
+        record = self._owned(account, device_id)
+        pending = record.pop("pending", None)
+        if pending is None:
+            raise GatewayError("no_transfer", "No transfer is pending for this gadget")
+        self._save()
+        self._write("transfer_refused", device=device_id, account=account)
 
     def assign(self, device_id, account, *, via):
         if account not in self.data["accounts"]:
@@ -179,6 +229,7 @@ class Accounts:
             "mode": mode,
             "session": session_id,
             "code": None,
+            "kind": None,
             "expires": 0.0,
             "sent": None,
         }
@@ -199,35 +250,67 @@ class Accounts:
         self.sessions.pop(device_id, None)
 
     def _fields(self, device_id, force=False):
+        """The claim fields to send now: on hello (force) or when they changed since."""
         session = self.sessions[device_id]
-        code = None
+        now = self.clock()
         claimed = self.owner(device_id) is not None
-        if claimed:
-            self._end_code(device_id)
-        elif session["code"] is None or session["expires"] <= self.clock():
-            self._end_code(device_id)
-            code = _random_code(2)
-            session.update(code=_digest(code), expires=self.clock() + CLAIM_SECONDS)
-            self.codes[session["code"]] = device_id
-        if not force and code is None and session["sent"] == claimed:
+        new_code = None
+        if not claimed:
+            stale = session["kind"] != "claim" or session["expires"] <= now
+            if session["code"] is None or stale:
+                new_code = self._issue(device_id, "claim")
+        else:
+            pending = self.pending_transfer(device_id) is not None
+            if force and session["mode"] == "after_setup" and not pending:
+                # The first hello after a reset and a phone re-join: one transfer code (§7).
+                new_code = self._issue(device_id, "transfer")
+            elif session["kind"] == "claim" or session["expires"] <= now or pending:
+                self._end_code(device_id)
+        state = (claimed, session["code"])
+        if not force and new_code is None and session["sent"] == state:
             return None
-        session["sent"] = claimed
-        return {"claimed": claimed, **({"claim_code": code} if code else {})}
+        session["sent"] = state
+        return {"claimed": claimed, **({"claim_code": new_code} if new_code else {})}
+
+    def _issue(self, device_id, kind):
+        self._end_code(device_id)
+        code = _random_code(2)
+        session = self.sessions[device_id]
+        session.update(code=_digest(code), kind=kind, expires=self.clock() + CLAIM_SECONDS)
+        self.codes[session["code"]] = device_id
+        return code
 
     def _end_code(self, device_id):
         session = self.sessions.get(device_id)
         if session and session["code"]:
             self.codes.pop(session["code"], None)
-            session["code"] = None
+            session["code"] = session["kind"] = None
 
-    def _live_device(self, code):
+    def _live(self, code, kind):
         device_id = self.codes.get(_digest(code))
         session = self.sessions.get(device_id) if device_id else None
-        if session is None or session["expires"] <= self.clock():
+        if session is None or session["kind"] != kind or session["expires"] <= self.clock():
             return None
-        if self.owner(device_id) is not None:
+        owned = self.owner(device_id) is not None
+        if kind == "claim" and owned:
+            return None
+        if kind == "transfer" and (not owned or self.pending_transfer(device_id)):
             return None
         return device_id
+
+    def _live_device(self, code):
+        return self._live(code, "claim")
+
+    def _start_transfer(self, device_id, account):
+        record = self._record(device_id)
+        self._end_code(device_id)
+        record["pending"] = {
+            "account": account,
+            "since": self.clock(),
+            "completes_at": self.clock() + TRANSFER_GRACE_SECONDS,
+        }
+        self._save()
+        self._write("transfer_pending", device=device_id, account=account, owner=record["owner"])
 
     # --- codes typed by a person: limits (§5) ---
 
@@ -299,6 +382,11 @@ class Accounts:
                 account, recovery = self._new_account()
                 self.assign(device_id, account, via="sign_in")
                 return account, recovery
+            device_id = self._live(code, "transfer")
+            if device_id is not None:
+                account, recovery = self._new_account()
+                self._start_transfer(device_id, account)
+                return account, recovery
             share = self._take(self.share_codes, code)
             if share is not None:
                 account, recovery = self._new_account()
@@ -330,6 +418,10 @@ class Accounts:
             if device_id is not None:
                 self.assign(device_id, account, via="tool")
                 return {"device_id": device_id, "role": "owner"}
+            device_id = self._live(code, "transfer")
+            if device_id is not None and self.owner(device_id) != account:
+                self._start_transfer(device_id, account)
+                return {"device_id": device_id, "role": "pending_transfer"}
             share = self._take(self.share_codes, code)
             if share is not None and share["owner"] != account:
                 return {"device_id": share["device"], "role": self._grant(share, account)}
@@ -408,16 +500,63 @@ class Accounts:
             raise GatewayError("unknown_device", "Device not registered")
         record = self._record(device_id)
         if role == "owner":
-            del self.data["devices"][device_id]
-            self._save()
-            self._write("device_unclaimed", device=device_id, account=account, via="tool")
+            if record.get("pending"):
+                self._complete(device_id, via="unclaim")
+                return "transferred"
+            self.unclaim(device_id, account=account, via="tool")
             return "unclaimed"
+        if role == "pending_transfer":
+            del record["pending"]
+            self._save()
+            self._write("transfer_withdrawn", device=device_id, account=account)
+            return "dropped"
         for share_id, grant in list(record.get("grants", {}).items()):
             if grant["account"] == account:
                 del record["grants"][share_id]
                 self._write("share_dropped", device=device_id, account=account, share_id=share_id)
         self._save()
         return "dropped"
+
+    def unclaim(self, device_id, *, account=None, via):
+        record = self.data["devices"].pop(device_id, None)
+        self._save()
+        if record is not None:
+            self._write(
+                "device_unclaimed", device=device_id, account=account or record["owner"], via=via
+            )
+
+    # --- operator commands (§9): the CLI queues files, serve applies them ---
+
+    def apply_admin(self, directory):
+        """Apply queued operator commands in order; returns how many were applied."""
+        applied = 0
+        folder = Path(directory)
+        for path in sorted(folder.glob("*.json")) if folder.is_dir() else []:
+            try:
+                request = json.loads(path.read_text())
+                self._admin(request)
+                applied += 1
+            except (OSError, ValueError, KeyError, TypeError, OperatorError) as exc:
+                self._write("admin_rejected", reason=type(exc).__name__)
+            path.unlink(missing_ok=True)
+        return applied
+
+    def _admin(self, request):
+        action = request["action"]
+        if action == "unclaim":
+            self.unclaim(request["device"], via="operator")
+        elif action == "assign":
+            self.assign(request["device"], request["account"], via="operator")
+        elif action == "link":
+            if request["account"] not in self.data["accounts"]:
+                raise OperatorError("no such account")
+            self.link_codes[request["code_sha256"]] = {
+                "account": request["account"],
+                "expires": request["created"] + SHARE_SECONDS,
+            }
+            self._write("link_created", account=request["account"], via="operator")
+        else:
+            raise ValueError(action)
 
     def recover(self, text, *, caller):
         """A recovery code opens its account once and is replaced: (account, new code)."""
@@ -432,3 +571,19 @@ class Accounts:
                 self._write("account_recovered", account=account)
                 return account, replacement
         self._failed("wrong_recovery_code", caller)
+
+
+def queue_admin(directory, request):
+    """CLI side: queue one operator command for `serve`. A link request gets its code here."""
+    folder = Path(directory)
+    folder.mkdir(parents=True, exist_ok=True)
+    os.chmod(folder, 0o700)
+    request = {**request, "created": time.time()}
+    shown = {}
+    if request["action"] == "link":
+        code = _random_code(2)
+        request["code_sha256"] = _digest(code)
+        shown["code"] = code
+    name = f"{time.time_ns()}-{secrets.token_hex(4)}.json"
+    atomic_write(folder / name, json.dumps(request).encode())
+    return {**shown, "path": folder / name}
