@@ -658,6 +658,9 @@ async def serve_gateway(
             accounts=claims,
         ) as running:
             follower = None
+            admin = None
+            if claims is not None:
+                admin = asyncio.create_task(apply_admin(claims, claims.path.parent / "admin"))
             if lan_server is not None:
                 running.lan = lan_label()
                 if is_local_name(lan[0]):
@@ -683,6 +686,8 @@ async def serve_gateway(
             finally:
                 if follower is not None:
                     follower.cancel()
+                if admin is not None:
+                    admin.cancel()
     finally:
         if relay_server is not None:
             await relay_server.close()
@@ -692,6 +697,13 @@ async def serve_gateway(
             await device_server.close()
         log.append({"event": "serve_stopped"})
         log.close()
+
+
+async def apply_admin(accounts, directory, every=1.0):
+    """Apply operator commands queued by `accounts unclaim|assign|link` (hub ADR 011 §9)."""
+    while True:
+        accounts.apply_admin(directory)
+        await asyncio.sleep(every)
 
 
 def _oauth_routes(issuer, directory, log, accounts=None):

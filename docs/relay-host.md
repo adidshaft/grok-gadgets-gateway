@@ -165,7 +165,21 @@ people use the relay (hub ADR 011). Then:
   `gadgets_remove` unclaims a gadget (its shares end and it shows a new code) or drops a
   share; `gadgets_share` makes a 10-minute, one-use share code (`use` or `view`), lists and
   revokes shares, or makes a link code that signs a second app in to the same account.
+- **Handing a gadget on.** A BOOT reset never changes the owner on the relay. After a reset
+  and a phone re-join, the gadget shows a transfer code for 10 minutes. The new person enters
+  it on the sign-in page or with `gadgets_claim`: the transfer is pending, and the old owner
+  keeps full use. It completes when the old owner removes the gadget, or after 7 days. The old
+  owner sees `pending_transfer` in the list and can stop it with
+  `gadgets_share action=refuse_transfer`. Lines: `transfer_pending`, `transfer_done` (with
+  `via` `unclaim` or `grace_period`), `transfer_refused`, `transfer_withdrawn`.
 - `accounts list` shows the accounts and how many gadgets each owns, never a code.
+- Operator changes reach the running relay through queued files in `oauth/admin/`:
+  `accounts unclaim DEVICE`, `accounts assign DEVICE ACCOUNT`, and `accounts link ACCOUNT`,
+  which prints a 10-minute code that signs a new app in to that account. Use it when someone
+  lost their recovery code. `oauth revoke ACCOUNT` ends every sign-in of an account.
+- `rehearse --accounts` runs the whole flow on a private, temporary relay with two simulated
+  gadgets: two sign-ins, isolation, a share and its revocation, and a transfer. It uses no
+  configuration of this computer.
 - Codes live in memory only. Wrong codes are limited: 5 per sign-in, 20 an hour per address
   and 200 an hour for the relay, after which code entry closes for 10 minutes with a
   `claim_flood` line. `account_created`, `device_claimed` and `claim_rejected` lines record

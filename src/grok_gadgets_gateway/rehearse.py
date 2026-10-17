@@ -8,6 +8,7 @@ the session opens with `server/discover` (modern). `--protocol` picks one; `both
 import asyncio
 import json
 from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
 
 import httpx2
 from mcp import ClientSession
@@ -173,3 +174,246 @@ def main(
         "It does not prove a Grok Bot connection or any physical effect."
     )
     return 0
+
+
+# --- rehearse --accounts (GW-CLAIM-004, hub ADR 011) ---
+
+ACCOUNT_GADGETS = {"gadget-a": "rehearsal-token-gadget-a", "gadget-b": "rehearsal-token-gadget-b"}
+
+
+class _Gadget:
+    """A simulated gadget on the relay's device port that shows claim codes (protocol 0.1.0)."""
+
+    def __init__(self, port, device_id):
+        self.port, self.device_id = port, device_id
+        self.code = None
+        self.task = None
+        self.writer = None
+
+    async def start(self, claim="ready"):
+        from .protocol import _root
+
+        hello = json.loads(_root.joinpath("fixtures/device-transcript.json").read_text())[0]
+        hello["device"]["device_id"] = self.device_id
+        hello["token"] = ACCOUNT_GADGETS[self.device_id]
+        hello["claim"] = claim
+        reader, self.writer = await asyncio.open_connection("127.0.0.1", self.port)
+        reply = await self._exchange(reader, hello)
+        if not reply.get("ok"):
+            raise RehearsalError(f"{self.device_id} hello failed: {reply}")
+        self._remember(reply)
+        self.task = asyncio.create_task(self._serve(reader))
+
+    async def _exchange(self, reader, message):
+        self.writer.write((json.dumps(message) + "\n").encode())
+        await self.writer.drain()
+        return json.loads(await asyncio.wait_for(reader.readline(), 5))
+
+    def _remember(self, reply):
+        if "claimed" in reply:
+            self.code = reply.get("claim_code")
+
+    async def _serve(self, reader):
+        while True:
+            reply = await self._exchange(reader, {"type": "poll"})
+            self._remember(reply)
+            for command in reply.get("commands", []):
+                ack = {
+                    "type": "ack",
+                    "command_id": command["command_id"],
+                    "status": "executed",
+                    "state": {"rgb": command["arguments"]},
+                }
+                await self._exchange(reader, ack)
+            await asyncio.sleep(0.05)
+
+    async def reset_and_rejoin(self):
+        """A BOOT reset and a phone re-join: a new session whose hello says after_setup."""
+        await self.stop()
+        await self.start("after_setup")
+
+    async def stop(self):
+        if self.task is not None:
+            self.task.cancel()
+            await asyncio.gather(self.task, return_exceptions=True)
+        if self.writer is not None:
+            self.writer.close()
+
+
+class _Person:
+    """One sign-in made with a code on the relay's sign-in page, and its MCP session."""
+
+    def __init__(self, session):
+        self.session = session
+
+    async def call(self, tool, **arguments):
+        result = await self.session.call_tool(tool, arguments)
+        value = result.structured_content
+        return value if value is not None else json.loads(result.content[0].text)
+
+    async def ok(self, tool, **arguments):
+        value = await self.call(tool, **arguments)
+        if not value.get("ok"):
+            raise RehearsalError(f"{tool}: {value['error']['code']}")
+        return value
+
+    async def refused(self, tool, expected, **arguments):
+        value = await self.call(tool, **arguments)
+        if value.get("ok") or value["error"]["code"] != expected:
+            raise RehearsalError(f"{tool} should answer {expected}, got {value}")
+
+
+async def _sign_in(stack, url, code):
+    import re
+    from urllib.parse import parse_qs, urlparse
+
+    from mcp.client.auth import OAuthClientProvider
+    from mcp.shared.auth import AuthorizationCodeResult, OAuthClientMetadata
+
+    result = {}
+
+    async def browser(authorization_url):
+        async with httpx2.AsyncClient(follow_redirects=False) as web:
+            page_url = (await web.get(authorization_url)).headers["location"]
+            page = await web.get(page_url)
+            request_id = re.search(r'name="request" value="([^"]+)"', page.text).group(1)
+            done = await web.post(
+                page_url.split("?")[0], data={"request": request_id, "code": code}
+            )
+            link = re.search(r'href="([^"]+)"', done.text)
+            if link is None:
+                raise RehearsalError("the sign-in page refused the code")
+            query = parse_qs(urlparse(link.group(1).replace("&amp;", "&")).query)
+            result.update({k: v[0] for k, v in query.items()})
+
+    async def callback():
+        return AuthorizationCodeResult(code=result["code"], state=result.get("state"))
+
+    class Memory:
+        tokens = client = None
+
+        async def get_tokens(self):
+            return self.tokens
+
+        async def set_tokens(self, tokens):
+            self.tokens = tokens
+
+        async def get_client_info(self):
+            return self.client
+
+        async def set_client_info(self, client_info):
+            self.client = client_info
+
+    metadata = OAuthClientMetadata(
+        client_name=CLIENT_NAME, redirect_uris=["http://localhost:9/callback"]
+    )
+    auth = OAuthClientProvider(url, metadata, Memory(), browser, callback)
+    http = await stack.enter_async_context(httpx2.AsyncClient(auth=auth, timeout=30))
+    read, write = await stack.enter_async_context(streamable_http_client(url, http_client=http))
+    session = await stack.enter_async_context(
+        ClientSession(read, write, client_info=_client_info())
+    )
+    await session.initialize()
+    return _Person(session)
+
+
+def _free_port():
+    import socket
+
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+async def rehearse_accounts(out=print, directory=None):
+    """Two accounts on a private relay in accounts mode, with two simulated gadgets.
+
+    The same steps as the Phase 11 acceptance, in a temporary config directory. It does not
+    use or change this computer's gateway configuration.
+    """
+    import io
+    import tempfile
+    from contextlib import AsyncExitStack
+
+    from .accounts import Accounts
+    from .operator import atomic_write
+    from .service import serve_gateway
+    from .transport import digest
+
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(directory or temporary)
+        credentials = root / "credentials.json"
+        devices = {d: {"sha256": digest(t), "revoked": False} for d, t in ACCOUNT_GADGETS.items()}
+        atomic_write(credentials, json.dumps({"devices": devices}).encode())
+        atomic_write(root / "mcp-token", b"rehearsal-only-mcp-token\n")
+        Accounts(root / "oauth" / "accounts.json").open([])  # gadgets enrolled after setup
+        port, device_port = _free_port(), _free_port()
+        blue = {"device_id": "gadget-b", "capability": "rgb.set", "arguments": BLUE}
+        async with AsyncExitStack() as stack:
+            running = await stack.enter_async_context(
+                serve_gateway(
+                    credentials,
+                    root / "mcp-token",
+                    port=port,
+                    device_port=device_port,
+                    log_stream=io.StringIO(),
+                    request_log=root / "requests.jsonl",
+                    oauth=True,
+                    oauth_issuer=f"http://localhost:{port}",
+                    oauth_directory=root / "oauth",
+                    accounts=True,
+                )
+            )
+            url = running.url.replace("127.0.0.1", "localhost")
+            a_gadget, b_gadget = _Gadget(device_port, "gadget-a"), _Gadget(device_port, "gadget-b")
+            for gadget in (a_gadget, b_gadget):
+                await gadget.start()
+                stack.push_async_callback(gadget.stop)
+            alice = await _sign_in(stack, url, a_gadget.code)
+            out("ok  A signed in with the code gadget-a showed")
+            bob = await _sign_in(stack, url, b_gadget.code)
+            out("ok  B signed in with the code gadget-b showed")
+
+            listed = (await alice.ok("gadgets_list_devices"))["devices"]
+            if [d["device_id"] for d in listed] != ["gadget-a"]:
+                raise RehearsalError(f"A sees {listed}")
+            out("ok  A lists only gadget-a")
+            await alice.refused("gadgets_get_state", "unknown_device", device_id="gadget-b")
+            await alice.refused("gadgets_command", "unknown_device", **blue)
+            await alice.refused("gadgets_read_events", "unknown_device", device_id="gadget-b")
+            out("ok  A cannot read, command or see events of gadget-b")
+            sent = (await bob.ok("gadgets_command", **blue))["command"]
+            await alice.refused(
+                "gadgets_command_status", "unknown_command", command_id=sent["command_id"]
+            )
+            out("ok  A cannot read B's command status")
+            await alice.refused("gadgets_claim", "invalid_code", code="ZZZZ-ZZZZ")
+            out("ok  a wrong code is refused")
+
+            share = await bob.ok("gadgets_share", device_id="gadget-b", action="create")
+            await alice.ok("gadgets_claim", code=share["share_code"])
+            await alice.ok("gadgets_command", **blue)
+            out("ok  B shared gadget-b; A commanded it")
+            shares = (await bob.ok("gadgets_share", device_id="gadget-b", action="list"))["shares"]
+            await bob.ok(
+                "gadgets_share",
+                device_id="gadget-b",
+                action="revoke",
+                share_id=shares[0]["share_id"],
+            )
+            await alice.refused("gadgets_get_state", "unknown_device", device_id="gadget-b")
+            out("ok  B revoked the share; A lost gadget-b")
+
+            await b_gadget.reset_and_rejoin()
+            if not b_gadget.code:
+                raise RehearsalError("gadget-b showed no transfer code after the reset")
+            claimed = await alice.ok("gadgets_claim", code=b_gadget.code)
+            if claimed["role"] != "pending_transfer":
+                raise RehearsalError(f"the transfer is not pending: {claimed}")
+            await alice.refused("gadgets_command", "not_allowed", **blue)
+            out("ok  after a reset gadget-b showed a transfer code; A's claim is pending")
+            removed = await bob.ok("gadgets_remove", device_id="gadget-b")
+            if removed["result"] != "transferred":
+                raise RehearsalError(f"B's remove gave {removed}")
+            await alice.ok("gadgets_command", **blue)
+            out("ok  B removed gadget-b; A owns it and commanded it")

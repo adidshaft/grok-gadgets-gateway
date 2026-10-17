@@ -277,6 +277,21 @@ def build_parser():
     accounts = sub.add_parser("accounts", help="see the accounts of serve --oauth --accounts")
     accounts_sub = accounts.add_subparsers(dest="accounts_command", required=True)
     accounts_sub.add_parser("list", help="list accounts and how many gadgets each owns")
+    unclaim = accounts_sub.add_parser("unclaim", help="take a gadget away from its owner")
+    unclaim.add_argument("device_id")
+    assign = accounts_sub.add_parser("assign", help="give a gadget to an account")
+    assign.add_argument("device_id")
+    assign.add_argument("account")
+    link = accounts_sub.add_parser(
+        "link", help="print a 10-minute code that signs a new app in to an account"
+    )
+    link.add_argument("account")
+    for command in (unclaim, assign, link):
+        command.add_argument(
+            "--no-wait",
+            action="store_true",
+            help="queue the change and return; serve applies it when it runs",
+        )
 
     remote = sub.add_parser(
         "remote", help="kill switch: turn remote (tunnel) access off or on at once"
@@ -541,6 +556,12 @@ def build_parser():
         default="both",
         help="MCP era: legacy initialize, modern 2026-07-28 server/discover, or both (default)",
     )
+    rehearse.add_argument(
+        "--accounts",
+        action="store_true",
+        help="run two accounts on a private relay in accounts mode with two simulated gadgets: "
+        "claim, isolation, share, revoke and transfer (uses no config of this computer)",
+    )
     return parser
 
 
@@ -748,6 +769,22 @@ def run(parser, args):
         return run_label(parser, args)
     if command == "service":
         return run_service(parser, args)
+    if command == "rehearse" and args.accounts:
+        from .rehearse import RehearsalError, rehearse_accounts
+
+        try:
+            asyncio.run(rehearse_accounts())
+        except Exception as exc:  # noqa: BLE001 - one plain message, as for the other rehearsal
+            from .rehearse import _find
+
+            failure = _find(exc, RehearsalError) or exc
+            print(f"Account rehearsal failed: {failure}")
+            return 1
+        print(
+            "Account rehearsal passed: two sign-ins, each with its own gadget. It does not "
+            "prove a Grok Bot connection, a second person or any physical effect."
+        )
+        return 0
     if command == "rehearse":
         from .rehearse import main as rehearse_main
 
@@ -1177,9 +1214,40 @@ def run_usage(parser, args):
 
 
 def run_accounts(parser, args):
-    """Read-only view of `oauth/accounts.json`: never a code or a hash."""
-    from .oauth import oauth_dir
+    """`list` reads `oauth/accounts.json`; changes are queued for `serve` (hub ADR 011 §9)."""
+    import time
 
+    from .accounts import ACCOUNT_ID, queue_admin
+    from .oauth import oauth_dir
+    from .transport import DEVICE_ID
+
+    action = args.accounts_command
+    if action != "list":
+        if not DEVICE_ID.fullmatch(getattr(args, "device_id", None) or "x"):
+            parser.error("not a device ID")
+        if action in ("assign", "link") and not ACCOUNT_ID.fullmatch(args.account):
+            parser.error("not an account ID; see: grok-gadgets-gateway accounts list")
+        request = {"action": action}
+        if action in ("unclaim", "assign"):
+            request["device"] = args.device_id
+        if action in ("assign", "link"):
+            request["account"] = args.account
+        queued = queue_admin(oauth_dir() / "admin", request)
+        if "code" in queued:
+            print(queued["code"])
+            print(
+                "Give this code to the account's owner once; it works for 10 minutes on the "
+                "relay's sign-in page.",
+                file=sys.stderr,
+            )
+        deadline = time.monotonic() + (0 if args.no_wait else 5)
+        while queued["path"].exists() and time.monotonic() < deadline:
+            time.sleep(0.2)
+        if queued["path"].exists():
+            print("Queued; serve applies it when it runs.", file=sys.stderr)
+        else:
+            print("Applied by serve; see its log for the result.", file=sys.stderr)
+        return 0
     path = oauth_dir() / "accounts.json"
     try:
         data = json.loads(path.read_text())
