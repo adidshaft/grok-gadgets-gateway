@@ -49,8 +49,7 @@ grok-gadgets-gateway firmware status
 ```
 
 `add` refuses an update whose signature does not match the public key, and an image whose
-SHA-256 differs from the manifest. A running `serve` picks up the assignment at the gadget's
-next poll; no restart is needed. `firmware assign DEVICE --none` withdraws an offer.
+SHA-256 differs from the manifest. A running `serve` picks up the assignment at the gadget's next poll. You do not restart it. `firmware assign DEVICE --none` withdraws an offer.
 `firmware list` and `firmware remove BOARD VERSION` manage stored updates.
 
 `firmware add --unchecked` skips the signature check. Use it only to prove that a gadget
@@ -59,7 +58,7 @@ refuses an image signed with another key.
 ## What happens
 
 1. The gadget gets the offer in its hello or poll reply and checks the signature, the board,
-   the version and the size. A failure is reported as `rejected` and nothing is downloaded.
+   the version and the size. On a failure the gadget reports `rejected` and downloads nothing.
 2. It downloads 1,024-byte chunks into its other app slot, still answering commands.
 3. It checks the byte count and SHA-256, makes the slot bootable and restarts.
 4. The new image marks itself valid only after it is Online through the relay, then reports
@@ -81,8 +80,7 @@ line holds image bytes or key material.
 - At most 8 gadgets download at once; others get `busy` and retry.
 - An image is at most 8 MiB. Chunks are read from disk for each request.
 - A download that stops (power cut, lost connection) starts again from the beginning.
-- Anti-rollback is off: any signed version other than the running one is accepted, so an
-  older signed image can be pushed again. Secure boot and flash encryption are off on the
+- Anti-rollback is off. The gadget accepts any signed version other than the running one, so you can push an older signed image again. Secure boot and flash encryption are off on the
   kit, so anyone with the board and a cable can flash it. See ADR 012 §8.
 
 ## Try it without a gadget
@@ -92,7 +90,7 @@ grok-gadgets-gateway rehearse --update
 ```
 
 It signs updates with throwaway keys in a temporary directory. It delivers them to a
-simulated gadget on a private relay. A good update is applied after a restart. The gadget
+simulated gadget on a private relay. The gadget applies a good update after a restart. The gadget
 refuses an image signed with another key and an image with one changed byte. An image that
 never goes Online reverts. It proves the relay side only, not that a real gadget writes, verifies
 or boots an image.
