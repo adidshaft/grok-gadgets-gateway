@@ -1153,6 +1153,25 @@
       ],
       "stage": "review",
       "evidence": "GitHub #162; tests/test_batch.py (written first). Not yet run on a real relay or board."
+    },
+    {
+      "id": "GW-BUILD-003",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Setting up a relay takes many manual steps",
+      "acceptance": [
+        "relay init writes cloud-init, setup script and next steps, no secrets",
+        "Port 8444; compose or systemd",
+        "relay-check --mcp runs the full preflight",
+        "Tests; a fresh-host dry run"
+      ],
+      "labels": [
+        "feature",
+        "docs",
+        "gateway",
+        "P2"
+      ],
+      "stage": "review",
+      "evidence": "GitHub #165; tests/test_relay_init.py (written first); bash -n on the script. Not yet run on a fresh host."
     }
   ]
 }
