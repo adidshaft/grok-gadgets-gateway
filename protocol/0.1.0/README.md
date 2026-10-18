@@ -123,8 +123,10 @@ polling on the same session. Do not reconnect and do not resend it.
 - Reconnecting with the same `boot_id` keeps that window. A new `boot_id` discards it.
   Returning later to an old `boot_id` starts a fresh window, so use a fresh boot identity on
   every reboot. IDs outside the window may be accepted again.
-- At most 64 devices are registered per process, including disconnected ones, so duplicate
-  bookkeeping is bounded at 16,384 IDs.
+- At most 64 devices are registered per process by default, including disconnected ones, so
+  duplicate bookkeeping is bounded at 16,384 IDs. `serve --max-devices N` (at most 2,000) sets
+  another limit; bookkeeping then stays below 256 IDs for each device. A device past the
+  limit gets `busy`.
 
 ## Reading events and state
 
