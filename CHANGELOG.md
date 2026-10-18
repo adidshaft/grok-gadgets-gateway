@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Each TLS device connection reads with a 32 KiB buffer instead of asyncio's 256 KiB. In the hub ADR 014 load test on a 512 MB relay host, that buffer cost about 220 KB of resident memory per gadget, and the kernel killed the relay at about 600 gadgets. Device frames are at most 16 KiB.
+
 - The sign-in page is shorter and follows the website's look: "Connect Grok Bot", one line of instruction, the gadget drawing, the code field and Connect. Who requested the sign-in is one short line; tips, recovery codes and the operator command sit under Help ([#207](https://github.com/adidshaft/grok-gadgets-gateway/issues/207), owner review on 18 October 2026).
 
 - `oauth watch [--since DAY] [--json]` counts each day's fresh sign-ins, refreshes, expired access tokens, refused refreshes by reason, 401 answers and remote calls from the request log. It lists every expiry followed by a 401 before the next refresh for that sign-in ([#211](https://github.com/adidshaft/grok-gadgets-gateway/issues/211) residual, hub ADR 014 §4). It shows token names and counts only.
