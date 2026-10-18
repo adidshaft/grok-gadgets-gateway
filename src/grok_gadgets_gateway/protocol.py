@@ -52,7 +52,13 @@ def is_valid(validator, value):
         return False
 
 
+# Most relay traffic is this exact frame; it matches the schema by construction.
+_BARE_POLL = {"type": "poll"}
+
+
 def validate_request(value):
+    if type(value) is dict and value == _BARE_POLL:
+        return
     if (
         isinstance(value, dict)
         and value.get("type") == "hello"

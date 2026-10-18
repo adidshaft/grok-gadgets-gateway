@@ -129,7 +129,10 @@ def read_registry(path):
 
 
 class Credentials:
-    """Operator-managed registry, re-read on each request for prompt revocation.
+    """Operator-managed registry, checked on each request for prompt revocation.
+
+    The file is parsed again only when its inode, size, modification time or mode changes,
+    so a relay with many gadgets does not parse the whole registry for every frame.
 
     A transient read or parse failure (for example a non-atomic editor save) keeps serving the
     last good registry for `grace` seconds, then answers the retryable `unavailable`.
@@ -143,6 +146,7 @@ class Credentials:
         self.status = "not_loaded"
         self._good = None
         self._good_at = None
+        self._key = None  # stat of the file behind _good
 
     def validate(self):
         """Load once at startup; raises CredentialError with an operator-safe message.
@@ -157,17 +161,30 @@ class Credentials:
                 "Delete it once the gadgets connect.",
                 self.path,
             )
+        key = self._stat_key()
         self._good, self._good_at = read_registry(self.path), self.clock()
-        self.status = "ok"
+        self._key, self.status = key, "ok"
         return len(self._good)
 
     def enrolled_count(self):
         return None if self._good is None else len(self._good)
 
+    def _stat_key(self):
+        try:
+            info = self.path.stat()
+        except OSError:
+            return None
+        return (info.st_ino, info.st_size, info.st_mtime_ns, info.st_mode)
+
     def _current(self):
+        key = self._stat_key()
+        if key is not None and key == self._key and self.status == "ok":
+            self._good_at = self.clock()
+            return self._good
         try:
             devices = read_registry(self.path)
         except CredentialError as exc:
+            self._key = None
             if exc.code != self.status:
                 logger.warning("Device credentials %s: %s (%s)", exc.code, exc, self.path)
             self.status = exc.code
@@ -178,6 +195,7 @@ class Credentials:
         if self.status != "ok" and self.status != "not_loaded":
             logger.warning("Device credentials ok again (%s)", self.path)
         self._good, self._good_at, self.status = devices, self.clock(), "ok"
+        self._key = key
         return devices
 
     def check(self, device_id, token):

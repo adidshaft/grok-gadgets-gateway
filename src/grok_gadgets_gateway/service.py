@@ -14,7 +14,7 @@ from pathlib import Path
 import uvicorn
 from mcp.server.transport_security import TransportSecuritySettings
 
-from .domain import Gateway
+from .domain import DEFAULT_MAX_DEVICES, MAX_DEVICES_LIMIT, Gateway
 from .mcp_server import RateLimiter, RequestLog, make_server
 from .operator import (
     DEFAULT_TOKEN_NAME,
@@ -389,7 +389,6 @@ LAN_HANDSHAKE_TIMEOUT = 5
 # How often a --lan-listen NAME.local is resolved again, to follow an address change.
 LAN_RECHECK_SECONDS = 30
 # Relay listener limits (hub ADR 009): any peer, so per-address caps sit under global ones.
-RELAY_SESSIONS = 64
 RELAY_PENDING = 32
 RELAY_PENDING_PER_ADDRESS = 4
 RELAY_CONNECTS_PER_MINUTE = 20
@@ -405,6 +404,8 @@ class Running:
         self.device_port = device_port
         self.lan = None  # "address:port" when the LAN listener runs.
         self.relay = None  # "name on address:port" when the relay listener runs.
+        self.gateway = None
+        self.relay_server = None
         self.url = f"http://127.0.0.1:{mcp_port}{MCP_PATH}"
 
     async def wait(self):
@@ -450,6 +451,7 @@ async def serve_gateway(
     oauth_directory=None,
     accounts=False,
     firmware_directory=None,
+    max_devices=DEFAULT_MAX_DEVICES,
     client_documents=None,
 ):
     """Run until the context exits. HTTP and the device listener bind 127.0.0.1.
@@ -460,6 +462,8 @@ async def serve_gateway(
     """
     if host != "127.0.0.1":
         raise ValueError("MCP HTTP binds 127.0.0.1 only")
+    if type(max_devices) is not int or not 1 <= max_devices <= MAX_DEVICES_LIMIT:
+        raise OperatorError(f"--max-devices must be 1 to {MAX_DEVICES_LIMIT}")
     if allowed_hosts and request_log is None:
         # A tunnel is only allowed when every call through it is recorded.
         raise OperatorError("--allowed-host requires --request-log")
@@ -511,7 +515,7 @@ async def serve_gateway(
     except OSError as exc:
         raise OperatorError(f"cannot open request log {request_log}: {exc.strerror}") from None
 
-    gateway = Gateway()
+    gateway = Gateway(max_devices=max_devices)
     sim = Simulator(gateway, config=config) if simulator else None
     claims = None
     if accounts:
@@ -572,7 +576,8 @@ async def serve_gateway(
             host=relay[0],
             port=relay[1],
             reserved_ids=[sim.device_id] if sim else [],
-            max_sessions=RELAY_SESSIONS,
+            # The relay holds as many sessions as the registry holds gadgets (hub ADR 014).
+            max_sessions=max_devices,
             max_pending=RELAY_PENDING,
             tls=relay[2],
             log=log,
@@ -669,6 +674,8 @@ async def serve_gateway(
             accounts=claims,
             client_documents=client_documents,
         ) as running:
+            running.gateway = gateway
+            running.relay_server = relay_server
             follower = None
             admin = None
             if claims is not None:

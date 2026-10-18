@@ -24,6 +24,10 @@ from .protocol import (
 COMMAND_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,63}")
 DEDUP_WINDOW_SECONDS = 600
 ACK_TIMEOUT_SECONDS = 10
+# Gadgets one process registers (protocol 0.1.0). `serve --max-devices` changes it, up to
+# MAX_DEVICES_LIMIT; hub ADR 014 publishes only the sizes measured on a small host.
+DEFAULT_MAX_DEVICES = 64
+MAX_DEVICES_LIMIT = 2000
 # Internal bookkeeping never returned to the assistant.
 _PRIVATE_COMMAND_FIELDS = ("deadline", "ack_error", "requested_clock", "fingerprint")
 _OPEN = ("accepted", "dispatched")
@@ -98,14 +102,18 @@ class Gateway:
         command_limit=128,
         clock=time.monotonic,
         dedup_window=DEDUP_WINDOW_SECONDS,
+        max_devices=DEFAULT_MAX_DEVICES,
     ):
+        if type(max_devices) is not int or not 1 <= max_devices <= MAX_DEVICES_LIMIT:
+            raise ValueError(f"max_devices must be 1 to {MAX_DEVICES_LIMIT}")
+        self.max_devices = max_devices
         self.devices = {}
         self.commands = OrderedDict()
         # Recently used command IDs, retained longer than full command records.
         self.used_command_ids = OrderedDict()
         self.dedup_window = dedup_window
         self.events = deque(maxlen=event_limit)
-        # One bounded window for each registered device's current boot (at most 64).
+        # One bounded window for each registered device's current boot (at most max_devices).
         self.seen_events = {}
         self.event_limit = event_limit
         self.command_limit = command_limit
@@ -132,7 +140,7 @@ class Gateway:
                     "invalid_request",
                     f"Capability description must be 1-{MAX_DESCRIPTION} characters",
                 )
-        if did not in self.devices and len(self.devices) >= 64:
+        if did not in self.devices and len(self.devices) >= self.max_devices:
             raise GatewayError("busy", "Device registry is full")
         previous = self.devices.get(did)
         if previous:
