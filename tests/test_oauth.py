@@ -122,8 +122,8 @@ async def test_owner_approved_sign_in_refresh_and_revoke(tmp_path):
             ).json()
             assert server["registration_endpoint"].endswith("/register")
             assert "S256" in server["code_challenge_methods_supported"]
-            # Honest about the 2026-07-28 registration change: no Client ID Metadata Documents.
-            assert server["client_id_metadata_document_supported"] is False
+            # Both registration methods of MCP 2026-07-28 (#176): registration and documents.
+            assert server["client_id_metadata_document_supported"] is True
 
         pages = []
         auth, storage = signed_in_client(url, folder, seen=pages)

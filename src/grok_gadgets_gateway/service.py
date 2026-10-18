@@ -450,6 +450,7 @@ async def serve_gateway(
     oauth_directory=None,
     accounts=False,
     firmware_directory=None,
+    client_documents=None,
 ):
     """Run until the context exits. HTTP and the device listener bind 127.0.0.1.
 
@@ -666,6 +667,7 @@ async def serve_gateway(
             oauth_directory=oauth_directory,
             listener_status=listener_status if registry is not None else None,
             accounts=claims,
+            client_documents=client_documents,
         ) as running:
             follower = None
             admin = None
@@ -716,7 +718,7 @@ async def apply_admin(accounts, directory, every=1.0):
         await asyncio.sleep(every)
 
 
-def _oauth_routes(issuer, directory, log, accounts=None):
+def _oauth_routes(issuer, directory, log, accounts=None, documents=None):
     """The SDK's OAuth routes, protected-resource metadata and the owner approval page."""
     from mcp.server.auth.handlers.metadata import MetadataHandler
     from mcp.server.auth.routes import (
@@ -733,17 +735,17 @@ def _oauth_routes(issuer, directory, log, accounts=None):
 
     from .oauth import APPROVE_PATH, SCOPE, OwnerApprovedOAuth
 
-    provider = OwnerApprovedOAuth(issuer, directory, log, accounts=accounts)
+    provider = OwnerApprovedOAuth(issuer, directory, log, accounts=accounts, documents=documents)
     issuer_url = AnyHttpUrl(provider.issuer)
     resource = AnyHttpUrl(provider.issuer + MCP_PATH)
     registration = ClientRegistrationOptions(
         enabled=True, valid_scopes=[SCOPE], default_scopes=[SCOPE]
     )
     revocation = RevocationOptions(enabled=True)
-    # Say plainly that sign-in uses dynamic registration and not Client ID Metadata Documents
-    # (an HTTPS URL as client_id), so a 2026-era client keeps falling back to registration.
+    # Both registration methods: dynamic registration, and Client ID Metadata Documents (an
+    # HTTPS URL as client_id, MCP 2026-07-28), fetched with limits (#176, hub ADR 014).
     metadata = build_metadata(issuer_url, None, registration, revocation)
-    metadata.client_id_metadata_document_supported = False
+    metadata.client_id_metadata_document_supported = True
     well_known = Route(
         "/.well-known/oauth-authorization-server",
         endpoint=cors_middleware(MetadataHandler(metadata).handle, ["GET", "OPTIONS"]),
@@ -794,6 +796,7 @@ async def _serve_http(
     oauth_directory=None,
     listener_status=None,
     accounts=None,
+    client_documents=None,
 ):
     if listener_status is None and device_server is not None:
         listener_status = device_server.status
@@ -819,7 +822,7 @@ async def _serve_http(
     provider = oauth_app = resource_metadata = None
     if oauth_issuer is not None:
         provider, oauth_app, resource_metadata = _oauth_routes(
-            oauth_issuer, oauth_directory, log, accounts
+            oauth_issuer, oauth_directory, log, accounts, client_documents
         )
     config = uvicorn.Config(
         BearerAuth(

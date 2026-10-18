@@ -125,7 +125,8 @@ Then run `remote on` and sign in again when you are ready.
 The MCP revision of 2026-07-28 changes two things that Grok Bot can adopt at any time:
 
 - Requests can start with `server/discover` instead of `initialize`. The gateway serves both. Each `mcp_tool_call` line in the request log has a `protocol` field: `2025-11-25` is the `initialize` era, `2026-07-28` is the new era.
-- Clients can identify themselves with a URL (a Client ID Metadata Document) instead of registering. The gateway does not accept this yet. Its sign-in metadata says `client_id_metadata_document_supported: false`, so clients still register. The specification keeps registration for at least 12 months.
+- Clients can identify themselves with a URL (a Client ID Metadata Document) instead of registering. From the next release the gateway accepts both, and its sign-in metadata says `client_id_metadata_document_supported: true`. It fetches the document over HTTPS from a public name only, with a 5-second and 16 KB limit and no redirects. The document's `client_id` must equal its URL. The request log shows `oauth_client_document` with the client's name and host, or `oauth_cimd_rejected` with a reason. The specification keeps registration for at least 12 months.
+- Any client chooses its own name. The sign-in page shows it as "The app signing in calls itself …". Your approval or the gadget's code still decides each sign-in.
 
 If Grok Bot stops calling the tools:
 

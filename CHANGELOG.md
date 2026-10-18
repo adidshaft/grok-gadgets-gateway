@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Sign-in by Client ID Metadata Document ([#176](https://github.com/adidshaft/grok-gadgets-gateway/issues/176), hub ADR 014 §2), the registration method MCP 2026-07-28 prefers. A `client_id` that is an HTTPS URL is fetched and checked before the sign-in starts. Only HTTPS on port 443 to a public DNS name is fetched, with no user info, query or fragment. Every resolved address must be public, and the connection goes to the checked address with TLS verified for the name. The limits are 5 s, 16 KB, no redirects, no proxy and `application/json` only. The document's `client_id` must equal the URL; it must use `none` for the token endpoint and the code flow, with HTTPS or loopback redirect URIs. A good document is kept for 10 minutes and stored with the registered clients. A signed-in client keeps working while its document host is down. At most 10 fetches a minute; refusals log `oauth_cimd_rejected` with a reason once a minute, and fetches log `oauth_client_document`. Dynamic registration keeps working. The metadata now says `client_id_metadata_document_supported: true`. Grok Bot has not been seen using a document yet.
+- The sign-in page shows the name the signing-in app gives itself, as self-declared.
+
 ## 0.1.0-alpha.17 — 18 October 2026
 
 - The builder kit (hub ADR 013). On 17 October 2026 a clean-room run and the owner's dry run on a fresh host followed the hub guide Ship a gadget: `relay init`, the preflight, a batch of three, phone setup, a claim, Grok Bot text, a signed update and `builder report` ([hub record](https://github.com/adidshaft/grok-gadgets/blob/dev/docs/verification/builder-kit-2026-10-17.md)). The fixes below came from those runs. Nobody outside the project has run the guide yet.
