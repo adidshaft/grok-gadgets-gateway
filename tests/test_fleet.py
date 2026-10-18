@@ -481,3 +481,14 @@ async def test_a_lost_mcp_endpoint_is_recorded_not_fatal(tmp_path):
     )
     result = await fleet.drive(cfg, ["dev-1"], 0.3)
     assert result["error"] and result["latency_ms"]["p95"] is None
+
+
+def test_device_tls_reads_use_a_small_buffer():
+    # asyncio gives every TLS connection a 256 KiB read buffer. On the 512 MB relay host that
+    # was about 220 KB of resident memory per gadget, and the kernel killed the relay at about
+    # 600 gadgets (18 October 2026). A device frame is at most 16 KiB.
+    import asyncio.sslproto
+
+    from grok_gadgets_gateway import transport
+
+    assert asyncio.sslproto.SSLProtocol.max_size == transport.TLS_READ_BUFFER == 32 * 1024

@@ -1,6 +1,7 @@
 """Authenticated loopback NDJSON device transport; domain remains independent."""
 
 import asyncio
+import asyncio.sslproto
 import contextlib
 import hashlib
 import hmac
@@ -19,6 +20,11 @@ logger = logging.getLogger("grok_gadgets_gateway")
 DEVICE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,63}")
 MAX_REGISTRY_BYTES = 1024 * 1024
 FATAL_CODES = ("unauthorized", "revoked", "stale_session")
+# asyncio gives each TLS connection a 256 KiB read buffer; on Linux that memory becomes
+# resident, about 220 KB per gadget, and a 512 MB relay ran out of memory at about 600 gadgets
+# (hub ADR 014 load test). Frames are at most 16 KiB, so 32 KiB reads lose nothing.
+TLS_READ_BUFFER = 32 * 1024
+asyncio.sslproto.SSLProtocol.max_size = TLS_READ_BUFFER
 # A tunnel pointed at a device port sends HTTP; devices send JSON lines.
 _HTTP_REQUEST_LINE = re.compile(rb"[A-Z]{3,7} \S+ HTTP/[0-9.]+\r?\n")
 INTERNAL_ERROR = (
