@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.1.0-alpha.18 — 18 October 2026
+
+- Ready for others (hub ADR 014). On 18 October 2026 a fresh 512 MB, 1-vCPU relay carried 200 simulated gadgets polling every 100 ms (about 61 % CPU, 88 MB) and 1,000 with long-poll (about 67 % CPU, 137 MB); 1,000 polling every 100 ms did not fit ([hub record](https://github.com/adidshaft/grok-gadgets/blob/dev/docs/verification/ready-for-others-2026-10-18.md)). Grok Bot has not been seen signing in by metadata document yet.
+
 - Long-poll ([#182](https://github.com/adidshaft/grok-gadgets-gateway/issues/182), hub ADR 014). A poll may carry `wait_ms` (100–10000): the relay answers when a command for that gadget is ready or when the wait ends. A gadget that never sends it gets the same replies as before; an older relay answers the field with `invalid_request`. A new session for the same device ends the wait. `fleet run --wait-ms` measures it.
 - Each TLS device connection reads with a 32 KiB buffer instead of asyncio's 256 KiB. In the hub ADR 014 load test on a 512 MB relay host, that buffer cost about 220 KB of resident memory per gadget, and the kernel killed the relay at about 600 gadgets. Device frames are at most 16 KiB.
 
