@@ -297,6 +297,14 @@ def build_parser():
     oauth_sub.add_parser("list", help="list live sign-ins (never the tokens)")
     oauth_revoke = oauth_sub.add_parser("revoke", help="end every sign-in with this name at once")
     oauth_revoke.add_argument("name")
+    oauth_watch = oauth_sub.add_parser(
+        "watch", help="did sign-ins survive each hour? refreshes, expiries and 401s by day"
+    )
+    oauth_watch.add_argument(
+        "--log", action="append", help="request log (default: this host's service log)"
+    )
+    oauth_watch.add_argument("--since", metavar="YYYY-MM-DD", help="from this UTC day")
+    oauth_watch.add_argument("--json", action="store_true")
 
     accounts = sub.add_parser("accounts", help="see the accounts of serve --oauth --accounts")
     accounts_sub = accounts.add_subparsers(dest="accounts_command", required=True)
@@ -1738,6 +1746,26 @@ def run_accounts(parser, args):
     return 0
 
 
+def _oauth_watch(parser, args):
+    from .logfiles import rotated
+    from .signin_watch import format_watch, watch
+    from .usage import default_log
+
+    paths = args.log
+    if not paths:
+        found = default_log()
+        if found is None or not found.is_file():
+            parser.error("no service request log here; pass --log PATH")
+        paths = [found]
+    for path in paths:
+        if not Path(path).is_file():
+            parser.error(f"no request log at {path}")
+    files = [old for path in paths for old in rotated(path)] or paths
+    result = watch(files, since=args.since)
+    print(json.dumps(result, indent=2) if args.json else "\n".join(format_watch(result)))
+    return 0
+
+
 def run_oauth(parser, args):
     from datetime import UTC, datetime
 
@@ -1748,6 +1776,8 @@ def run_oauth(parser, args):
 
     try:
         action = args.oauth_command
+        if action == "watch":
+            return _oauth_watch(parser, args)
         if action == "pending":
             requests = pending_requests()
             for request in requests:

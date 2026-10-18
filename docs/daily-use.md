@@ -78,6 +78,13 @@ Expected:
 - The metadata check gives `200`, and `/mcp` without a token gives `401`.
 - `usage` lists only calls that you expect.
 
+To check that Grok Bot's sign-in survives each hour, run `grok-gadgets-gateway oauth watch --since 2026-10-19`.
+It counts each day's fresh sign-ins, refreshes, expired access tokens, refused refreshes and 401 answers.
+A healthy day shows refreshes and no fresh sign-in.
+The last line says whether a 401 came after an expiry before the next refresh.
+That is the failure that stopped Grok Bot on 17 October 2026.
+A 401 on its own is normal: every client's first request without a token gets one, and so do strangers.
+
 ## 4. Stay reachable: sleep
 
 A sleeping Mac runs neither the gateway nor the tunnel. Grok Bot then gets an error from the tunnel provider, not a gadget result, and nothing is queued for later. The board shows **Gateway...** until the Mac wakes.
