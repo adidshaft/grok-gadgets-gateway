@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `fleet run` and `fleet sample` measure a relay with simulated gadgets ([#181](https://github.com/adidshaft/grok-gadgets-gateway/issues/181), hub ADR 014). `fleet run` connects N gadgets from one or more `enroll --batch` folders the way the ESP32 does: TLS with the relay CA and name, a protocol 0.1.0 hello, a poll every 100 ms and a state frame every 3 s. It ramps up inside the relay's per-address limit and never bypasses it. With `--mcp-url` it times one `gadgets_command` a second until `executed`. `fleet sample --pid` writes the gateway's CPU share and memory every 5 s. The files hold counts and timings, never a token, address or name. Guide: [relay host](docs/relay-host.md#how-many-gadgets-one-relay-holds).
+- `serve --max-devices N` (default 64, at most 2,000) sets how many gadgets the gateway registers and the relay holds at once. `service install` passes it on. Before, both limits were fixed at 64.
+- The device registry is parsed again only when the file changes (inode, size, modification time or mode), not on every frame. A revocation still takes effect at the next frame. On a Mac with 1,000 enrolled gadgets the registry read took 0.8 ms of each frame's 1.1 ms of relay CPU.
+- A bare `{"type": "poll"}` frame skips JSON Schema validation; it matches the schema by construction. Every other frame is validated as before. The schema check was most of the remaining CPU for each poll.
+
 ## 0.1.0-alpha.17 — 18 October 2026
 
 - The builder kit (hub ADR 013). On 17 October 2026 a clean-room run and the owner's dry run on a fresh host followed the hub guide Ship a gadget: `relay init`, the preflight, a batch of three, phone setup, a claim, Grok Bot text, a signed update and `builder report` ([hub record](https://github.com/adidshaft/grok-gadgets/blob/dev/docs/verification/builder-kit-2026-10-17.md)). The fixes below came from those runs. Nobody outside the project has run the guide yet.
