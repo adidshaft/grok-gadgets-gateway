@@ -407,7 +407,7 @@ def test_a_bare_poll_is_valid_without_the_schema(monkeypatch):
 
 @pytest.mark.parametrize(
     "frame",
-    [{"type": "poll", "extra": 1}, {"type": "poll", "wait_ms": 100}, {"type": "Poll"}, ["poll"]],
+    [{"type": "poll", "extra": 1}, {"type": "poll", "wait_ms": 50}, {"type": "Poll"}, ["poll"]],
 )
 def test_anything_else_still_meets_the_schema(frame):
     from grok_gadgets_gateway.protocol import validate_request
@@ -436,3 +436,34 @@ def test_a_worker_stops_when_its_parent_is_gone(tmp_path, monkeypatch, private_h
     fleet._worker(cfg, fleet.load_tokens(out, 1), 600, queue, measure, stop, parent=-1)
     kind, result = queue.get(timeout=5)
     assert kind == "done" and result["online_at_end"] == 0
+
+
+async def test_a_long_poll_fleet_gets_commands_without_polling_fast(tmp_path, pki, private_home):  # noqa: F811
+    out = make_tokens(tmp_path, 2)
+    gateway, server = await relay(tmp_path, pki, 2)
+    try:
+        cfg = config(tmp_path, pki, server, out, 2, wait_ms=1000)
+        stats = fleet.Stats()
+        stop = asyncio.Event()
+        tasks = [
+            asyncio.create_task(fleet.gadget(device, token, cfg, stats, stop))
+            for device, token in fleet.load_tokens(out, 2)
+        ]
+        for _ in range(100):
+            if stats.online == 2:
+                break
+            await asyncio.sleep(0.05)
+        command = gateway.command("fleet-01", "display.text", {"text": "now"}, None)
+        for _ in range(40):
+            if gateway.command_status(command["command_id"])["status"] == "executed":
+                break
+            await asyncio.sleep(0.05)
+        assert gateway.command_status(command["command_id"])["status"] == "executed"
+        await asyncio.sleep(1.5)
+        stop.set()
+        await asyncio.gather(*tasks)
+        # About one poll a second each, not ten.
+        assert stats.sent < 20
+        assert stats.errors == {}
+    finally:
+        await server.close()

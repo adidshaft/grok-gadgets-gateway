@@ -173,6 +173,12 @@
       "properties": {
         "type": {
           "const": "poll"
+        },
+        "wait_ms": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 10000,
+          "description": "Optional (hub ADR 014): wait up to this many milliseconds for a command before replying. A relay before this field answers invalid_request; poll without it until the next boot."
         }
       },
       "required": [

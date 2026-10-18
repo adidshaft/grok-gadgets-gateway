@@ -56,8 +56,19 @@ def is_valid(validator, value):
 _BARE_POLL = {"type": "poll"}
 
 
+def _is_waiting_poll(value):
+    """`{"type": "poll", "wait_ms": 100..10000}`, also valid by construction (hub ADR 014)."""
+    wait = value.get("wait_ms")
+    return (
+        len(value) == 2
+        and value.get("type") == "poll"
+        and type(wait) is int
+        and 100 <= wait <= 10000
+    )
+
+
 def validate_request(value):
-    if type(value) is dict and value == _BARE_POLL:
+    if type(value) is dict and (value == _BARE_POLL or _is_waiting_poll(value)):
         return
     if (
         isinstance(value, dict)

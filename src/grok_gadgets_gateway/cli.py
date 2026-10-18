@@ -412,6 +412,12 @@ def build_parser():
     )
     fleet_run.add_argument("--poll-ms", type=_positive_int, default=100, metavar="MS")
     fleet_run.add_argument(
+        "--wait-ms",
+        type=_positive_int,
+        metavar="MS",
+        help="long-poll: each poll waits up to MS (100-10000) for a command (hub ADR 014)",
+    )
+    fleet_run.add_argument(
         "--ramp-per-minute",
         type=_positive_int,
         default=18,
@@ -1491,6 +1497,7 @@ def run_fleet(parser, args):
             ca=Path(args.ca),
             connect=args.connect,
             poll_ms=args.poll_ms,
+            wait_ms=args.wait_ms,
             ramp_per_minute=args.ramp_per_minute,
             duration=float(args.duration),
             workers=args.workers,
