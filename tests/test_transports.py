@@ -114,12 +114,16 @@ async def test_close_returns_while_device_polls(tmp_path):
     assert reply["ok"]
 
     async def poll_forever():
-        while True:
-            w.write(b'{"type":"poll"}\n')
-            await w.drain()
-            if not await r.readline():
-                return "eof"
-            await asyncio.sleep(0.05)
+        # close() may abort the socket while this side writes: a reset is closed too.
+        try:
+            while True:
+                w.write(b'{"type":"poll"}\n')
+                await w.drain()
+                if not await r.readline():
+                    return "eof"
+                await asyncio.sleep(0.05)
+        except ConnectionResetError:
+            return "eof"
 
     poller = asyncio.create_task(poll_forever())
     await asyncio.sleep(0.2)
