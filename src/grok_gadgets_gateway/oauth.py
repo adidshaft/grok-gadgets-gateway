@@ -15,7 +15,6 @@ copies it, so the refresh-token family carries the account; the `client_id` neve
 """
 
 import hashlib
-import html
 import json
 import os
 import secrets
@@ -35,6 +34,7 @@ from mcp.server.auth.provider import (
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 from starlette.responses import HTMLResponse, RedirectResponse
 
+from . import sign_in_page
 from .accounts import REQUEST_WRONG_MAX, ClaimRejected
 from .client_documents import (
     DOCUMENT_SECONDS,
@@ -57,7 +57,7 @@ MAX_PENDING = 8
 CLIENT_IDLE_SECONDS = 3600
 PENDING_PER_CLIENT = 2
 FLOOD_ALERT_SECONDS = 60
-APPROVE_PATH = "/oauth/approve"
+APPROVE_PATH = sign_in_page.APPROVE_PATH
 # No 0/O or 1/I, so a code read off a phone screen is typed correctly.
 _ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 _LOOPBACK = ("localhost", "127.0.0.1", "::1", "[::1]")
@@ -373,23 +373,13 @@ class OwnerApprovedOAuth:
         request_id = request.query_params.get("request", "")
         pending = self.requests.get(request_id)
         if pending is None:
-            return _page(
-                "This sign-in has expired or is unknown. Start the sign-in again from Grok Bot.",
-                status=400,
-            )
+            return _html(sign_in_page.ended_page("expired"), status=400)
         params = pending["params"]
         decision = _read_json(self.root / "approved" / pending["code"], None)
         if decision is None and self.accounts is not None:
             return self._code_page(request_id, pending)
         if decision is None:
-            return _page(
-                _self_declared(pending)
-                + "Approve this sign-in on the computer that runs the gateway:"
-                f"<pre>grok-gadgets-gateway oauth approve {pending['code']} --name grok-bot</pre>"
-                f"Code <strong>{pending['code']}</strong>. This page continues by itself. "
-                "If you did not start this sign-in, do nothing; it expires in 10 minutes.",
-                refresh=True,
-            )
+            return _html(sign_in_page.waiting_page(pending.get("client_name"), pending["code"]))
         self._forget(request_id)
         if decision.get("deny"):
             self._write("oauth_sign_in_denied", code=pending["code"])
@@ -421,19 +411,12 @@ class OwnerApprovedOAuth:
         self._write("oauth_sign_in_approved", code=pending["code"], token=name)
         return construct_redirect_uri(str(params.redirect_uri), code=code, state=params.state)
 
-    def _code_page(self, request_id, pending, message="", status=200):
-        return _page(
-            f"{message}{_self_declared(pending)}"
-            "Type the code on your gadget's display, or your recovery code."
-            f'<form method="post" action="{APPROVE_PATH}">'
-            f'<input type="hidden" name="request" value="{html.escape(request_id)}">'
-            '<input name="code" autocomplete="off" autocapitalize="characters" '
-            'spellcheck="false" aria-label="Code" placeholder="Code">'
-            '<button type="submit">Continue</button></form>'
-            "<small>Relay operator: approve with "
-            f"<code>grok-gadgets-gateway oauth approve {pending['code']} --name NAME</code>, "
-            "then press Continue with the field empty.</small>",
-            status=status,
+    def _code_page(self, request_id, pending, error=None):
+        tries = REQUEST_WRONG_MAX - pending.get("wrong", 0) if error else None
+        return _html(
+            sign_in_page.code_page(
+                request_id, pending.get("client_name"), pending["code"], error, tries
+            )
         )
 
     async def code_submitted(self, request):
@@ -446,10 +429,7 @@ class OwnerApprovedOAuth:
         request_id = str(form.get("request", ""))
         pending = self.requests.get(request_id)
         if pending is None or self.accounts is None:
-            return _page(
-                "This sign-in has expired or is unknown. Start the sign-in again from Grok Bot.",
-                status=400,
-            )
+            return _html(sign_in_page.ended_page("expired"), status=400)
         decision = _read_json(self.root / "approved" / pending["code"], None)
         text = str(form.get("code", "")).strip()
         if decision is not None or not text:
@@ -464,10 +444,8 @@ class OwnerApprovedOAuth:
             pending["wrong"] = pending.get("wrong", 0) + 1
             if exc.limited or pending["wrong"] >= REQUEST_WRONG_MAX:
                 self._forget(request_id)
-                return _page(
-                    f"{html.escape(str(exc))} Start the sign-in again from Grok Bot.", status=400
-                )
-            return self._code_page(request_id, pending, f"<strong>{exc}</strong> ", 200)
+                return _html(sign_in_page.ended_page("limited"), status=400)
+            return self._code_page(request_id, pending, "wrong")
         self._forget(request_id)
         target = self._grant(pending, account, account, now)
         # Straight back to Grok Bot, as the operator approval does: a phone's sign-in sheet
@@ -615,33 +593,8 @@ class _QueryOnly:
         self.query_params = {"request": request_id}
 
 
-def _self_declared(pending):
-    """The name the signing-in app gives itself; any client can choose any name."""
-    name = pending.get("client_name")
-    if not name:
-        return ""
-    return f"The app signing in calls itself <strong>{html.escape(name)}</strong>. "
+_NO_STORE = sign_in_page.NO_STORE
 
 
-_NO_STORE = {"Cache-Control": "no-store"}
-_HEADERS = {
-    **_NO_STORE,
-    "X-Frame-Options": "DENY",
-    # No form-action: browsers apply it to the redirect after the code form, and the sign-in
-    # must end with a redirect to Grok Bot's callback on another site (GW-CLAIM-006).
-    "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
-    "Referrer-Policy": "no-referrer",
-}
-
-
-def _page(body, status=200, refresh=False):
-    meta = '<meta http-equiv="refresh" content="3">' if refresh else ""
-    text = (
-        "<!doctype html><html><head><meta charset=utf-8>"
-        '<meta name="viewport" content="width=device-width, initial-scale=1">'
-        f"{meta}<title>Grok Gadgets sign-in</title>"
-        "<style>body{font:16px system-ui;margin:2em auto;max-width:34em;padding:0 1em}"
-        "pre{white-space:pre-wrap;background:#eee;padding:.6em}</style></head>"
-        f"<body><h1>Grok Gadgets sign-in</h1><p>{body}</p></body></html>"
-    )
-    return HTMLResponse(text, status_code=status, headers=_HEADERS)
+def _html(text, status=200):
+    return HTMLResponse(text, status_code=status, headers=sign_in_page.HEADERS)

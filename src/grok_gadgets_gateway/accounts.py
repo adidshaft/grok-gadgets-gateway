@@ -83,7 +83,9 @@ def _clean_label(text):
 
 def normal_code(text):
     """`ABCD-EFGH` (claim, share, link) or `ABCD-EFGH-JKLM-NPQR` (recovery); None if neither."""
-    raw = "".join(str(text or "").split()).replace("-", "").upper()
+    # Hyphens, en and em dashes and spaces are all separators; phones change one into another.
+    raw = "".join(str(text or "").split())
+    raw = raw.replace("-", "").replace("\u2013", "").replace("\u2014", "").upper()
     if len(raw) not in (8, 16) or any(c not in ALPHABET for c in raw):
         return None
     return "-".join(raw[i : i + 4] for i in range(0, len(raw), 4))
