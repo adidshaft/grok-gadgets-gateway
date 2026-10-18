@@ -436,3 +436,17 @@ def test_a_worker_stops_when_its_parent_is_gone(tmp_path, monkeypatch, private_h
     fleet._worker(cfg, fleet.load_tokens(out, 1), 600, queue, measure, stop, parent=-1)
     kind, result = queue.get(timeout=5)
     assert kind == "done" and result["online_at_end"] == 0
+
+
+async def test_a_lost_mcp_endpoint_is_recorded_not_fatal(tmp_path):
+    cfg = fleet.FleetConfig(
+        batch=tmp_path,
+        count=1,
+        host=NAME,
+        port=9,
+        ca=tmp_path / "ca.pem",
+        mcp_url=f"http://127.0.0.1:{free_port()}/mcp",
+        mcp_token="t" * 32,
+    )
+    result = await fleet.drive(cfg, ["dev-1"], 0.3)
+    assert result["error"] and result["latency_ms"]["p95"] is None

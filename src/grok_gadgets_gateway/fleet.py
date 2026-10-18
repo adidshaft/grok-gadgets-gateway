@@ -384,49 +384,65 @@ async def drive(cfg, device_ids, duration):
 
     from .rehearse import _client_info
 
-    latencies, outcomes, sent = Reservoir(), Counter(), 0
+    latencies, outcomes = Reservoir(), Counter()
+    sent = [0]
     gate = asyncio.Semaphore(cfg.max_in_flight)
     headers = {"Authorization": "Bearer " + cfg.mcp_token}
-    async with (
-        httpx2.AsyncClient(headers=headers, timeout=httpx2.Timeout(30.0, read=300.0)) as http,
-        streamable_http_client(cfg.mcp_url, http_client=http) as (read, write),
-        ClientSession(read, write, client_info=_client_info()) as session,
-    ):
-        await session.initialize()
+    loop = asyncio.get_running_loop()
+    end = loop.time() + duration
+    error = None
 
-        async def one(device_id):
-            async with gate:
-                started = time.monotonic()
-                try:
-                    result = await session.call_tool(
-                        "gadgets_command",
-                        {
-                            "device_id": device_id,
-                            "capability": CAPABILITY,
-                            "arguments": {"text": "load test"},
-                        },
-                    )
-                    value = result.structured_content or json.loads(result.content[0].text)
-                    status = (
-                        value["command"]["status"] if value.get("ok") else value["error"]["code"]
-                    )
-                except Exception:  # noqa: BLE001 - count it; the run goes on
-                    status = "client_error"
-                outcomes[status] += 1
-                if status == "executed":
-                    latencies.add(time.monotonic() - started)
+    async def session():
+        async with (
+            httpx2.AsyncClient(headers=headers, timeout=httpx2.Timeout(30.0, read=300.0)) as http,
+            streamable_http_client(cfg.mcp_url, http_client=http) as (read, write),
+            ClientSession(read, write, client_info=_client_info()) as mcp,
+        ):
+            await mcp.initialize()
 
-        tasks = []
-        loop = asyncio.get_running_loop()
-        end = loop.time() + duration
-        next_call = loop.time()
-        while loop.time() < end:
-            tasks.append(asyncio.create_task(one(random.choice(device_ids))))
-            sent += 1
-            next_call += 1 / cfg.commands_per_second
-            await asyncio.sleep(max(0.0, next_call - loop.time()))
-        await asyncio.gather(*tasks)
-    return {"sent": sent, "outcomes": dict(outcomes), "latency_ms": _ms(latencies.values)}
+            async def one(device_id):
+                async with gate:
+                    started = time.monotonic()
+                    try:
+                        result = await mcp.call_tool(
+                            "gadgets_command",
+                            {
+                                "device_id": device_id,
+                                "capability": CAPABILITY,
+                                "arguments": {"text": "load test"},
+                            },
+                        )
+                        value = result.structured_content or json.loads(result.content[0].text)
+                        status = (
+                            value["command"]["status"]
+                            if value.get("ok")
+                            else value["error"]["code"]
+                        )
+                    except Exception:  # noqa: BLE001 - count it; the run goes on
+                        status = "client_error"
+                    outcomes[status] += 1
+                    if status == "executed":
+                        latencies.add(time.monotonic() - started)
+
+            tasks = []
+            next_call = loop.time()
+            while loop.time() < end:
+                tasks.append(asyncio.create_task(one(random.choice(device_ids))))
+                sent[0] += 1
+                next_call += 1 / cfg.commands_per_second
+                await asyncio.sleep(max(0.0, next_call - loop.time()))
+            await asyncio.gather(*tasks)
+
+    try:
+        await session()
+    except Exception as exc:  # noqa: BLE001 - a lost MCP endpoint is a result, not a crash
+        # For example the relay stopped answering under load: keep the gadget numbers.
+        error = type(exc).__name__
+        await asyncio.sleep(max(0.0, end - loop.time()))
+    result = {"sent": sent[0], "outcomes": dict(outcomes), "latency_ms": _ms(latencies.values)}
+    if error:
+        result["error"] = error
+    return result
 
 
 def _merge_rows(results, every):
@@ -652,6 +668,8 @@ def describe(summary):
             f"errors {summary['errors'] or 'none'}"
         ),
     ]
+    if commands.get("error"):
+        lines.append(f"command driver stopped: {commands['error']} (the MCP endpoint was lost)")
     if commands["sent"]:
         latency = commands["latency_ms"]
         lines.append(
