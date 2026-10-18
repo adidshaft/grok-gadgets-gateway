@@ -15,13 +15,13 @@ copies it, so the refresh-token family carries the account; the `client_id` neve
 """
 
 import hashlib
-import html
 import json
 import os
 import secrets
 import time
+from collections import deque
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit
 
 from mcp.server.auth.provider import (
     AccessToken,
@@ -34,7 +34,15 @@ from mcp.server.auth.provider import (
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 from starlette.responses import HTMLResponse, RedirectResponse
 
+from . import sign_in_page
 from .accounts import REQUEST_WRONG_MAX, ClaimRejected
+from .client_documents import (
+    DOCUMENT_SECONDS,
+    FETCHES_PER_MINUTE,
+    DocumentFetcher,
+    DocumentRejected,
+    is_document_url,
+)
 from .operator import DEFAULT_TOKEN_NAME, TOKEN_NAME, OperatorError, atomic_write, config_dir
 
 SCOPE = "gadgets"
@@ -49,7 +57,7 @@ MAX_PENDING = 8
 CLIENT_IDLE_SECONDS = 3600
 PENDING_PER_CLIENT = 2
 FLOOD_ALERT_SECONDS = 60
-APPROVE_PATH = "/oauth/approve"
+APPROVE_PATH = sign_in_page.APPROVE_PATH
 # No 0/O or 1/I, so a code read off a phone screen is typed correctly.
 _ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 _LOOPBACK = ("localhost", "127.0.0.1", "::1", "[::1]")
@@ -156,8 +164,15 @@ def _revoked(root, record):
 class OwnerApprovedOAuth:
     """OAuthAuthorizationServerProvider whose only consent step is the owner's CLI approval."""
 
-    def __init__(self, issuer, directory=None, log=None, clock=time.time, accounts=None):
+    def __init__(
+        self, issuer, directory=None, log=None, clock=time.time, accounts=None, documents=None
+    ):
         self.issuer = issuer.rstrip("/")
+        # Client ID Metadata Documents (#176): an HTTPS client_id is fetched, checked and kept
+        # like a registered client. `documents` is replaced in tests.
+        self.documents = documents if documents is not None else DocumentFetcher()
+        self.fetches = deque()  # When recent document fetches started (FETCHES_PER_MINUTE).
+        self.document_logged = {}  # Refusal reason -> when it was last logged.
         self.accounts = accounts
         self.root = _private_dir(Path(directory or oauth_dir()))
         for sub in ("requests", "approved", "revoked"):
@@ -165,7 +180,7 @@ class OwnerApprovedOAuth:
         self.log = log
         self.clock = clock
         self.state = _read_json(self.root / "state.json", {})
-        for key in ("clients", "access", "refresh", "registered_at"):
+        for key in ("clients", "access", "refresh", "registered_at", "fetched_at"):
             self.state.setdefault(key, {})
         self.alerted_at = None
         self.expired_seen = set()  # Access-token digests already logged as expired (#211).
@@ -199,7 +214,51 @@ class OwnerApprovedOAuth:
 
     async def get_client(self, client_id):
         record = self.state["clients"].get(client_id)
-        return OAuthClientInformationFull.model_validate(record) if record else None
+        known = OAuthClientInformationFull.model_validate(record) if record else None
+        if not is_document_url(client_id):
+            return known
+        now = self.clock()
+        if (
+            known is not None
+            and now - self.state["fetched_at"].get(client_id, 0) < DOCUMENT_SECONDS
+        ):
+            return known
+        try:
+            info = await self._fetch_document(client_id, now)
+        except DocumentRejected as exc:
+            self._document_refused(exc.reason, now)
+            # A client already signed in keeps working while its document host is down.
+            return known if known is not None and client_id in self._clients_in_use() else None
+        self._prune_clients()
+        if client_id not in self.state["clients"] and len(self.state["clients"]) >= MAX_CLIENTS:
+            self._flood("clients_full")
+            return None
+        self.state["clients"][client_id] = info.model_dump(mode="json")
+        self.state["registered_at"][client_id] = now
+        self.state["fetched_at"][client_id] = now
+        self._save()
+        self._write(
+            "oauth_client_document",
+            client_name=info.client_name,
+            client_host=urlsplit(client_id).hostname,
+        )
+        return info
+
+    async def _fetch_document(self, url, now):
+        while self.fetches and now - self.fetches[0] >= 60:
+            self.fetches.popleft()
+        if len(self.fetches) >= FETCHES_PER_MINUTE:
+            self._flood("cimd_fetches")
+            raise DocumentRejected("budget")
+        self.fetches.append(now)
+        return await self.documents.fetch(url)
+
+    def _document_refused(self, reason, now):
+        """One `oauth_cimd_rejected` line a minute for each reason; never the URL or document."""
+        last = self.document_logged.get(reason)
+        if last is None or now - last >= FLOOD_ALERT_SECONDS:
+            self.document_logged[reason] = now
+            self._write("oauth_cimd_rejected", reason=reason)
 
     def _flood(self, reason):
         """One `oauth_flood` alert line a minute while a cap is hit."""
@@ -235,6 +294,7 @@ class OwnerApprovedOAuth:
         for client_id in removed:
             self.state["clients"].pop(client_id, None)
             registered.pop(client_id, None)
+            self.state["fetched_at"].pop(client_id, None)
         if spare > 0:
             self._flood("clients_full")
         return removed
@@ -273,6 +333,7 @@ class OwnerApprovedOAuth:
         self.requests[request_id] = {
             "code": code,
             "client_id": client.client_id,
+            "client_name": client.client_name,
             "params": params,
             "expires_at": now + REQUEST_SECONDS,
         }
@@ -312,22 +373,13 @@ class OwnerApprovedOAuth:
         request_id = request.query_params.get("request", "")
         pending = self.requests.get(request_id)
         if pending is None:
-            return _page(
-                "This sign-in has expired or is unknown. Start the sign-in again from Grok Bot.",
-                status=400,
-            )
+            return _html(sign_in_page.ended_page("expired"), status=400)
         params = pending["params"]
         decision = _read_json(self.root / "approved" / pending["code"], None)
         if decision is None and self.accounts is not None:
             return self._code_page(request_id, pending)
         if decision is None:
-            return _page(
-                "Approve this sign-in on the computer that runs the gateway:"
-                f"<pre>grok-gadgets-gateway oauth approve {pending['code']} --name grok-bot</pre>"
-                f"Code <strong>{pending['code']}</strong>. This page continues by itself. "
-                "If you did not start this sign-in, do nothing; it expires in 10 minutes.",
-                refresh=True,
-            )
+            return _html(sign_in_page.waiting_page(pending.get("client_name"), pending["code"]))
         self._forget(request_id)
         if decision.get("deny"):
             self._write("oauth_sign_in_denied", code=pending["code"])
@@ -359,18 +411,12 @@ class OwnerApprovedOAuth:
         self._write("oauth_sign_in_approved", code=pending["code"], token=name)
         return construct_redirect_uri(str(params.redirect_uri), code=code, state=params.state)
 
-    def _code_page(self, request_id, pending, message="", status=200):
-        return _page(
-            f"{message}Type the code on your gadget's display, or your recovery code."
-            f'<form method="post" action="{APPROVE_PATH}">'
-            f'<input type="hidden" name="request" value="{html.escape(request_id)}">'
-            '<input name="code" autocomplete="off" autocapitalize="characters" '
-            'spellcheck="false" aria-label="Code" placeholder="Code">'
-            '<button type="submit">Continue</button></form>'
-            "<small>Relay operator: approve with "
-            f"<code>grok-gadgets-gateway oauth approve {pending['code']} --name NAME</code>, "
-            "then press Continue with the field empty.</small>",
-            status=status,
+    def _code_page(self, request_id, pending, error=None):
+        tries = REQUEST_WRONG_MAX - pending.get("wrong", 0) if error else None
+        return _html(
+            sign_in_page.code_page(
+                request_id, pending.get("client_name"), pending["code"], error, tries
+            )
         )
 
     async def code_submitted(self, request):
@@ -383,10 +429,7 @@ class OwnerApprovedOAuth:
         request_id = str(form.get("request", ""))
         pending = self.requests.get(request_id)
         if pending is None or self.accounts is None:
-            return _page(
-                "This sign-in has expired or is unknown. Start the sign-in again from Grok Bot.",
-                status=400,
-            )
+            return _html(sign_in_page.ended_page("expired"), status=400)
         decision = _read_json(self.root / "approved" / pending["code"], None)
         text = str(form.get("code", "")).strip()
         if decision is not None or not text:
@@ -401,10 +444,8 @@ class OwnerApprovedOAuth:
             pending["wrong"] = pending.get("wrong", 0) + 1
             if exc.limited or pending["wrong"] >= REQUEST_WRONG_MAX:
                 self._forget(request_id)
-                return _page(
-                    f"{html.escape(str(exc))} Start the sign-in again from Grok Bot.", status=400
-                )
-            return self._code_page(request_id, pending, f"<strong>{exc}</strong> ", 200)
+                return _html(sign_in_page.ended_page("limited"), status=400)
+            return self._code_page(request_id, pending, "wrong")
         self._forget(request_id)
         target = self._grant(pending, account, account, now)
         # Straight back to Grok Bot, as the operator approval does: a phone's sign-in sheet
@@ -552,25 +593,8 @@ class _QueryOnly:
         self.query_params = {"request": request_id}
 
 
-_NO_STORE = {"Cache-Control": "no-store"}
-_HEADERS = {
-    **_NO_STORE,
-    "X-Frame-Options": "DENY",
-    # No form-action: browsers apply it to the redirect after the code form, and the sign-in
-    # must end with a redirect to Grok Bot's callback on another site (GW-CLAIM-006).
-    "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
-    "Referrer-Policy": "no-referrer",
-}
+_NO_STORE = sign_in_page.NO_STORE
 
 
-def _page(body, status=200, refresh=False):
-    meta = '<meta http-equiv="refresh" content="3">' if refresh else ""
-    text = (
-        "<!doctype html><html><head><meta charset=utf-8>"
-        '<meta name="viewport" content="width=device-width, initial-scale=1">'
-        f"{meta}<title>Grok Gadgets sign-in</title>"
-        "<style>body{font:16px system-ui;margin:2em auto;max-width:34em;padding:0 1em}"
-        "pre{white-space:pre-wrap;background:#eee;padding:.6em}</style></head>"
-        f"<body><h1>Grok Gadgets sign-in</h1><p>{body}</p></body></html>"
-    )
-    return HTMLResponse(text, status_code=status, headers=_HEADERS)
+def _html(text, status=200):
+    return HTMLResponse(text, status_code=status, headers=sign_in_page.HEADERS)

@@ -86,7 +86,7 @@ It checks five things:
    ```sh
    git clone https://github.com/adidshaft/grok-gadgets-gateway.git
    cd grok-gadgets-gateway
-   git checkout v0.1.0-alpha.17        # or a reviewed commit
+   git checkout v0.1.0-alpha.18        # or a reviewed commit
    cd examples/docker
    cp .env.example .env                # set MCP_HOST=gadgets.example.net
    ```
@@ -131,7 +131,7 @@ boot.
 ## Option B: Linux user service (systemd)
 
 ```sh
-uv tool install grok-gadgets-gateway==0.1.0a17
+uv tool install grok-gadgets-gateway==0.1.0a18
 grok-gadgets-gateway init
 grok-gadgets-gateway device-cert devices.example.net
 grok-gadgets-gateway enroll oledkit-0123456789ab --token-file oledkit.token
@@ -200,6 +200,40 @@ grok-gadgets-gateway factory-provision /dev/cu.usbmodem101 --gateway devices.exa
 
 Keep the batch folder off shared drives and out of chats until every row says
 `provisioned: yes`. A Linux gadget takes its token file with `--token-file` instead.
+
+## How many gadgets one relay holds
+
+A relay holds 64 gadgets by default. A 65th device ID gets `busy` until one leaves.
+`serve --max-devices N` (at most 2,000) raises the limit for the registry and the device
+port together; `service install` takes the same flag. Check the measured sizes in the hub
+[support matrix](https://github.com/adidshaft/grok-gadgets/blob/main/docs/public/support-matrix.md)
+before you raise it. They name the host size, the gateway version and the poll rate.
+
+Measure your own host on a **test relay** with test tokens, never on a relay with real
+gadgets. A batch holds up to 500 gadgets, so make several for a larger fleet:
+
+```sh
+# On the test relay host
+grok-gadgets-gateway init && grok-gadgets-gateway device-cert devices.example.net
+grok-gadgets-gateway enroll --batch fleet-ids.csv --out fleet-1 --no-labels   # a device_id column
+grok-gadgets-gateway serve --device-listen 0.0.0.0:8444 --max-devices 1000 \
+  --commands-per-minute 120 &
+grok-gadgets-gateway fleet sample --pid "$!" --out sample.csv          # Ctrl-C when done
+
+# On another computer, with fleet-1/ and the relay's ca.pem copied privately
+ssh -N -L 18766:127.0.0.1:8766 grokgadgets@devices.example.net &    # MCP for the timer
+grok-gadgets-gateway fleet run --batch fleet-1 --count 200 --gateway devices.example.net \
+  --ca relay-ca.pem --mcp-url http://127.0.0.1:18766/mcp --mcp-token-file mcp-token \
+  --duration 900 --out results-200
+```
+
+Each simulated gadget pins the CA, checks the name, polls every 100 ms like the ESP32 firmware
+and acknowledges each command. The fleet ramps up at 18 new connections a minute, inside the
+relay's limit of 20 for one address. So 1,000 gadgets take about an hour to connect. A driver
+sends one `gadgets_command` a second and times it until `executed`. `results-200/` holds
+`summary.json` and `fleet.csv`; `sample.csv` holds the gateway's CPU share and memory. The
+files hold counts and timings only, never a token, address or name. `--connect ADDRESS` dials
+an address when the name is not in DNS yet; TLS still checks the name.
 
 ## Connect Grok Bot
 

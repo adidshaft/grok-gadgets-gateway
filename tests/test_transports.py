@@ -12,6 +12,7 @@ from jsonschema import Draft202012Validator
 from test_domain import hello
 
 from grok_gadgets_gateway.domain import Gateway
+from grok_gadgets_gateway.protocol import GatewayError
 from grok_gadgets_gateway.simulator import Simulator
 from grok_gadgets_gateway.transport import CredentialError, Credentials, DeviceServer
 from grok_gadgets_gateway.usb_bridge import bridge
@@ -113,12 +114,16 @@ async def test_close_returns_while_device_polls(tmp_path):
     assert reply["ok"]
 
     async def poll_forever():
-        while True:
-            w.write(b'{"type":"poll"}\n')
-            await w.drain()
-            if not await r.readline():
-                return "eof"
-            await asyncio.sleep(0.05)
+        # close() may abort the socket while this side writes: a reset is closed too.
+        try:
+            while True:
+                w.write(b'{"type":"poll"}\n')
+                await w.drain()
+                if not await r.readline():
+                    return "eof"
+                await asyncio.sleep(0.05)
+        except ConnectionResetError:
+            return "eof"
 
     poller = asyncio.create_task(poll_forever())
     await asyncio.sleep(0.2)
@@ -649,3 +654,60 @@ async def test_rotation_rejects_the_old_token_and_keeps_receipts(tmp_path):
         reactivated[1].close()
     finally:
         await server.close()
+
+
+# The registry is parsed again only when the file changes (GW-SCALE-001): a relay checks the
+# token on every frame, and a large registry made that the cost of each poll.
+
+
+def test_an_unchanged_registry_is_not_parsed_again(tmp_path, monkeypatch):
+    from grok_gadgets_gateway import transport
+
+    path = tmp_path / "auth.json"
+    write_credentials(path)
+    credentials = transport.Credentials(path)
+    credentials.validate()
+    parsed = []
+    real = transport.parse_registry
+    monkeypatch.setattr(transport, "parse_registry", lambda data: parsed.append(1) or real(data))
+    for _ in range(50):
+        credentials.check("dev-1", TOKEN)
+    assert parsed == []  # validate() parsed it once; nothing changed since.
+
+
+def test_a_revocation_is_seen_at_the_next_check(tmp_path):
+    from grok_gadgets_gateway.operator import revoke
+    from grok_gadgets_gateway.transport import Credentials
+
+    path = tmp_path / "auth.json"
+    write_credentials(path)
+    credentials = Credentials(path)
+    credentials.validate()
+    credentials.check("dev-1", TOKEN)
+    revoke("dev-1", path)
+    with pytest.raises(GatewayError) as exc:
+        credentials.check("dev-1", TOKEN)
+    assert exc.value.code == "revoked"
+
+
+def test_an_in_place_edit_and_a_mode_change_are_seen(tmp_path):
+    from grok_gadgets_gateway.transport import Credentials
+
+    path = tmp_path / "auth.json"
+    write_credentials(path)
+    credentials = Credentials(path)
+    credentials.validate()
+    credentials.check("dev-1", TOKEN)
+    with path.open("r+") as handle:  # Same inode, as a non-atomic editor save.
+        text = handle.read().replace('"revoked": false', '"revoked": true ')
+        handle.seek(0)
+        handle.write(text)
+    with pytest.raises(GatewayError) as exc:
+        credentials.check("dev-1", TOKEN)
+    assert exc.value.code == "revoked"
+    write_credentials(path)
+    credentials.check("dev-1", TOKEN)
+    path.chmod(0o644)
+    with pytest.raises(GatewayError) as exc:
+        credentials.check("dev-1", TOKEN)
+    assert exc.value.code == "unavailable"

@@ -134,6 +134,15 @@ def _credentials_option(parser):
     )
 
 
+def _max_devices(text):
+    from .domain import MAX_DEVICES_LIMIT
+
+    value = _positive_int(text)
+    if value > MAX_DEVICES_LIMIT:
+        raise argparse.ArgumentTypeError(f"must be at most {MAX_DEVICES_LIMIT}")
+    return value
+
+
 def _positive_int(text):
     try:
         value = int(text)
@@ -288,6 +297,14 @@ def build_parser():
     oauth_sub.add_parser("list", help="list live sign-ins (never the tokens)")
     oauth_revoke = oauth_sub.add_parser("revoke", help="end every sign-in with this name at once")
     oauth_revoke.add_argument("name")
+    oauth_watch = oauth_sub.add_parser(
+        "watch", help="did sign-ins survive each hour? refreshes, expiries and 401s by day"
+    )
+    oauth_watch.add_argument(
+        "--log", action="append", help="request log (default: this host's service log)"
+    )
+    oauth_watch.add_argument("--since", metavar="YYYY-MM-DD", help="from this UTC day")
+    oauth_watch.add_argument("--json", action="store_true")
 
     accounts = sub.add_parser("accounts", help="see the accounts of serve --oauth --accounts")
     accounts_sub = accounts.add_subparsers(dest="accounts_command", required=True)
@@ -371,6 +388,61 @@ def build_parser():
     report.add_argument("--accounts", help="accounts file (default: oauth/accounts.json)")
     report.add_argument("--json", action="store_true")
 
+    fleet = sub.add_parser(
+        "fleet", help="measure a relay with simulated gadgets (hub ADR 014); never a real one"
+    )
+    fleet_sub = fleet.add_subparsers(dest="fleet_command", metavar="ACTION", required=True)
+    fleet_run = fleet_sub.add_parser(
+        "run", help="connect N simulated gadgets to a relay's device port and time it"
+    )
+    fleet_run.add_argument(
+        "--batch",
+        action="append",
+        required=True,
+        metavar="DIR",
+        help="a folder from enroll --batch IDS.csv --out DIR --no-labels; repeat for more",
+    )
+    fleet_run.add_argument("--count", type=_positive_int, required=True, metavar="N")
+    fleet_run.add_argument(
+        "--gateway", required=True, metavar="NAME[:PORT]", help="the relay's device name"
+    )
+    fleet_run.add_argument("--ca", required=True, help="the relay's ca.pem")
+    fleet_run.add_argument(
+        "--connect", metavar="ADDRESS", help="dial this address; TLS still checks NAME"
+    )
+    fleet_run.add_argument("--poll-ms", type=_positive_int, default=100, metavar="MS")
+    fleet_run.add_argument(
+        "--wait-ms",
+        type=_positive_int,
+        metavar="MS",
+        help="long-poll: each poll waits up to MS (100-10000) for a command (hub ADR 014)",
+    )
+    fleet_run.add_argument(
+        "--ramp-per-minute",
+        type=_positive_int,
+        default=18,
+        metavar="N",
+        help="new connections a minute (default 18; the relay allows 20 from one address)",
+    )
+    fleet_run.add_argument(
+        "--duration", type=_positive_int, default=900, metavar="SECONDS", help="after the ramp"
+    )
+    fleet_run.add_argument("--workers", type=_positive_int, default=1, metavar="N")
+    fleet_run.add_argument("--every", type=_positive_int, default=5, metavar="SECONDS")
+    fleet_run.add_argument("--mcp-url", help="the relay's MCP URL, e.g. through an SSH forward")
+    fleet_run.add_argument("--mcp-token-file", help="bearer token file (mode 0600) for --mcp-url")
+    fleet_run.add_argument(
+        "--commands-per-second", type=float, default=1.0, metavar="N", help="default 1"
+    )
+    fleet_run.add_argument("--out", required=True, metavar="DIR", help="results folder")
+    fleet_sample = fleet_sub.add_parser(
+        "sample", help="on the relay host: the gateway's CPU share and memory every few seconds"
+    )
+    fleet_sample.add_argument("--pid", type=_positive_int, required=True)
+    fleet_sample.add_argument("--out", required=True, metavar="FILE", help="a .csv file")
+    fleet_sample.add_argument("--every", type=float, default=5.0, metavar="SECONDS")
+    fleet_sample.add_argument("--duration", type=float, metavar="SECONDS", help="default: Ctrl-C")
+
     remote = sub.add_parser(
         "remote", help="kill switch: turn remote (tunnel) access off or on at once"
     )
@@ -426,6 +498,14 @@ def build_parser():
         help="also run the relay device listener on this address of an always-on host, for "
         "Wi-Fi devices anywhere (port 8444 by default; any peer; TLS; off unless set; run "
         "device-cert first)",
+    )
+    serve.add_argument(
+        "--max-devices",
+        type=_max_devices,
+        default=64,
+        metavar="N",
+        help="gadgets this gateway registers and the relay holds at once (default 64, at most "
+        "2000); see the measured sizes in the hub support matrix before you raise it",
     )
     serve.add_argument(
         "--oauth",
@@ -594,6 +674,9 @@ def build_parser():
         "--device-listen",
         metavar="ADDRESS[:PORT]",
         help="also run the relay device listener (see serve --device-listen)",
+    )
+    service_install.add_argument(
+        "--max-devices", type=_max_devices, metavar="N", help="see serve --max-devices"
     )
     service_install.add_argument("--port", type=int, default=8766, help="loopback MCP HTTP port")
     service_install.add_argument(
@@ -835,6 +918,8 @@ def run(parser, args):
 
     if command == "builder":
         return run_builder_report(parser, args)
+    if command == "fleet":
+        return run_fleet(parser, args)
     if command == "usage":
         return run_usage(parser, args)
     if command == "serve":
@@ -860,6 +945,7 @@ def run(parser, args):
                     usage_hook=usage_hook,
                     oauth=args.oauth,
                     accounts=args.accounts,
+                    max_devices=args.max_devices,
                 )
             )
         except OperatorError as exc:
@@ -1345,6 +1431,7 @@ def run_service(parser, args, service=None):
                     args.usage_hook,
                     args.device_listen,
                     args.accounts,
+                    args.max_devices,
                 ),
             ]
             environment = {
@@ -1387,6 +1474,47 @@ def run_service(parser, args, service=None):
         return 0
     except OperatorError as exc:
         parser.error(str(exc))
+
+
+def run_fleet(parser, args):
+    from . import fleet
+    from .lan import parse_gateway_address
+    from .operator import read_device_token_file
+
+    try:
+        if args.fleet_command == "sample":
+            summary = fleet.sample(args.pid, args.out, every=args.every, duration=args.duration)
+            print(json.dumps(summary))
+            return 0
+        host, port = parse_gateway_address(args.gateway)
+        if bool(args.mcp_url) != bool(args.mcp_token_file):
+            parser.error("--mcp-url and --mcp-token-file go together")
+        cfg = fleet.FleetConfig(
+            batch=[Path(folder) for folder in args.batch],
+            count=args.count,
+            host=host,
+            port=port,
+            ca=Path(args.ca),
+            connect=args.connect,
+            poll_ms=args.poll_ms,
+            wait_ms=args.wait_ms,
+            ramp_per_minute=args.ramp_per_minute,
+            duration=float(args.duration),
+            workers=args.workers,
+            every=float(args.every),
+            mcp_url=args.mcp_url,
+            mcp_token=read_device_token_file(args.mcp_token_file) if args.mcp_token_file else None,
+            commands_per_second=args.commands_per_second,
+        )
+        summary = asyncio.run(fleet.run(cfg, args.out))
+    except OperatorError as exc:
+        parser.error(str(exc))
+    except KeyboardInterrupt:
+        return 130
+    for line in fleet.describe(summary):
+        print(line)
+    print(f"Wrote {os.path.join(args.out, 'summary.json')} and fleet.csv", file=sys.stderr)
+    return 0
 
 
 def run_usage(parser, args):
@@ -1625,6 +1753,26 @@ def run_accounts(parser, args):
     return 0
 
 
+def _oauth_watch(parser, args):
+    from .logfiles import rotated
+    from .signin_watch import format_watch, watch
+    from .usage import default_log
+
+    paths = args.log
+    if not paths:
+        found = default_log()
+        if found is None or not found.is_file():
+            parser.error("no service request log here; pass --log PATH")
+        paths = [found]
+    for path in paths:
+        if not Path(path).is_file():
+            parser.error(f"no request log at {path}")
+    files = [old for path in paths for old in rotated(path)] or paths
+    result = watch(files, since=args.since)
+    print(json.dumps(result, indent=2) if args.json else "\n".join(format_watch(result)))
+    return 0
+
+
 def run_oauth(parser, args):
     from datetime import UTC, datetime
 
@@ -1635,6 +1783,8 @@ def run_oauth(parser, args):
 
     try:
         action = args.oauth_command
+        if action == "watch":
+            return _oauth_watch(parser, args)
         if action == "pending":
             requests = pending_requests()
             for request in requests:

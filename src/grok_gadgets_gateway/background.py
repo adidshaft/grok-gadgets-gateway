@@ -54,6 +54,7 @@ def serve_arguments(
     usage_hook=None,
     device_listen=None,
     accounts=False,
+    max_devices=None,
 ):
     """The `serve` flags the service runs with; the same rules as a foreground `serve`."""
     args = ["serve", "--port", str(port), "--device-port", str(device_port)]
@@ -61,6 +62,8 @@ def serve_arguments(
         args += ["--lan-listen", lan_listen]
     if device_listen:
         args += ["--device-listen", device_listen]
+    if max_devices is not None:
+        args += ["--max-devices", str(max_devices)]
     for host in allowed_hosts:
         args += ["--allowed-host", host]
     if oauth:

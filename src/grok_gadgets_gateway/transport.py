@@ -1,6 +1,7 @@
 """Authenticated loopback NDJSON device transport; domain remains independent."""
 
 import asyncio
+import asyncio.sslproto
 import contextlib
 import hashlib
 import hmac
@@ -19,6 +20,11 @@ logger = logging.getLogger("grok_gadgets_gateway")
 DEVICE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,63}")
 MAX_REGISTRY_BYTES = 1024 * 1024
 FATAL_CODES = ("unauthorized", "revoked", "stale_session")
+# asyncio gives each TLS connection a 256 KiB read buffer; on Linux that memory becomes
+# resident, about 220 KB per gadget, and a 512 MB relay ran out of memory at about 600 gadgets
+# (hub ADR 014 load test). Frames are at most 16 KiB, so 32 KiB reads lose nothing.
+TLS_READ_BUFFER = 32 * 1024
+asyncio.sslproto.SSLProtocol.max_size = TLS_READ_BUFFER
 # A tunnel pointed at a device port sends HTTP; devices send JSON lines.
 _HTTP_REQUEST_LINE = re.compile(rb"[A-Z]{3,7} \S+ HTTP/[0-9.]+\r?\n")
 INTERNAL_ERROR = (
@@ -129,7 +135,10 @@ def read_registry(path):
 
 
 class Credentials:
-    """Operator-managed registry, re-read on each request for prompt revocation.
+    """Operator-managed registry, checked on each request for prompt revocation.
+
+    The file is parsed again only when its inode, size, modification time or mode changes,
+    so a relay with many gadgets does not parse the whole registry for every frame.
 
     A transient read or parse failure (for example a non-atomic editor save) keeps serving the
     last good registry for `grace` seconds, then answers the retryable `unavailable`.
@@ -143,6 +152,7 @@ class Credentials:
         self.status = "not_loaded"
         self._good = None
         self._good_at = None
+        self._key = None  # stat of the file behind _good
 
     def validate(self):
         """Load once at startup; raises CredentialError with an operator-safe message.
@@ -157,17 +167,30 @@ class Credentials:
                 "Delete it once the gadgets connect.",
                 self.path,
             )
+        key = self._stat_key()
         self._good, self._good_at = read_registry(self.path), self.clock()
-        self.status = "ok"
+        self._key, self.status = key, "ok"
         return len(self._good)
 
     def enrolled_count(self):
         return None if self._good is None else len(self._good)
 
+    def _stat_key(self):
+        try:
+            info = self.path.stat()
+        except OSError:
+            return None
+        return (info.st_ino, info.st_size, info.st_mtime_ns, info.st_mode)
+
     def _current(self):
+        key = self._stat_key()
+        if key is not None and key == self._key and self.status == "ok":
+            self._good_at = self.clock()
+            return self._good
         try:
             devices = read_registry(self.path)
         except CredentialError as exc:
+            self._key = None
             if exc.code != self.status:
                 logger.warning("Device credentials %s: %s (%s)", exc.code, exc, self.path)
             self.status = exc.code
@@ -178,6 +201,7 @@ class Credentials:
         if self.status != "ok" and self.status != "not_loaded":
             logger.warning("Device credentials ok again (%s)", self.path)
         self._good, self._good_at, self.status = devices, self.clock(), "ok"
+        self._key = key
         return devices
 
     def check(self, device_id, token):
@@ -272,6 +296,10 @@ class DeviceServer:
         self.connections = set()
         self.writers = set()
         self.pending = OrderedDict()
+        # Long-poll (hub ADR 014): (device, session) -> event set when the device gets a
+        # command or a new session. Keyed by session so a reconnect never takes a wake.
+        self.wakers = {}
+        gateway.listeners.append(self._wake)
 
     async def start(self):
         try:
@@ -297,7 +325,31 @@ class DeviceServer:
             "connections": len(self.connections),
         }
 
+    def _wake(self, did):
+        for (device, _), event in list(self.wakers.items()):
+            if device == did:
+                event.set()
+
+    async def _waiting_poll(self, did, sid, wait_ms):
+        """A poll that waits up to `wait_ms` for a command; the same reply as a poll."""
+        key = (did, sid)
+        event = self.wakers[key] = asyncio.Event()
+        try:
+            response = self.gateway.handle(did, sid, {"type": "poll"})
+            if response.get("commands"):
+                return response
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(event.wait(), wait_ms / 1000)
+            return self.gateway.handle(did, sid, {"type": "poll"})
+        finally:
+            if self.wakers.get(key) is event:
+                del self.wakers[key]
+
     async def close(self, timeout=2):
+        if self._wake in self.gateway.listeners:
+            self.gateway.listeners.remove(self._wake)
+        for event in self.wakers.values():
+            event.set()
         # Python >=3.12 Server.wait_closed() waits for every client connection, so clients
         # must be closed first and the wait must stay bounded.
         if self.server:
@@ -495,6 +547,8 @@ class DeviceServer:
                             if self.updates is None:
                                 raise GatewayError("invalid_request", "Updates are not served here")
                             response = self.updates.handle(did, sid, message)
+                        elif message["type"] == "poll" and "wait_ms" in message:
+                            response = await self._waiting_poll(did, sid, message["wait_ms"])
                         else:
                             response = self.gateway.handle(did, sid, message)
                         polled = message["type"] == "poll" and response.get("ok")

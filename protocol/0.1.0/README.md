@@ -70,6 +70,18 @@ explains them. The wire format is 0.1.0.
 - [fixtures/update-transcript.json](fixtures/update-transcript.json) is a complete exchange
   for a 2,500-byte update with its public key; request *i* is answered by reply *i*.
 
+## Long-poll (hub ADR 014)
+
+- A poll may carry `wait_ms` (an integer, 100–10000). The relay then answers when a command
+  for this gadget is ready, or when `wait_ms` has passed, with the same reply as a poll. A
+  new session for the same device ends the wait with `stale_session`.
+- Requests stay one at a time, so a gadget cannot send state or an event while its poll waits.
+  Pick `wait_ms` below the state interval (the ESP32 SDK sends state every 3 s; use 2500).
+- Claim and update fields come with the reply after the wait, at most `wait_ms` later than a
+  fast poll would see them.
+- A relay before this field answers it with `invalid_request`: poll without it until the next
+  boot. A gadget that never sends `wait_ms` gets the same replies as before.
+
 ## Capabilities and schemas
 
 - Capabilities are string names. `rgb.set` has the canonical strict arguments
@@ -123,8 +135,10 @@ polling on the same session. Do not reconnect and do not resend it.
 - Reconnecting with the same `boot_id` keeps that window. A new `boot_id` discards it.
   Returning later to an old `boot_id` starts a fresh window, so use a fresh boot identity on
   every reboot. IDs outside the window may be accepted again.
-- At most 64 devices are registered per process, including disconnected ones, so duplicate
-  bookkeeping is bounded at 16,384 IDs.
+- At most 64 devices are registered per process by default, including disconnected ones, so
+  duplicate bookkeeping is bounded at 16,384 IDs. `serve --max-devices N` (at most 2,000) sets
+  another limit; bookkeeping then stays below 256 IDs for each device. A device past the
+  limit gets `busy`.
 
 ## Reading events and state
 
