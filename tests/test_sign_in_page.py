@@ -30,11 +30,17 @@ def code_page(**changes):
     return page.code_page(**values)
 
 
+def test_the_page_is_short_and_the_rest_is_behind_help():
+    html = code_page()
+    visible = text_of(html.split("<details>")[0])
+    assert len(visible.split()) <= 20, visible
+
+
 def test_the_code_page_explains_what_to_type():
     html = code_page()
     words = text_of(html)
-    assert "Connect Grok Bot to your gadget" in words
-    assert "The app signing in calls itself Grok Bot" in words
+    assert "Connect Grok Bot" in words
+    assert "Requested by “Grok Bot”" in words
     assert "code on your gadget" in words.lower()
     assert "Codes change every 10 minutes" in words
     assert "recovery code" in words
@@ -74,7 +80,7 @@ def test_errors_say_what_happened_and_how_many_tries_are_left():
 
 def test_the_operator_route_stays_but_out_of_the_way():
     html = code_page()
-    assert "<details>" in html
+    assert "<details><summary>Help</summary>" in html
     assert "grok-gadgets-gateway oauth approve ABCD-EFGH --name NAME" in html
 
 
@@ -92,7 +98,7 @@ def test_names_and_ids_are_escaped():
 
 
 def test_a_client_without_a_name_gets_no_name_line():
-    assert "calls itself" not in code_page(client_name=None)
+    assert "Requested by" not in code_page(client_name=None)
 
 
 def test_no_scripts_no_external_assets_and_a_mobile_viewport():
@@ -105,7 +111,6 @@ def test_no_scripts_no_external_assets_and_a_mobile_viewport():
         assert not re.search(r"(src|href)=\"(https?:)?//", html)
         assert "@import" not in html and "url(" not in html
         assert 'name="viewport" content="width=device-width, initial-scale=1"' in html
-        assert "prefers-color-scheme: dark" in html
         assert "<title>Grok Gadgets sign-in</title>" in html
 
 
@@ -152,7 +157,7 @@ async def test_the_relay_serves_the_new_page_and_counts_down_tries(tmp_path):
         writer.close()
     first, second, done = pages
     assert first.headers["content-security-policy"] == POLICY
-    assert "Connect Grok Bot to your gadget" in first.text
+    assert "Connect Grok Bot" in first.text
     assert f"{REQUEST_WRONG_MAX - 1} tries left" in text_of(first.text)
     assert f"{REQUEST_WRONG_MAX - 2} tries left" in text_of(second.text)
     assert "AAAA-AAAA" not in first.text and "BBBB-BBBB" not in second.text
