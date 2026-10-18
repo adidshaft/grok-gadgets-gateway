@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The sign-in page is shorter and follows the website's look: "Connect Grok Bot", one line of instruction, the gadget drawing, the code field and Connect. Who requested the sign-in is one short line; tips, recovery codes and the operator command sit under Help ([#207](https://github.com/adidshaft/grok-gadgets-gateway/issues/207), owner review on 18 October 2026).
+
 - `oauth watch [--since DAY] [--json]` counts each day's fresh sign-ins, refreshes, expired access tokens, refused refreshes by reason, 401 answers and remote calls from the request log. It lists every expiry followed by a 401 before the next refresh for that sign-in ([#211](https://github.com/adidshaft/grok-gadgets-gateway/issues/211) residual, hub ADR 014 §4). It shows token names and counts only.
 - A clearer sign-in page ([#207](https://github.com/adidshaft/grok-gadgets-gateway/issues/207), hub ADR 014 §3). It is phone-first, with the Grok Bot face mark, light and dark themes and large type. A drawing shows a gadget screen with `Code XXXX–XXXX`, and one large code field takes the code or a recovery code. A wrong code says "That code did not work. Codes change every 10 minutes." and how many tries are left; the operator's approve command sits in a collapsed section. The page has no script and no external file; the page policy, the redirect back to Grok Bot after a right code and the frame, cache and referrer headers are unchanged. Codes typed with an en or em dash or spaces are understood.
 
