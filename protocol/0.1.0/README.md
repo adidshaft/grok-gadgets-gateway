@@ -70,6 +70,18 @@ explains them. The wire format is 0.1.0.
 - [fixtures/update-transcript.json](fixtures/update-transcript.json) is a complete exchange
   for a 2,500-byte update with its public key; request *i* is answered by reply *i*.
 
+## Long-poll (hub ADR 014)
+
+- A poll may carry `wait_ms` (an integer, 100–10000). The relay then answers when a command
+  for this gadget is ready, or when `wait_ms` has passed, with the same reply as a poll. A
+  new session for the same device ends the wait with `stale_session`.
+- Requests stay one at a time, so a gadget cannot send state or an event while its poll waits.
+  Pick `wait_ms` below the state interval (the ESP32 SDK sends state every 3 s; use 2500).
+- Claim and update fields come with the reply after the wait, at most `wait_ms` later than a
+  fast poll would see them.
+- A relay before this field answers it with `invalid_request`: poll without it until the next
+  boot. A gadget that never sends `wait_ms` gets the same replies as before.
+
 ## Capabilities and schemas
 
 - Capabilities are string names. `rgb.set` has the canonical strict arguments

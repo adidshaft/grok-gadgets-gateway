@@ -296,6 +296,10 @@ class DeviceServer:
         self.connections = set()
         self.writers = set()
         self.pending = OrderedDict()
+        # Long-poll (hub ADR 014): (device, session) -> event set when the device gets a
+        # command or a new session. Keyed by session so a reconnect never takes a wake.
+        self.wakers = {}
+        gateway.listeners.append(self._wake)
 
     async def start(self):
         try:
@@ -321,7 +325,31 @@ class DeviceServer:
             "connections": len(self.connections),
         }
 
+    def _wake(self, did):
+        for (device, _), event in list(self.wakers.items()):
+            if device == did:
+                event.set()
+
+    async def _waiting_poll(self, did, sid, wait_ms):
+        """A poll that waits up to `wait_ms` for a command; the same reply as a poll."""
+        key = (did, sid)
+        event = self.wakers[key] = asyncio.Event()
+        try:
+            response = self.gateway.handle(did, sid, {"type": "poll"})
+            if response.get("commands"):
+                return response
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(event.wait(), wait_ms / 1000)
+            return self.gateway.handle(did, sid, {"type": "poll"})
+        finally:
+            if self.wakers.get(key) is event:
+                del self.wakers[key]
+
     async def close(self, timeout=2):
+        if self._wake in self.gateway.listeners:
+            self.gateway.listeners.remove(self._wake)
+        for event in self.wakers.values():
+            event.set()
         # Python >=3.12 Server.wait_closed() waits for every client connection, so clients
         # must be closed first and the wait must stay bounded.
         if self.server:
@@ -519,6 +547,8 @@ class DeviceServer:
                             if self.updates is None:
                                 raise GatewayError("invalid_request", "Updates are not served here")
                             response = self.updates.handle(did, sid, message)
+                        elif message["type"] == "poll" and "wait_ms" in message:
+                            response = await self._waiting_poll(did, sid, message["wait_ms"])
                         else:
                             response = self.gateway.handle(did, sid, message)
                         polled = message["type"] == "poll" and response.get("ok")

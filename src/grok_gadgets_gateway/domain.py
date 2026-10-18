@@ -107,6 +107,9 @@ class Gateway:
         if type(max_devices) is not int or not 1 <= max_devices <= MAX_DEVICES_LIMIT:
             raise ValueError(f"max_devices must be 1 to {MAX_DEVICES_LIMIT}")
         self.max_devices = max_devices
+        # Called with a device ID when it gets a command or a new session, so a waiting
+        # long-poll (hub ADR 014) answers at once. Listeners must not raise.
+        self.listeners = []
         self.devices = {}
         self.commands = OrderedDict()
         # Recently used command IDs, retained longer than full command records.
@@ -159,6 +162,8 @@ class Gateway:
         if display_name is not None:
             # Trusted local simulator metadata; this does not extend the device wire protocol.
             self.devices[did]["display_name"] = display_name
+        if previous:
+            self._tell(did)  # A poll waiting on the old session ends as stale_session.
         return session
 
     def _device(self, did):
@@ -323,7 +328,12 @@ class Gateway:
         self.used_command_ids[command_id] = self.clock()
         if len(self.used_command_ids) > 8 * self.command_limit:
             self.used_command_ids.popitem(last=False)
+        self._tell(did)
         return {**self.command_status(command_id), "duplicate": False}
+
+    def _tell(self, did):
+        for listener in self.listeners:
+            listener(did)
 
     def expire_commands(self):
         for value in self.commands.values():

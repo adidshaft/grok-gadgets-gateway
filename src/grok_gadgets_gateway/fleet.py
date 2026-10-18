@@ -51,6 +51,7 @@ class FleetConfig:
     ca: Path
     connect: str | None = None  # Address to dial instead of resolving `host` (the TLS name).
     poll_ms: int = 100
+    wait_ms: int | None = None  # Long-poll (hub ADR 014): each poll waits up to this long.
     state_ms: int = 3000
     ramp_per_minute: float = 18
     duration: float = 900.0
@@ -200,6 +201,8 @@ async def _session(reader, writer, cfg, stats, stop):
         if loop.time() >= next_state:
             frame = {"type": "state", "state": {"display": {"text": text}}}
             next_state += state_every
+        elif cfg.wait_ms:
+            frame = {"type": "poll", "wait_ms": cfg.wait_ms}
         else:
             frame = {"type": "poll"}
         started = loop.time()
@@ -211,7 +214,8 @@ async def _session(reader, writer, cfg, stats, stop):
                 return
         else:
             stats.answered += 1
-            stats.rtt.add(loop.time() - started)
+            if frame["type"] == "poll" and not cfg.wait_ms:
+                stats.rtt.add(loop.time() - started)  # A waiting poll's time is its wait.
         for command in reply.get("commands") or []:
             text = str(command.get("arguments", {}).get("text", ""))[:32]
             ack = {
@@ -227,6 +231,8 @@ async def _session(reader, writer, cfg, stats, stop):
                 stats.answered += 1
             else:
                 stats.error(reply["error"]["code"])
+        if cfg.wait_ms:
+            continue  # A waiting poll paces itself; the next one goes at once.
         next_poll += interval
         delay = next_poll - loop.time()
         if delay < 0:
@@ -534,6 +540,7 @@ async def run(cfg, out):
         "gadgets": cfg.count,
         "workers": cfg.workers,
         "poll_ms": cfg.poll_ms,
+        "wait_ms": cfg.wait_ms,
         "state_ms": cfg.state_ms,
         "ramp_per_minute": cfg.ramp_per_minute,
         "ready_after_seconds": round(max(ready_times), 1)
@@ -542,7 +549,9 @@ async def run(cfg, out):
         "ramp_seconds": round(measure_began - began, 1),
         "measured_seconds": round(measured, 1),
         "online_at_end": sum(r["online_at_end"] for r in results),
-        "frames_offered_per_second": round(offered_rate(cfg.count, cfg.poll_ms), 1),
+        "frames_offered_per_second": None
+        if cfg.wait_ms
+        else round(offered_rate(cfg.count, cfg.poll_ms), 1),
         "frames_answered_per_second": round(sum(r["answered"] for r in results) / measured, 1),
         "poll_rtt_ms": _ms(rtt),
         "late_polls": sum(r["late"] for r in results),

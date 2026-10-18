@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Long-poll ([#182](https://github.com/adidshaft/grok-gadgets-gateway/issues/182), hub ADR 014). A poll may carry `wait_ms` (100–10000): the relay answers when a command for that gadget is ready or when the wait ends. A gadget that never sends it gets the same replies as before; an older relay answers the field with `invalid_request`. A new session for the same device ends the wait. `fleet run --wait-ms` measures it.
 - Each TLS device connection reads with a 32 KiB buffer instead of asyncio's 256 KiB. In the hub ADR 014 load test on a 512 MB relay host, that buffer cost about 220 KB of resident memory per gadget, and the kernel killed the relay at about 600 gadgets. Device frames are at most 16 KiB.
 
 - The sign-in page is shorter and follows the website's look: "Connect Grok Bot", one line of instruction, the gadget drawing, the code field and Connect. Who requested the sign-in is one short line; tips, recovery codes and the operator command sit under Help ([#207](https://github.com/adidshaft/grok-gadgets-gateway/issues/207), owner review on 18 October 2026).
