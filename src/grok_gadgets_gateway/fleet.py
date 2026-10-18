@@ -363,11 +363,16 @@ async def _slice(cfg, pairs, ramp_per_minute, ready, measuring, stopping):
     }
 
 
-def _worker(cfg, pairs, ramp_per_minute, queue, measure, stop):
+def _worker(cfg, pairs, ramp_per_minute, queue, measure, stop, parent):
     def ready(seconds):
         queue.put(("ready", seconds))
 
-    result = asyncio.run(_slice(cfg, pairs, ramp_per_minute, ready, measure.is_set, stop.is_set))
+    def stopping():
+        # A worker whose `fleet run` was killed stops too, so its gadgets never fight a later
+        # run for the same device IDs (each new hello replaces the other session).
+        return stop.is_set() or os.getppid() != parent
+
+    result = asyncio.run(_slice(cfg, pairs, ramp_per_minute, ready, measure.is_set, stopping))
     queue.put(("done", result))
 
 
@@ -479,7 +484,11 @@ async def run(cfg, out):
         context = multiprocessing.get_context("spawn")
         queue, measure, stop = context.Queue(), context.Event(), context.Event()
         processes = [
-            context.Process(target=_worker, args=(cfg, part, rate, queue, measure, stop))
+            context.Process(
+                target=_worker,
+                args=(cfg, part, rate, queue, measure, stop, os.getpid()),
+                daemon=True,
+            )
             for part in slices
         ]
         for process in processes:

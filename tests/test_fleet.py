@@ -415,3 +415,24 @@ def test_anything_else_still_meets_the_schema(frame):
     with pytest.raises(GatewayError) as exc:
         validate_request(frame)
     assert exc.value.code == "invalid_request"
+
+
+def test_a_worker_stops_when_its_parent_is_gone(tmp_path, monkeypatch, private_home):
+    import multiprocessing
+
+    out = make_tokens(tmp_path, 1)
+    queue, measure, stop = multiprocessing.Queue(), multiprocessing.Event(), multiprocessing.Event()
+    cfg = fleet.FleetConfig(
+        batch=out,
+        count=1,
+        host=NAME,
+        port=9,
+        connect="127.0.0.1",
+        ca=tmp_path / "none.pem",
+        retry_seconds=0.05,
+        every=0.05,
+    )
+    # The parent PID given is not this process's parent: the worker ends at once.
+    fleet._worker(cfg, fleet.load_tokens(out, 1), 600, queue, measure, stop, parent=-1)
+    kind, result = queue.get(timeout=5)
+    assert kind == "done" and result["online_at_end"] == 0
