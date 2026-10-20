@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.1.0-alpha.19 — 20 October 2026
+
+- The owner reviewed the sign-in page at phone size on 20 October 2026 and approved the calmer design below.
+
 - A calmer sign-in page (GW-UX-003, owner review). The code page has one instruction ("Type the code on your gadget’s screen"), one field and Connect. The gadget drawing is gone, so the code's shape appears once, as the field's placeholder. The page names no assistant itself: the signing-in app's self-declared name appears once, as "“NAME” wants to use your gadgets.", and Help says that any app can choose that name. A wrong code also marks the field invalid. The operator waiting page shows the approve command once instead of the code twice. Headers, the form, the error text and the server behaviour are unchanged.
 
 ## 0.1.0-alpha.18 — 18 October 2026
