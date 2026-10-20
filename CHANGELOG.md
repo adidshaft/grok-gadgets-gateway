@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Credits per account on a relay (GW-CREDITS-001..004, hub ADR 015 Stage 0). `serve --credits` with `--accounts` keeps a ledger in `oauth/`. A command costs one credit, debited before it runs and refunded when it does not go out; each online gadget-day costs one. At zero a command returns `out_of_credits` with plain text and no price or link; reads and the list keep working, and the list shows the caller's own balance. The operator account, stdio and operator mode are never charged. Off by default; off changes nothing.
+- Signed receipts and `credits` commands. Each day the relay writes one Ed25519-signed, hash-chained receipt per account. `credits grant|allowance|settings|close|list|ledger|receipts|verify|report`; `verify` fails on a changed, missing or reordered receipt, and `report` reconciles the ledger with the request log. No money, wallet or chain.
+
 ## 0.1.0-alpha.19 — 20 October 2026
 
 - The owner reviewed the sign-in page at phone size on 20 October 2026 and approved the calmer design below.

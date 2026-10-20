@@ -1189,8 +1189,8 @@
         "P1"
       ],
       "milestone": "Phase 14: Shared relay decision",
-      "stage": "review",
-      "evidence": "GitHub #244; tests/test_credits.py (written first): concurrency, torn ledger line, migration, credits off, stdio, cross-account."
+      "stage": "done",
+      "evidence": "GitHub #244; tests/test_credits.py (written first): concurrency, torn ledger line, migration, credits off, stdio, cross-account. Merged in #248."
     },
     {
       "id": "GW-CREDITS-002",
@@ -1208,8 +1208,8 @@
         "P1"
       ],
       "milestone": "Phase 14: Shared relay decision",
-      "stage": "in-progress",
-      "evidence": "GitHub #245; gadget-day metering and request_id reconciliation fields in tests/test_credits.py; receipts follow."
+      "stage": "review",
+      "evidence": "GitHub #245; tests/test_credits_receipts.py (changed, removed, reordered, other-key and ledger-mismatch receipts fail; daily close; running relay)."
     },
     {
       "id": "GW-CREDITS-003",
@@ -1225,8 +1225,8 @@
         "P1"
       ],
       "milestone": "Phase 14: Shared relay decision",
-      "stage": "todo",
-      "evidence": "GitHub #246."
+      "stage": "review",
+      "evidence": "GitHub #246; credits grant|allowance|settings|close|list|ledger|receipts|verify|report; tests/test_credits_receipts.py."
     },
     {
       "id": "GW-CREDITS-004",
@@ -1242,8 +1242,8 @@
         "P1"
       ],
       "milestone": "Phase 14: Shared relay decision",
-      "stage": "review",
-      "evidence": "GitHub #247; tests/test_credits.py."
+      "stage": "done",
+      "evidence": "GitHub #247; tests/test_credits.py. Merged in #248."
     }
   ]
 }

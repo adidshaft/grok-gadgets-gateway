@@ -536,9 +536,11 @@ async def serve_gateway(
     balances = None
     if credits:
         from .credits import Credits
+        from .receipts import Receipts
 
-        # Hub ADR 015 Stage 0: balances per account, beside accounts.json.
-        balances = Credits(claims.path.parent, claims, log=log).open()
+        # Hub ADR 015 Stage 0: balances per account, beside accounts.json; signed receipts.
+        receipts = Receipts(claims.path.parent, log=log).open()
+        balances = Credits(claims.path.parent, claims, log=log, receipts=receipts).open()
     updates = None
     if registry is not None:
         from .firmware import Updates
@@ -744,7 +746,8 @@ async def apply_admin(accounts, directory, every=1.0):
 
 
 async def meter_credits(credits, gateway, every=1.0, day_every=60.0):
-    """Apply queued `credits` changes each second; charge online gadget-days each minute."""
+    """Apply queued `credits` changes each second; each minute, charge online gadget-days
+    and, after midnight UTC, write the day's receipts."""
     last = None
     while True:
         credits.apply_admin()
@@ -753,6 +756,7 @@ async def meter_credits(credits, gateway, every=1.0, day_every=60.0):
             last = now
             online = {d["device_id"] for d in gateway.list_devices() if d.get("available")}
             credits.meter_days(online)
+            credits.close_receipts()
         await asyncio.sleep(every)
 
 
