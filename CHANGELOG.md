@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.1.0-alpha.19 — 20 October 2026
+
+- The owner reviewed the sign-in page at phone size on 20 October 2026 and approved the calmer design below.
+
+- A calmer sign-in page (GW-UX-003, owner review). The code page has one instruction ("Type the code on your gadget’s screen"), one field and Connect. The gadget drawing is gone, so the code's shape appears once, as the field's placeholder. The page names no assistant itself: the signing-in app's self-declared name appears once, as "“NAME” wants to use your gadgets.", and Help says that any app can choose that name. A wrong code also marks the field invalid. The operator waiting page shows the approve command once instead of the code twice. Headers, the form, the error text and the server behaviour are unchanged.
+
 ## 0.1.0-alpha.18 — 18 October 2026
 
 - Ready for others (hub ADR 014). On 18 October 2026 a fresh 512 MB, 1-vCPU relay carried 200 simulated gadgets polling every 100 ms (about 61 % CPU, 88 MB) and 1,000 with long-poll (about 67 % CPU, 137 MB); 1,000 polling every 100 ms did not fit ([hub record](https://github.com/adidshaft/grok-gadgets/blob/dev/docs/verification/ready-for-others-2026-10-18.md)). Grok Bot has not been seen signing in by metadata document yet.
