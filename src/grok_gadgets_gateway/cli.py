@@ -325,6 +325,50 @@ def build_parser():
             help="queue the change and return; serve applies it when it runs",
         )
 
+    credits = sub.add_parser(
+        "credits", help="credits per account on a relay with serve --credits (hub ADR 015)"
+    )
+    credits_sub = credits.add_subparsers(dest="credits_command", metavar="ACTION", required=True)
+    credits_sub.add_parser("list", help="each account's balance and allowance")
+    grant = credits_sub.add_parser("grant", help="add credits to an account (negative takes back)")
+    grant.add_argument("account")
+    grant.add_argument("amount", type=int)
+    allowance = credits_sub.add_parser(
+        "allowance", help="set an account's monthly allowance, or the relay default"
+    )
+    allowance.add_argument("amount", help="a whole number, or 'default' to use the relay's")
+    allowance.add_argument("--account", help="this account only (default: the relay default)")
+    settings = credits_sub.add_parser("settings", help="show or change the meter weights")
+    settings.add_argument("--command-weight", type=int, metavar="N")
+    settings.add_argument("--gadget-day-weight", type=int, metavar="N")
+    credits_sub.add_parser("close", help="write receipts now for everything not yet receipted")
+    ledger = credits_sub.add_parser("ledger", help="an account's ledger entries")
+    ledger.add_argument("account")
+    ledger.add_argument("--json", action="store_true")
+    receipts = credits_sub.add_parser("receipts", help="an account's signed receipts")
+    receipts.add_argument("account")
+    receipts.add_argument("--json", action="store_true")
+    verify = credits_sub.add_parser("verify", help="check receipt signatures, chain and ledger")
+    verify.add_argument("--account", help="only this account")
+    verify.add_argument("--receipts", metavar="FILE", help="a copy of one account's receipts")
+    verify.add_argument("--public-key", metavar="FILE", help="default: oauth/ beside them")
+    verify.add_argument(
+        "--no-ledger", action="store_true", help="check the receipts alone (a copy elsewhere)"
+    )
+    creport = credits_sub.add_parser(
+        "report", help="credits used per account, reconciled with the request log"
+    )
+    creport.add_argument("--since", metavar="DATE", help="ISO date or time (UTC)")
+    creport.add_argument("--until", metavar="DATE", help="ISO date or time (UTC)")
+    creport.add_argument("--log", action="append", help="request log (default: the service's)")
+    creport.add_argument("--json", action="store_true")
+    for command in (grant, allowance, settings):
+        command.add_argument(
+            "--no-wait",
+            action="store_true",
+            help="queue the change and return; serve applies it when it runs",
+        )
+
     fw = sub.add_parser("firmware", help="sign, store and assign firmware updates (hub ADR 012)")
     fw_sub = fw.add_subparsers(dest="firmware_command", metavar="ACTION", required=True)
     keygen = fw_sub.add_parser(
@@ -902,6 +946,8 @@ def run(parser, args):
         return run_oauth(parser, args)
     if command == "accounts":
         return run_accounts(parser, args)
+    if command == "credits":
+        return run_credits(parser, args)
     if command == "firmware":
         return run_firmware(parser, args)
     if command == "relay":
@@ -1763,6 +1809,160 @@ def run_accounts(parser, args):
         role = "operator" if account == data.get("operator") else "-"
         count = owned.get(account, 0)
         print(f"{account}  {role}  {count} gadget{'' if count == 1 else 's'}")
+    return 0
+
+
+def _wait_applied(path, no_wait):
+    import time
+
+    deadline = time.monotonic() + (0 if no_wait else 5)
+    while path.exists() and time.monotonic() < deadline:
+        time.sleep(0.2)
+    if path.exists():
+        print("Queued; serve --credits applies it when it runs.", file=sys.stderr)
+    else:
+        print("Applied by serve; see its log for the result.", file=sys.stderr)
+
+
+def run_credits(parser, args):
+    """Credits on this relay (hub ADR 015): reads `oauth/`; changes are queued for serve."""
+    from .accounts import ACCOUNT_ID
+    from .credits import queue_admin, read_ledger
+    from .oauth import oauth_dir
+    from .receipts import read_public, read_receipts, verify
+
+    folder = oauth_dir()
+    action = args.credits_command
+    account = getattr(args, "account", None)
+    if account is not None and not ACCOUNT_ID.fullmatch(account):
+        parser.error("not an account ID; see: grok-gadgets-gateway credits list")
+    try:
+        if action in ("grant", "allowance", "settings", "close"):
+            if action == "grant":
+                request = {"action": "grant", "account": account, "amount": args.amount}
+            elif action == "allowance":
+                amount = None if args.amount == "default" else args.amount
+                if amount is not None:
+                    if not amount.isdigit():
+                        parser.error("the allowance is a whole number or 'default'")
+                    amount = int(amount)
+                if account is None:
+                    if amount is None:
+                        parser.error("the relay default needs a number")
+                    request = {"action": "settings", "settings": {"allowance": amount}}
+                else:
+                    request = {"action": "allowance", "account": account, "allowance": amount}
+            elif action == "settings":
+                changes = {
+                    key: value
+                    for key, value in (
+                        ("command_weight", args.command_weight),
+                        ("gadget_day_weight", args.gadget_day_weight),
+                    )
+                    if value is not None
+                }
+                if not changes:
+                    data = json.loads((folder / "credits.json").read_text())
+                    print(json.dumps(data["settings"], indent=2, sort_keys=True))
+                    return 0
+                request = {"action": "settings", "settings": changes}
+            else:
+                request = {"action": "close"}
+            _wait_applied(queue_admin(folder, request), getattr(args, "no_wait", False))
+            return 0
+        entries = read_ledger(folder / "credits-ledger.jsonl")
+        if action == "list":
+            try:
+                data = json.loads((folder / "credits.json").read_text())
+                accounts = json.loads((folder / "accounts.json").read_text())
+            except FileNotFoundError:
+                print("No credits yet: start serve --credits.", file=sys.stderr)
+                return 0
+            balances = {}
+            for entry in entries:
+                balances[entry["account"]] = entry["balance"]
+            default = data["settings"]["allowance"]
+            for name in sorted(accounts.get("accounts", {})):
+                own = (data["accounts"].get(name) or {}).get("allowance")
+                if name == accounts.get("operator"):
+                    print(f"{name}  operator  exempt")
+                    continue
+                shown = f"{own}" if own is not None else f"{default} (default)"
+                print(f"{name}  balance {balances.get(name, 0)}  allowance {shown}")
+            return 0
+        if action == "ledger":
+            mine = [e for e in entries if e["account"] == account]
+            if args.json:
+                print(json.dumps(mine, indent=2))
+            for entry in [] if args.json else mine:
+                detail = entry.get("device") or entry.get("reason") or entry.get("via") or ""
+                print(
+                    f"{entry['seq']:>6}  {entry['ts'][:19]}  {entry['kind']:<10} "
+                    f"{entry['delta']:>+5}  balance {entry['balance']:>5}  {detail}"
+                )
+            return 0
+        if action == "receipts":
+            mine = read_receipts(folder / "receipts" / f"{account}.jsonl")
+            if args.json:
+                print(json.dumps(mine, indent=2))
+            for r in [] if args.json else mine:
+                print(
+                    f"#{r['seq']}  to {r['period']['to'][:19]}  spent {r['spent']} "
+                    f"(commands {r['commands']}, gadget-days {r['gadget_days']})  "
+                    f"granted {r['grants']}  closing {r['closing']}"
+                )
+            return 0
+        if action == "verify":
+            public = read_public(args.public_key or folder / "credits-receipt-key.pub")
+            if args.receipts:
+                files = [Path(args.receipts)]
+            elif account:
+                files = [folder / "receipts" / f"{account}.jsonl"]
+            else:
+                files = sorted((folder / "receipts").glob("acct_*.jsonl"))
+            if not files:
+                parser.error("no receipts yet; see: grok-gadgets-gateway credits close")
+            failed = 0
+            for path in files:
+                chain = read_receipts(path)
+                owner = chain[0].get("account") if chain else None
+                mine = None
+                if not args.no_ledger:
+                    mine = [e for e in entries if e["account"] == owner]
+                problems = verify(chain, public, mine) if chain else ["no receipts"]
+                label = owner or path.name
+                if problems:
+                    failed += 1
+                    print(f"FAIL  {label}: " + "; ".join(problems))
+                else:
+                    print(f"OK    {label}: {len(chain)} receipts, closing {chain[-1]['closing']}")
+            return 1 if failed else 0
+        if action == "report":
+            from .credits import format_report, report
+            from .logfiles import rotated
+            from .usage import default_log, parse_time, read_calls
+
+            paths = args.log
+            if not paths:
+                found = default_log()
+                paths = [found] if found is not None and found.is_file() else []
+            files = [old for path in paths for old in rotated(path)] or paths
+            since = parse_time(args.since).isoformat() if args.since else None
+            until = parse_time(args.until, end=True).isoformat() if args.until else None
+            calls = read_calls(files) if files else []
+            try:
+                operator = json.loads((folder / "accounts.json").read_text()).get("operator")
+            except (OSError, ValueError):
+                operator = None
+            value = report(entries, calls, operator=operator, since=since, until=until)
+            if not files:
+                value["reconciliation"]["note"] = "no request log found; pass --log PATH"
+            print(json.dumps(value, indent=2) if args.json else format_report(value))
+            return 0
+    except (OSError, ValueError) as exc:
+        parser.error(f"credits: {exc}")
+    except OperatorError as exc:
+        parser.error(str(exc))
     return 0
 
 

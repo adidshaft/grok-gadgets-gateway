@@ -65,12 +65,13 @@ def read_ledger(path):
 class Credits:
     """Balances, the gate and gadget-day metering for one relay."""
 
-    def __init__(self, directory, accounts, *, log=None, clock=time.time):
+    def __init__(self, directory, accounts, *, log=None, clock=time.time, receipts=None):
         folder = Path(directory)
         self.path = folder / "credits.json"
         self.ledger_path = folder / "credits-ledger.jsonl"
         self.admin_dir = folder / "credits-admin"
         self.accounts = accounts
+        self.receipts = receipts
         self.log = log
         self.clock = clock
         self.lock = threading.Lock()
@@ -80,6 +81,7 @@ class Credits:
         self.refilled = set()  # (account, month) whose allowance was applied
         self.seq = 0
         self.file = None
+        self.closed_day = None  # the UTC day whose start was the last daily receipt cut
 
     # --- storage ---
 
@@ -284,6 +286,22 @@ class Credits:
                 charged += 1
         return charged
 
+    # --- receipts (GW-CREDITS-002) ---
+
+    def close_receipts(self, now=False):
+        """Receipt every account's entries before today (UTC), or before now when asked."""
+        if self.receipts is None:
+            return []
+        clock = self.clock()
+        moment = datetime.fromtimestamp(clock, UTC)
+        cut = moment if now else moment.replace(hour=0, minute=0, second=0, microsecond=0)
+        if not now and self.closed_day == cut.date():
+            return []
+        self.closed_day = None if now else cut.date()
+        with self.lock:
+            entries = read_ledger(self.ledger_path)
+            return self.receipts.close(entries, cut.isoformat(), moment.isoformat(), now)
+
     # --- operator commands: the CLI queues files, serve applies them ---
 
     def apply_admin(self):
@@ -299,6 +317,8 @@ class Credits:
                     self.set_settings(**request["settings"])
                 elif action == "allowance":
                     self.set_allowance(request["account"], request["allowance"])
+                elif action == "close":
+                    self.close_receipts(now=True)
                 else:
                     raise ValueError(action)
                 applied += 1
@@ -316,3 +336,103 @@ def queue_admin(directory, request):
     name = f"{time.time_ns()}-{uuid.uuid4().hex[:8]}.json"
     atomic_write(folder / name, json.dumps({**request, "created": time.time()}).encode())
     return folder / name
+
+
+def report(entries, calls, *, operator=None, since=None, until=None):
+    """The operator's view of credits per account, in credits only (no currency).
+
+    `entries` are ledger entries and `calls` `mcp_tool_call` records, both already read.
+    Reconciliation matches each command debit that was kept with the request record of the
+    same `request_id` that says it kept credits.
+    """
+
+    def inside(ts):
+        return (since is None or ts >= since) and (until is None or ts <= until)
+
+    rows = {}
+    requests = {e["seq"]: e.get("request_id") for e in entries if e["kind"] == "command"}
+    kept, refunded = {}, set()
+    for entry in entries:
+        if not inside(entry["ts"]):
+            continue
+        row = rows.setdefault(
+            entry["account"],
+            {
+                "grants": 0,
+                "allowance": 0,
+                "commands": 0,
+                "refunds": 0,
+                "gadget_days": 0,
+                "spent": 0,
+                "balance": 0,
+            },
+        )
+        kind, delta = entry["kind"], entry["delta"]
+        row["balance"] = entry["balance"]
+        if kind in ("grant", "allowance"):
+            row["grants" if kind == "grant" else "allowance"] += delta
+        elif kind == "command":
+            row["commands"] += 1
+            row["spent"] -= delta
+            kept[entry.get("request_id")] = entry["account"]
+        elif kind == "gadget_day":
+            row["gadget_days"] += 1
+            row["spent"] -= delta
+        elif kind == "refund":
+            row["refunds"] += 1
+            row["commands"] -= 1
+            row["spent"] -= delta
+            refunded.add(requests.get(entry.get("refund_of")))
+    for request_id in refunded:
+        kept.pop(request_id, None)
+    logged = {
+        call.get("request_id")
+        for call in calls
+        if call.get("tool") == "gadgets_command"
+        and (call.get("credits") or 0) > 0
+        and inside(call.get("ts", ""))
+    }
+    ledger_only = sorted(r for r in kept if r not in logged)
+    log_only = sorted(r for r in logged if r not in kept)
+    for account, row in rows.items():
+        row["operator"] = account == operator
+    return {
+        "window": {"from": since, "to": until},
+        "accounts": dict(sorted(rows.items())),
+        "total_spent": sum(row["spent"] for row in rows.values()),
+        "reconciliation": {
+            "commands_in_ledger": len(kept),
+            "commands_in_log": len(logged),
+            "only_in_ledger": ledger_only,
+            "only_in_log": log_only,
+            "matches": not ledger_only and not log_only,
+        },
+    }
+
+
+def format_report(value):
+    window = value["window"]
+    lines = [f"Credits, {window['from'] or 'start'} to {window['to'] or 'now'} (UTC):", ""]
+    if not value["accounts"]:
+        lines.append("No credits activity in this window.")
+    for account, row in value["accounts"].items():
+        lines.append(
+            f"{account}  spent {row['spent']} (commands {row['commands']}, gadget-days "
+            f"{row['gadget_days']}, refunds {row['refunds']})  granted {row['grants']}  "
+            f"allowance {row['allowance']}  balance {row['balance']}"
+        )
+    check = value["reconciliation"]
+    lines.append("")
+    lines.append(f"Total credits spent: {value['total_spent']}")
+    if check["matches"]:
+        lines.append(
+            f"Reconciled: {check['commands_in_ledger']} charged commands match the request log."
+        )
+    else:
+        lines.append(
+            f"Not reconciled: {len(check['only_in_ledger'])} charged commands have no request "
+            f"record (a rotated log?), {len(check['only_in_log'])} request records have no "
+            "ledger entry."
+        )
+    lines.append("Credits are a usage measure on this relay. They are not money.")
+    return "\n".join(lines)

@@ -282,6 +282,19 @@ people use the relay (hub ADR 011). Then:
 - Codes live in memory only. The relay limits wrong codes: 5 per sign-in, 20 an hour per address and 200 an hour for the relay. After that, code entry closes for 10 minutes with a `claim_flood` line. `account_created`, `device_claimed` and `claim_rejected` lines record
   claims without codes.
 
+## Credits: a fair share for each account (optional)
+
+`serve --oauth --accounts --credits` (or `service install ... --credits`) keeps a balance for each account. It is off by default, and off changes nothing. Credits measure use on this relay. They are not money, and the gateway has no payment code.
+
+- One credit for each command the relay accepts; one for each day a gadget an account owns is online. Reads cost nothing. The operator account is never charged.
+- At zero, a command does not run. Grok Bot gets "Your credits on this relay are used up; ask its operator." Gadgets stay online, and the list still works.
+- `credits grant ACCOUNT N` adds credits. `credits allowance N` sets a monthly allowance (default 0). `credits settings` shows or changes the weights.
+- `credits list`, `credits ledger ACCOUNT` and `credits report` show balances and use. `report` checks the ledger against the request log.
+- Each day after midnight UTC, the relay writes one signed receipt per account in `oauth/receipts/`. `credits verify` checks the signatures, the chain and the ledger; `credits close` writes receipts now.
+- The receipt key is `~/.config/grok-gadgets/credits-receipt-key.pem`. Back it up with `oauth/`. Never put it in a repository.
+
+Hub ADR 015 has the design.
+
 ## Daily check
 
 From any computer, not the relay host:
