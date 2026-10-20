@@ -64,9 +64,28 @@ def test_receipts_add_up_and_verify(tmp_path):
     assert verify(chain, public) == []
     assert verify(chain, public, entries_of(tmp_path, a)) == []
     assert verify(read_receipts(receipts.path(b)), public, entries_of(tmp_path, b)) == []
-    text = receipts.path(a).read_text()
-    for secret in ("dev-a", "r1", "token", "name"):
-        assert secret not in text  # counts and the account ID only
+    # Counts and the account ID only: no device, request, name, token or argument fields.
+    fields = {
+        "v",
+        "account",
+        "commands",
+        "refunds",
+        "gadget_days",
+        "spent",
+        "grants",
+        "allowance",
+        "opening",
+        "closing",
+        "seq",
+        "period",
+        "ledger",
+        "issued",
+        "prev",
+        "key",
+        "sig",
+    }
+    assert all(set(r) == fields for r in chain)
+    assert "dev-a" not in receipts.path(a).read_text()
 
 
 def test_a_changed_receipt_fails(tmp_path):
