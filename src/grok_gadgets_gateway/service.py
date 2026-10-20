@@ -453,6 +453,7 @@ async def serve_gateway(
     firmware_directory=None,
     max_devices=DEFAULT_MAX_DEVICES,
     client_documents=None,
+    credits=False,
 ):
     """Run until the context exits. HTTP and the device listener bind 127.0.0.1.
 
@@ -476,6 +477,8 @@ async def serve_gateway(
             raise OperatorError("--oauth requires --request-log")
     if accounts and not oauth:
         raise OperatorError("--accounts needs --oauth: accounts are created at sign-in")
+    if credits and not accounts:
+        raise OperatorError("--credits needs --accounts: credits are kept per account")
     if simulator_config and not simulator:
         raise OperatorError("--simulator-config requires --simulator")
     for flag, value in (("--lan-listen", lan_listen), ("--device-listen", device_listen)):
@@ -530,6 +533,14 @@ async def serve_gateway(
         claims.open(enrolled)
         if sim is not None and claims.owner(sim.device_id) is None:
             claims.assign(sim.device_id, claims.operator, via="operator")
+    balances = None
+    if credits:
+        from .credits import Credits
+        from .receipts import Receipts
+
+        # Hub ADR 015 Stage 0: balances per account, beside accounts.json; signed receipts.
+        receipts = Receipts(claims.path.parent, log=log).open()
+        balances = Credits(claims.path.parent, claims, log=log, receipts=receipts).open()
     updates = None
     if registry is not None:
         from .firmware import Updates
@@ -673,13 +684,18 @@ async def serve_gateway(
             listener_status=listener_status if registry is not None else None,
             accounts=claims,
             client_documents=client_documents,
+            credits=balances,
         ) as running:
             running.gateway = gateway
             running.relay_server = relay_server
+            running.credits = balances
             follower = None
             admin = None
+            metering = None
             if claims is not None:
                 admin = asyncio.create_task(apply_admin(claims, claims.path.parent / "admin"))
+            if balances is not None:
+                metering = asyncio.create_task(meter_credits(balances, gateway))
             if lan_server is not None:
                 running.lan = lan_label()
                 if is_local_name(lan[0]):
@@ -707,6 +723,8 @@ async def serve_gateway(
                     follower.cancel()
                 if admin is not None:
                     admin.cancel()
+                if metering is not None:
+                    metering.cancel()
     finally:
         if relay_server is not None:
             await relay_server.close()
@@ -714,6 +732,8 @@ async def serve_gateway(
             await lan_server.close()
         if device_server is not None:
             await device_server.close()
+        if balances is not None:
+            balances.close()
         log.append({"event": "serve_stopped"})
         log.close()
 
@@ -722,6 +742,21 @@ async def apply_admin(accounts, directory, every=1.0):
     """Apply operator commands queued by `accounts unclaim|assign|link` (hub ADR 011 §9)."""
     while True:
         accounts.apply_admin(directory)
+        await asyncio.sleep(every)
+
+
+async def meter_credits(credits, gateway, every=1.0, day_every=60.0):
+    """Apply queued `credits` changes each second; each minute, charge online gadget-days
+    and, after midnight UTC, write the day's receipts."""
+    last = None
+    while True:
+        credits.apply_admin()
+        now = time.monotonic()
+        if last is None or now - last >= day_every:
+            last = now
+            online = {d["device_id"] for d in gateway.list_devices() if d.get("available")}
+            credits.meter_days(online)
+            credits.close_receipts()
         await asyncio.sleep(every)
 
 
@@ -804,6 +839,7 @@ async def _serve_http(
     listener_status=None,
     accounts=None,
     client_documents=None,
+    credits=None,
 ):
     if listener_status is None and device_server is not None:
         listener_status = device_server.status
@@ -818,6 +854,7 @@ async def _serve_http(
         http=True,
         usage_hook=usage_hook,
         accounts=accounts,
+        credits=credits,
         log_level="WARNING",
     )
     app = mcp.streamable_http_app(
