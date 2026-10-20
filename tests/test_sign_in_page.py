@@ -15,8 +15,10 @@ POLICY = "default-src 'none'; style-src 'unsafe-inline'"
 
 
 def text_of(html):
-    """Visible words, without tags, styles or the drawing."""
-    html = re.sub(r"<style>.*?</style>|<svg.*?</svg>", " ", html, flags=re.DOTALL)
+    """Visible words, without tags, the tab title, styles or the mark."""
+    html = re.sub(
+        r"<title>.*?</title>|<style>.*?</style>|<svg.*?</svg>", " ", html, flags=re.DOTALL
+    )
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html)).strip()
 
 
@@ -30,25 +32,50 @@ def code_page(**changes):
     return page.code_page(**values)
 
 
+def above_help(html):
+    return text_of(html.split("<details>")[0])
+
+
+EXAMPLE = re.compile(r"X{4}[-–—]X{4}")
+
+
 def test_the_page_is_short_and_the_rest_is_behind_help():
-    html = code_page()
-    visible = text_of(html.split("<details>")[0])
-    assert len(visible.split()) <= 20, visible
+    visible = above_help(code_page())
+    assert len(visible.split()) <= 18, visible
 
 
-def test_the_code_page_explains_what_to_type():
+def test_the_code_page_explains_what_to_type_once():
     html = code_page()
     words = text_of(html)
-    assert "Connect Grok Bot" in words
-    assert "Requested by “Grok Bot”" in words
-    assert "code on your gadget" in words.lower()
+    assert "code on your gadget" in above_help(html).lower()
     assert "Codes change every 10 minutes" in words
     assert "recovery code" in words
-    # The drawing shows a gadget screen with the code's shape, with an en dash so that
-    # nobody (and no script) mistakes the example for a real code.
-    assert "<svg" in html and "XXXX–XXXX" in html and "XXXX-XXXX" not in html
-    # The Grok Bot face mark, inline.
+    assert "Any app can choose the name" in words
+    # One instruction, one field, one button: no drawing next to the field and the
+    # example shape at most once (the placeholder), with an en dash so that nobody
+    # (and no script) mistakes it for a real code.
+    assert len(EXAMPLE.findall(html)) <= 1
+    assert "XXXX" not in EXAMPLE.sub("", html) and "XXXX-XXXX" not in html
+    assert html.count("<svg") == 1  # The Grok Bot face mark only.
     assert 'aria-label="Grok Bot"' in html
+    assert html.count("<button") == 1 and html.count("<input") == 2
+
+
+def test_grok_bot_is_named_once_at_most():
+    # Only the app's own name says who is signing in; the page adds no "Grok Bot" of its own.
+    assert text_of(code_page(client_name="Some App")).count("Grok Bot") <= 1
+    assert above_help(code_page(client_name="Some App")).count("Grok Bot") == 0
+    assert text_of(code_page()).count("Grok Bot") <= 1
+    assert (
+        text_of(page.waiting_page(client_name="Some App", code="ABCD-EFGH")).count("Grok Bot") <= 1
+    )
+
+
+def test_the_self_declared_name_is_shown_quietly_once():
+    for html in (code_page(client_name="Some App"), page.waiting_page("Some App", "ABCD-EFGH")):
+        words = text_of(html)
+        assert words.count("Some App") == 1
+        assert "“Some App” wants to use your gadgets." in words
 
 
 def test_the_code_field_is_phone_friendly():
@@ -63,8 +90,10 @@ def test_the_code_field_is_phone_friendly():
         'placeholder="XXXX–XXXX"',
         'maxlength="24"',  # A recovery code has 19 characters.
         "autofocus",
+        "required",
     ):
         assert attribute in field
+    assert 'aria-invalid="true"' not in field
     assert 'method="post"' in html and f'action="{page.APPROVE_PATH}"' in html
     assert 'name="request" value="' + "r" * 43 + '"' in html
 
@@ -76,12 +105,14 @@ def test_errors_say_what_happened_and_how_many_tries_are_left():
     assert "3 tries left" in words
     assert "1 try left" in text_of(code_page(error="wrong", tries_left=1))
     assert 'role="alert"' in html
+    assert 'aria-invalid="true"' in re.search(r"<input[^>]*name=\"code\"[^>]*>", html).group()
 
 
 def test_the_operator_route_stays_but_out_of_the_way():
     html = code_page()
     assert "<details><summary>Help</summary>" in html
-    assert "grok-gadgets-gateway oauth approve ABCD-EFGH --name NAME" in html
+    help_part = html.split("<details>")[1]
+    assert "grok-gadgets-gateway oauth approve ABCD-EFGH --name NAME" in help_part
 
 
 @pytest.mark.parametrize("typed", ["abcd-efgh", "ABCD–EFGH", "ABCD — EFGH", " abcd efgh "])
@@ -98,7 +129,8 @@ def test_names_and_ids_are_escaped():
 
 
 def test_a_client_without_a_name_gets_no_name_line():
-    assert "Requested by" not in code_page(client_name=None)
+    for html in (code_page(client_name=None), page.waiting_page(None, "ABCD-EFGH")):
+        assert "wants to use" not in html and "“" not in text_of(html)
 
 
 def test_no_scripts_no_external_assets_and_a_mobile_viewport():
@@ -120,6 +152,8 @@ def test_the_operator_waiting_page_refreshes_and_shows_the_command():
     assert "grok-gadgets-gateway oauth approve ABCD-EFGH --name grok-bot" in html
     assert "expires in 10 minutes" in text_of(html)
     assert 'http-equiv="refresh"' not in code_page()
+    # The code appears once, inside the command.
+    assert html.count("ABCD-EFGH") == 1
 
 
 @pytest.mark.parametrize(
@@ -157,7 +191,7 @@ async def test_the_relay_serves_the_new_page_and_counts_down_tries(tmp_path):
         writer.close()
     first, second, done = pages
     assert first.headers["content-security-policy"] == POLICY
-    assert "Connect Grok Bot" in first.text
+    assert "code on your gadget" in first.text
     assert f"{REQUEST_WRONG_MAX - 1} tries left" in text_of(first.text)
     assert f"{REQUEST_WRONG_MAX - 2} tries left" in text_of(second.text)
     assert "AAAA-AAAA" not in first.text and "BBBB-BBBB" not in second.text
