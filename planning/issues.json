@@ -1172,6 +1172,78 @@
       ],
       "stage": "review",
       "evidence": "GitHub #165; tests/test_relay_init.py (written first); bash -n on the script. Not yet run on a fresh host."
+    },
+    {
+      "id": "GW-CREDITS-001",
+      "owner": "grok-gadgets-gateway",
+      "problem": "A relay cannot limit what each account spends",
+      "acceptance": [
+        "serve --credits opt-in; off changes nothing",
+        "debit before the command; refund when it does not go out",
+        "operator exempt; stdio never gated",
+        "no double spend; restart keeps balances; accounts migrate"
+      ],
+      "labels": [
+        "feature",
+        "gateway",
+        "P1"
+      ],
+      "milestone": "Phase 14: Shared relay decision",
+      "stage": "review",
+      "evidence": "GitHub #244; tests/test_credits.py (written first): concurrency, torn ledger line, migration, credits off, stdio, cross-account."
+    },
+    {
+      "id": "GW-CREDITS-002",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Credits use cannot be checked afterwards",
+      "acceptance": [
+        "1 credit per accepted command and per gadget-day, weights configurable",
+        "daily signed hash-chained receipts per account",
+        "verify fails on tampered, reordered or gapped receipts",
+        "ledger reconciles with mcp_tool_call records"
+      ],
+      "labels": [
+        "feature",
+        "gateway",
+        "P1"
+      ],
+      "milestone": "Phase 14: Shared relay decision",
+      "stage": "in-progress",
+      "evidence": "GitHub #245; gadget-day metering and request_id reconciliation fields in tests/test_credits.py; receipts follow."
+    },
+    {
+      "id": "GW-CREDITS-003",
+      "owner": "grok-gadgets-gateway",
+      "problem": "An operator has no tool to grant credits or see use",
+      "acceptance": [
+        "credits grant|list|ledger|receipts|verify|report",
+        "report in credits only, with reconciliation"
+      ],
+      "labels": [
+        "feature",
+        "gateway",
+        "P1"
+      ],
+      "milestone": "Phase 14: Shared relay decision",
+      "stage": "todo",
+      "evidence": "GitHub #246."
+    },
+    {
+      "id": "GW-CREDITS-004",
+      "owner": "grok-gadgets-gateway",
+      "problem": "A refused call needs a plain answer in Grok Bot",
+      "acceptance": [
+        "out_of_credits result without price or link",
+        "list works at zero and shows only the caller's balance"
+      ],
+      "labels": [
+        "feature",
+        "gateway",
+        "P1"
+      ],
+      "milestone": "Phase 14: Shared relay decision",
+      "stage": "review",
+      "evidence": "GitHub #247; tests/test_credits.py."
     }
   ]
 }

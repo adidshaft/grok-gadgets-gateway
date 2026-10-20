@@ -519,6 +519,12 @@ def build_parser():
         help="with --oauth: each person signs in with the code their gadget shows and gets an "
         "account (hub ADR 011); the first start gives enrolled devices to the operator account",
     )
+    serve.add_argument(
+        "--credits",
+        action="store_true",
+        help="with --accounts: each account spends credits on commands and gadget-days; the "
+        "operator grants them with `credits grant` (hub ADR 015). No payments",
+    )
     _request_log_option(serve)
     _usage_hook_option(serve)
 
@@ -690,6 +696,9 @@ def build_parser():
     )
     service_install.add_argument(
         "--accounts", action="store_true", help="accounts and claim codes (see serve --accounts)"
+    )
+    service_install.add_argument(
+        "--credits", action="store_true", help="credits per account (see serve --credits)"
     )
     service_install.add_argument(
         "--device-port", type=int, default=8765, help="loopback device port"
@@ -946,6 +955,7 @@ def run(parser, args):
                     oauth=args.oauth,
                     accounts=args.accounts,
                     max_devices=args.max_devices,
+                    credits=args.credits,
                 )
             )
         except OperatorError as exc:
@@ -1388,6 +1398,8 @@ def run_service(parser, args, service=None):
                 parser.error("--oauth needs exactly one --allowed-host: the tunnel name")
             if args.accounts and not args.oauth:
                 parser.error("--accounts needs --oauth: accounts are created at sign-in")
+            if args.credits and not args.accounts:
+                parser.error("--credits needs --accounts: credits are kept per account")
             if args.usage_hook is not None:
                 import shlex
 
@@ -1432,6 +1444,7 @@ def run_service(parser, args, service=None):
                     args.device_listen,
                     args.accounts,
                     args.max_devices,
+                    args.credits,
                 ),
             ]
             environment = {

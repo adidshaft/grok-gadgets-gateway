@@ -55,6 +55,7 @@ def serve_arguments(
     device_listen=None,
     accounts=False,
     max_devices=None,
+    credits=False,
 ):
     """The `serve` flags the service runs with; the same rules as a foreground `serve`."""
     args = ["serve", "--port", str(port), "--device-port", str(device_port)]
@@ -70,6 +71,8 @@ def serve_arguments(
         args.append("--oauth")
     if accounts:
         args.append("--accounts")
+    if credits:
+        args.append("--credits")
     if request_log:
         args += ["--request-log", str(request_log)]
     if usage_hook:

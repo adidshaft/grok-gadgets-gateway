@@ -284,6 +284,7 @@ def make_server(
     command_wait=COMMAND_WAIT_SECONDS,
     usage_hook=None,
     accounts=None,
+    credits=None,
     **server_options,
 ):
     # Never wait past the gateway's own acknowledgement deadline.
@@ -291,6 +292,8 @@ def make_server(
     if http and (test_controls or device_server is not None):
         # HTTP sessions each run the MCP lifespan; the service owns the listener instead.
         raise ValueError("HTTP mode never exposes test controls or a per-session listener")
+    if credits is not None and accounts is None:
+        raise ValueError("Credits need accounts mode")
 
     @asynccontextmanager
     async def lifespan(server):
@@ -353,8 +356,8 @@ def make_server(
         value = contracts.get(capability) if isinstance(contracts, dict) else None
         return value if isinstance(value, dict) else {}
 
-    def finish(tool, arguments, started, response, ctx=None):
-        request_id = uuid.uuid4().hex[:16]
+    def finish(tool, arguments, started, response, ctx=None, request_id=None, charge=None):
+        request_id = request_id or uuid.uuid4().hex[:16]
         response = {**response, "request_id": request_id}
         if request_log is not None or usage_hook is not None:
             record = {
@@ -375,6 +378,12 @@ def make_server(
             for key in ("device_id", "capability"):
                 if isinstance(arguments.get(key), str):
                     record[key] = arguments[key]
+            account = caller_account(ctx) if credits is not None else None
+            if account is not None:
+                record["account"] = account
+            if charge is not None:
+                # Reconciliation (hub ADR 015): credits this call kept, matched by request_id.
+                record["credits"] = 0 if charge["settled"] else charge["amount"]
             command = response.get("command")
             if command:
                 record.update(
@@ -433,6 +442,7 @@ def make_server(
             listed = gateway.list_devices()
             if account is None:
                 return {"devices": listed}
+            extra = {"credits": credits.view(account)} if credits is not None else {}
             visible = accounts.visible(account)
             shown = []
             for device in listed:
@@ -461,7 +471,7 @@ def make_server(
                     if role == "owner" and pending:
                         entry["pending_transfer"] = {"completes_at": _iso(pending["completes_at"])}
                     shown.append(entry)
-            return {"devices": shown}
+            return {"devices": shown, **extra}
 
         return run("gadgets_list_devices", {}, devices, ctx)
 
@@ -487,6 +497,7 @@ def make_server(
         command_id: str | None = None,
     ) -> dict:
         started = time.monotonic()
+        request_id = uuid.uuid4().hex[:16]
         device_id = named(ctx, device_id)
         request = {
             "device_id": device_id,
@@ -495,6 +506,7 @@ def make_server(
             "command_id": command_id,
         }
         account = caller_account(ctx)
+        charge = None
         try:
             limit("gadgets_command", ctx)
             allow(ctx, device_id, ("owner", "use"))
@@ -504,9 +516,18 @@ def make_server(
                 raise GatewayError(
                     "duplicate_conflict", "Command ID reused with changed parameters"
                 )
+            if credits is not None and not known_command(command_id):
+                # The gate (hub ADR 015): debit before the command is queued.
+                charge = credits.charge(account, device_id, request_id)
             value = gateway.command(device_id, capability, arguments, command_id)
         except GatewayError as exc:
-            return finish("gadgets_command", request, started, exc.response(), ctx)
+            if charge is not None:
+                credits.refund(charge, exc.code)
+            return finish(
+                "gadgets_command", request, started, exc.response(), ctx, request_id, charge
+            )
+        if charge is not None and value["duplicate"]:
+            credits.refund(charge, "duplicate")
         if account is not None and not value["duplicate"]:
             command_accounts[value["command_id"]] = account
             while len(command_accounts) > 4096:
@@ -528,7 +549,15 @@ def make_server(
                 **await wait_for_outcome(value["command_id"]),
                 "duplicate": value["duplicate"],
             }
-        return finish("gadgets_command", request, started, response, ctx)
+        if charge is not None and response["command"]["status"] == "not_delivered":
+            credits.refund(charge, "not_delivered")
+        return finish("gadgets_command", request, started, response, ctx, request_id, charge)
+
+    def known_command(command_id):
+        """A retry of a command ID the gateway knows is answered without a new charge."""
+        return command_id is not None and (
+            command_id in gateway.commands or command_id in gateway.used_command_ids
+        )
 
     async def wait_for_outcome(command_id):
         """Bounded wait for a device report; the device loop runs while this sleeps."""
