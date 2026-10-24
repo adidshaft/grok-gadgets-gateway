@@ -320,7 +320,94 @@ docker compose exec gateway sh -c 'tail -n 50 /data/logs/requests.jsonl'
   relay off with `docker compose down`; the data volume stays.
 - `revoke DEVICE` ends a device's session on its next frame.
 - The `gateway-data` volume holds the CA key, device tokens and sign-ins. Back it up privately,
-  or plan to provision every device again if you lose it.
+  or plan to provision every device again if you lose it. With the user service, use
+  [Back up and restore](#back-up-and-restore).
+
+## Back up and restore
+
+`backup` writes one archive of the config directory, `~/.config/grok-gadgets`: device tokens,
+the CA, sign-ins and accounts in `oauth/`, the credits ledger, receipts and receipt key, and
+the firmware store. It goes to `~/.local/share/grok-gadgets/backups/` as
+`grok-gadgets-backup-YYYYMMDDTHHMMSSZ.tgz`, mode 0600, with a `.sha256` file beside it.
+
+```sh
+grok-gadgets-gateway backup --keep 14      # then delete all but the newest 14
+grok-gadgets-gateway backup --verify ~/.local/share/grok-gadgets/backups/grok-gadgets-backup-20261024T033000Z.tgz
+```
+
+The archive holds live secrets. Anyone with it can act as your gadgets and your sign-ins. Keep
+it owner-only, copy it only to computers you control, and never into a repository. Your OTA
+builder key is not in it: that key never belongs on the relay.
+
+### Every night, with a systemd user timer
+
+`~/.config/systemd/user/grok-gadgets-backup.service`:
+
+```ini
+[Unit]
+Description=Grok Gadgets config backup
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/grok-gadgets-gateway backup --keep 14
+```
+
+`~/.config/systemd/user/grok-gadgets-backup.timer`:
+
+```ini
+[Unit]
+Description=Nightly Grok Gadgets config backup
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+```sh
+systemctl --user daemon-reload
+systemctl --user enable --now grok-gadgets-backup.timer
+systemctl --user list-timers grok-gadgets-backup.timer
+journalctl --user -u grok-gadgets-backup.service -n 20
+```
+
+Use the path that `command -v grok-gadgets-gateway` prints in `ExecStart`. With
+`loginctl enable-linger` the timer runs without a login.
+
+### Off the host: pull, then check
+
+A copy on the relay host does not survive losing the host. Pull the newest archive from a
+computer you control. Pull rather than push, so the relay holds no key to that computer:
+
+```sh
+mkdir -p ~/relay-backups && chmod 700 ~/relay-backups
+latest=$(ssh relay.example.net 'ls -1 ~/.local/share/grok-gadgets/backups/*.tgz | tail -n 1')
+scp "relay.example.net:$latest" "relay.example.net:$latest.sha256" ~/relay-backups/
+cd ~/relay-backups && shasum -a 256 -c "$(basename "$latest").sha256"   # or sha256sum -c
+```
+
+The SHA-256 must say `OK` on both sides before you rely on the copy.
+
+### Restore, and test the restore
+
+Restore into an empty config home, never over a running relay. To test a backup without
+touching the live one, extract it into a temporary `XDG_CONFIG_HOME` and compare:
+
+```sh
+export XDG_CONFIG_HOME=$(mktemp -d)
+tar -xzf grok-gadgets-backup-20261024T033000Z.tgz -C "$XDG_CONFIG_HOME"
+grok-gadgets-gateway credits verify
+grok-gadgets-gateway accounts list
+grok-gadgets-gateway firmware list
+```
+
+Each output must match the same command on the relay at the time of the backup. To start the
+restored copy, use loopback ports that the live relay does not use, and no tunnel, for example
+`serve --oauth --accounts --port 18766 --device-port 18765`. To move the relay to a new host,
+stop the old service, extract the archive into `~/.config` on the new host and install the
+service again.
 
 ## Security notes
 
