@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.1.0-alpha.21 — 24 October 2026
+
+- `backup [--out DIR] [--keep N]` writes one archive of the config directory (tokens, CA, sign-ins, accounts, credits ledger, receipts and receipt key, firmware store) as `grok-gadgets-backup-YYYYMMDDTHHMMSSZ.tgz`, mode 0600 in a mode-0700 folder, with a `.sha256` file (hub #418). It skips symlinks and half-written temp files and refuses a folder inside the config directory. `--keep N` deletes all but the newest N; `backup --verify FILE` checks an archive against its digest. The relay guide adds a nightly systemd user timer, an off-host pull and a restore test into an isolated `XDG_CONFIG_HOME`.
+
+- Development tool `ruff` 0.17.1; the code needed no changes.
+
 ## 0.1.0-alpha.20 — 20 October 2026
 
 - Accepted on the owner's relay on 20 October 2026 (hub record `credits-2026-10-20`): two people, five commands, the out-of-credits message in Grok Bot, a top-up and a restart, receipts verified and a reconciled report.

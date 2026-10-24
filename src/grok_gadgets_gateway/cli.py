@@ -61,6 +61,7 @@ COMMANDS = (
     "firmware",
     "relay",
     "builder",
+    "backup",
 )
 DESCRIPTION = """Grok Gadgets gateway: the MCP server your Grok Bot will use to reach your gadgets.
 
@@ -431,6 +432,19 @@ def build_parser():
     report.add_argument("--firmware-dir", help="firmware store (default: config firmware/)")
     report.add_argument("--accounts", help="accounts file (default: oauth/accounts.json)")
     report.add_argument("--json", action="store_true")
+
+    backup = sub.add_parser(
+        "backup", help="archive the config directory (tgz + SHA-256, mode 0600; holds secrets)"
+    )
+    backup.add_argument(
+        "--out", metavar="DIR", help="backup folder (default ~/.local/share/grok-gadgets/backups)"
+    )
+    backup.add_argument(
+        "--keep", type=_positive_int, metavar="N", help="then delete all but the newest N"
+    )
+    backup.add_argument(
+        "--verify", metavar="FILE", help="check FILE against FILE.sha256 instead of backing up"
+    )
 
     fleet = sub.add_parser(
         "fleet", help="measure a relay with simulated gadgets (hub ADR 014); never a real one"
@@ -973,6 +987,8 @@ def run(parser, args):
 
     if command == "builder":
         return run_builder_report(parser, args)
+    if command == "backup":
+        return run_backup(parser, args)
     if command == "fleet":
         return run_fleet(parser, args)
     if command == "usage":
@@ -1653,6 +1669,32 @@ def run_builder_report(parser, args):
     except OperatorError as exc:
         parser.error(str(exc))
     print(json.dumps(report, indent=2) if args.json else format_report(report))
+    return 0
+
+
+def run_backup(parser, args):
+    """One archive of the config directory; restore it into an empty XDG_CONFIG_HOME."""
+    from .backup import create_backup, verify_backup
+
+    try:
+        if args.verify:
+            if not verify_backup(args.verify):
+                print(f"SHA-256 mismatch: {args.verify}", file=sys.stderr)
+                return 1
+            print(f"ok {args.verify}")
+            return 0
+        made = create_backup(args.out, keep=args.keep)
+    except OperatorError as exc:
+        parser.error(str(exc))
+    print(f"Backup:  {made['path']} ({made['files']} files, mode 0600)")
+    print(f"SHA-256: {made['sha256']}")
+    for old in made["pruned"]:
+        print(f"Deleted {old.name}")
+    print(
+        "It holds live tokens, sign-ins and the receipt key: copy it only to a place you "
+        "control, and check the SHA-256 there.",
+        file=sys.stderr,
+    )
     return 0
 
 

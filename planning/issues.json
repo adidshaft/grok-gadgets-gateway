@@ -1190,7 +1190,7 @@
       ],
       "milestone": "Phase 14: Shared relay decision",
       "stage": "done",
-      "evidence": "GitHub #244; tests/test_credits.py (written first): concurrency, torn ledger line, migration, credits off, stdio, cross-account. Merged in #248."
+      "evidence": "GitHub #244; tests/test_credits.py (written first): concurrency, torn ledger line, migration, credits off, stdio, cross-account. Merged in #248. Released in v0.1.0-alpha.20 (PyPI 0.1.0a20); accepted on the owner's relay on 20 October 2026 (hub docs/verification/credits-2026-10-20.md)."
     },
     {
       "id": "GW-CREDITS-002",
@@ -1208,8 +1208,8 @@
         "P1"
       ],
       "milestone": "Phase 14: Shared relay decision",
-      "stage": "review",
-      "evidence": "GitHub #245; tests/test_credits_receipts.py (changed, removed, reordered, other-key and ledger-mismatch receipts fail; daily close; running relay)."
+      "stage": "done",
+      "evidence": "GitHub #245; tests/test_credits_receipts.py (changed, removed, reordered, other-key and ledger-mismatch receipts fail; daily close; running relay). Released in v0.1.0-alpha.20 (PyPI 0.1.0a20); accepted on the owner's relay on 20 October 2026 (hub docs/verification/credits-2026-10-20.md)."
     },
     {
       "id": "GW-CREDITS-003",
@@ -1225,8 +1225,8 @@
         "P1"
       ],
       "milestone": "Phase 14: Shared relay decision",
-      "stage": "review",
-      "evidence": "GitHub #246; credits grant|allowance|settings|close|list|ledger|receipts|verify|report; tests/test_credits_receipts.py."
+      "stage": "done",
+      "evidence": "GitHub #246; credits grant|allowance|settings|close|list|ledger|receipts|verify|report; tests/test_credits_receipts.py. Released in v0.1.0-alpha.20 (PyPI 0.1.0a20); accepted on the owner's relay on 20 October 2026 (hub docs/verification/credits-2026-10-20.md)."
     },
     {
       "id": "GW-CREDITS-004",
@@ -1243,7 +1243,7 @@
       ],
       "milestone": "Phase 14: Shared relay decision",
       "stage": "done",
-      "evidence": "GitHub #247; tests/test_credits.py. Merged in #248."
+      "evidence": "GitHub #247; tests/test_credits.py. Merged in #248. Released in v0.1.0-alpha.20 (PyPI 0.1.0a20); accepted on the owner's relay on 20 October 2026 (hub docs/verification/credits-2026-10-20.md)."
     }
   ]
 }
