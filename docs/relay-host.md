@@ -325,9 +325,9 @@ docker compose exec gateway sh -c 'tail -n 50 /data/logs/requests.jsonl'
 
 ## Back up and restore
 
-`backup` writes one archive of the config directory, `~/.config/grok-gadgets`: device tokens,
-the CA, sign-ins and accounts in `oauth/`, the credits ledger, receipts and receipt key, and
-the firmware store. It goes to `~/.local/share/grok-gadgets/backups/` as
+`backup` writes one archive of the config directory, `~/.config/grok-gadgets`. It holds device
+tokens, the CA, sign-ins and accounts in `oauth/`, the credits ledger, receipts and receipt key,
+and the firmware store. It goes to `~/.local/share/grok-gadgets/backups/` as
 `grok-gadgets-backup-YYYYMMDDTHHMMSSZ.tgz`, mode 0600, with a `.sha256` file beside it.
 
 ```sh
@@ -404,9 +404,9 @@ grok-gadgets-gateway firmware list
 ```
 
 Each output must match the same command on the relay at the time of the backup. To start the
-restored copy, use loopback ports that the live relay does not use, and no tunnel, for example
+restored copy, use other loopback ports and no tunnel, for example
 `serve --oauth --accounts --port 18766 --device-port 18765`. To move the relay to a new host,
-stop the old service, extract the archive into `~/.config` on the new host and install the
+stop the old service first. Then extract the archive into `~/.config` there and install the
 service again.
 
 ## Security notes
