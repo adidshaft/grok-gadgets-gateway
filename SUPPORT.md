@@ -14,7 +14,7 @@ Include these details:
 
 Remove credentials, private paths, device state, events, and account captures before you submit a report.
 
-Use [r/GrokGadgets](https://www.reddit.com/r/GrokGadgets/) for public discussion.
+Use [Grok Gadgets community on X](https://x.com/i/communities/2026191471578067281) for public discussion.
 Do not send private reports there. See the shared
 [support guide](https://github.com/adidshaft/grok-gadgets/blob/main/SUPPORT.md).
 We do not promise a response time.

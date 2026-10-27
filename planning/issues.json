@@ -1244,6 +1244,23 @@
       "milestone": "Phase 14: Shared relay decision",
       "stage": "done",
       "evidence": "GitHub #247; tests/test_credits.py. Merged in #248. Released in v0.1.0-alpha.20 (PyPI 0.1.0a20); accepted on the owner's relay on 20 October 2026 (hub docs/verification/credits-2026-10-20.md)."
+    },
+    {
+      "id": "GW-COMMUNITY-X-001",
+      "owner": "grok-gadgets-gateway",
+      "problem": "Community links direct people to the former Reddit community",
+      "acceptance": [
+        "README, support policy and issue contact link point to the Grok Gadgets X Community"
+      ],
+      "dependencies": [],
+      "labels": [
+        "documentation",
+        "community"
+      ],
+      "milestone": "Documentation upkeep",
+      "stage": "done",
+      "commits": [],
+      "evidence": "CTA links and Git diff reviewed; 605 pytest tests and Ruff passed."
     }
   ]
 }
