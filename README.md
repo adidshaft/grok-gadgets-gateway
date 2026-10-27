@@ -134,7 +134,7 @@ Read [remote access](docs/remote-access.md) and [security](SECURITY.md) first.
 ## Community
 
 Questions, build photos and ideas are welcome on
-[r/GrokGadgets](https://www.reddit.com/r/GrokGadgets/). Report bugs and request features in
+[Grok Gadgets community on X](https://x.com/i/communities/2026191471578067281). Report bugs and request features in
 [GitHub Issues](https://github.com/adidshaft/grok-gadgets-gateway/issues). New here? Pick a
 [good first issue](https://github.com/adidshaft/grok-gadgets-gateway/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
 and read [CONTRIBUTING](CONTRIBUTING.md). Get help: [SUPPORT](SUPPORT.md).
