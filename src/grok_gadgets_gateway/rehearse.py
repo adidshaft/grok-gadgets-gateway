@@ -180,6 +180,10 @@ def main(
 # --- rehearse --accounts (GW-CLAIM-004, hub ADR 011) ---
 
 ACCOUNT_GADGETS = {"gadget-a": "rehearsal-token-gadget-a", "gadget-b": "rehearsal-token-gadget-b"}
+# Bounds that keep `rehearse --accounts` from waiting for ever (GW-SCALE-002, #260).
+GADGET_REPLY_SECONDS = 5
+GADGET_STOP_SECONDS = 5
+ACCOUNTS_SECONDS = 60
 
 
 class _Gadget:
@@ -190,6 +194,7 @@ class _Gadget:
         self.code = None
         self.task = None
         self.writer = None
+        self.stopping = False
 
     async def start(self, claim="ready"):
         from .protocol import _root
@@ -198,6 +203,7 @@ class _Gadget:
         hello["device"]["device_id"] = self.device_id
         hello["token"] = ACCOUNT_GADGETS[self.device_id]
         hello["claim"] = claim
+        self.stopping = False
         reader, self.writer = await asyncio.open_connection("127.0.0.1", self.port)
         reply = await self._exchange(reader, hello)
         if not reply.get("ok"):
@@ -208,14 +214,26 @@ class _Gadget:
     async def _exchange(self, reader, message):
         self.writer.write((json.dumps(message) + "\n").encode())
         await self.writer.drain()
-        return json.loads(await asyncio.wait_for(reader.readline(), 5))
+        # asyncio.timeout, not asyncio.wait_for: on Python 3.11, wait_for drops a cancellation
+        # that arrives in the same loop step as the reply, so the poll loop ran on and stop()
+        # waited for it for ever (#260).
+        try:
+            async with asyncio.timeout(GADGET_REPLY_SECONDS):
+                line = await reader.readline()
+        except TimeoutError:
+            raise RehearsalError(
+                f"{self.device_id} had no reply from the relay within {GADGET_REPLY_SECONDS} s"
+            ) from None
+        if not line:
+            raise RehearsalError(f"the relay closed {self.device_id}'s connection")
+        return json.loads(line)
 
     def _remember(self, reply):
         if "claimed" in reply:
             self.code = reply.get("claim_code")
 
     async def _serve(self, reader):
-        while True:
+        while not self.stopping:
             reply = await self._exchange(reader, {"type": "poll"})
             self._remember(reply)
             for command in reply.get("commands", []):
@@ -234,11 +252,22 @@ class _Gadget:
         await self.start("after_setup")
 
     async def stop(self):
-        if self.task is not None:
-            self.task.cancel()
-            await asyncio.gather(self.task, return_exceptions=True)
-        if self.writer is not None:
-            self.writer.close()
+        # The flag ends the loop even if a cancellation is lost; the wait stays bounded.
+        self.stopping = True
+        task, self.task = self.task, None
+        try:
+            if task is not None:
+                task.cancel()
+                done, _ = await asyncio.wait({task}, timeout=GADGET_STOP_SECONDS)
+                if not done:
+                    raise RehearsalError(
+                        f"{self.device_id} did not stop within {GADGET_STOP_SECONDS} s"
+                    )
+                if not task.cancelled():
+                    task.exception()  # retrieved: the loop's last error is expected at stop
+        finally:
+            if self.writer is not None:
+                self.writer.close()
 
 
 class _Person:
@@ -329,8 +358,22 @@ async def rehearse_accounts(out=print, directory=None):
     """Two accounts on a private relay in accounts mode, with two simulated gadgets.
 
     The same steps as the Phase 11 acceptance, in a temporary config directory. It does not
-    use or change this computer's gateway configuration.
+    use or change this computer's gateway configuration. Every wait is bounded: a stalled
+    step fails within ACCOUNTS_SECONDS with a RehearsalError instead of hanging.
     """
+    deadline = asyncio.timeout(ACCOUNTS_SECONDS)
+    try:
+        async with deadline:
+            await _rehearse_accounts(out, directory)
+    except TimeoutError:
+        if not deadline.expired():
+            raise
+        raise RehearsalError(
+            f"the account rehearsal did not finish within {ACCOUNTS_SECONDS} s"
+        ) from None
+
+
+async def _rehearse_accounts(out, directory):
     import io
     import tempfile
     from contextlib import AsyncExitStack
