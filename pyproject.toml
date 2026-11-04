@@ -20,7 +20,7 @@ classifiers = [
 ]
 dependencies = [
     "mcp==2.3.0",
-    "httpx2==2.13.1",
+    "httpx2==2.16.0",
     "jsonschema==4.26.0",
     "pyserial==3.5",
     "cryptography==50.0.2",
@@ -35,10 +35,10 @@ Changelog = "https://github.com/adidshaft/grok-gadgets-gateway/blob/main/CHANGEL
 [project.scripts]
 grok-gadgets-gateway = "grok_gadgets_gateway.cli:main"
 [build-system]
-requires = ["hatchling==1.32.4"]
+requires = ["hatchling==1.33.0"]
 build-backend = "hatchling.build"
 [dependency-groups]
-dev = ["pytest==9.1.1", "pytest-asyncio==1.4.0", "ruff==0.17.1"]
+dev = ["pytest==9.2.0", "pytest-asyncio==1.4.1", "ruff==0.17.3"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 # A hung test prints every stack after 5 minutes instead of a silent CI cancel at 20.
